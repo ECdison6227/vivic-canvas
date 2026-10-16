@@ -15,7 +15,7 @@ export const SCENE_CARD_KICKERS: Record<CardType, { label: string; icon: LucideI
   ChartCard: { label: "数据", icon: ChartLine },
   PaperCard: { label: "文献", icon: BookOpenText },
   GalleryCard: { label: "照片墙", icon: Images },
-  WeeklyScheduleCard: { label: "本周安排", icon: CalendarRange },
+  WeeklyScheduleCard: { label: "周计划", icon: CalendarRange },
   RoadmapCard: { label: "路线图", icon: Milestone },
   NewsCard: { label: "资讯", icon: Newspaper },
   TimelineCard: { label: "时间线", icon: History },
