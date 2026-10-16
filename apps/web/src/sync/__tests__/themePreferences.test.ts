@@ -12,7 +12,10 @@ const legacy = { theme: "auto" as const, reducedMotion: false, subtitles: true }
 describe("optional local daylight preferences", () => {
   it("preserves legacy records exactly without injecting schedule defaults", () => {
     expect(DisplayPreferencesSchema.parse(legacy)).toEqual(legacy);
-    expect(DEFAULT_DISPLAY_PREFERENCES).toEqual(legacy);
+    // 2026-10-17: new installs default to the dark 午夜蓝紫 background; stored legacy records keep their theme.
+    expect(DEFAULT_DISPLAY_PREFERENCES).toEqual({ ...legacy, theme: "dark" });
+    expect(DisplayPreferencesSchema.parse(legacy)).not.toHaveProperty("darkPalette");
+    expect(DisplayPreferencesSchema.parse(legacy)).not.toHaveProperty("lightPalette");
     expect(DisplayPreferencesSchema.parse(legacy)).not.toHaveProperty("dayStart");
     expect(DisplayPreferencesSchema.parse(legacy)).not.toHaveProperty("dayEnd");
   });
@@ -36,7 +39,7 @@ describe("optional local daylight preferences", () => {
       await host.start(); await client.start(); await flushChannel();
       expect(host.setPreferences({ dayStart: "22:15", dayEnd: "06:45" }).ok).toBe(true);
       await flushChannel();
-      const expected = { ...legacy, dayStart: "22:15", dayEnd: "06:45" };
+      const expected = { ...DEFAULT_DISPLAY_PREFERENCES, dayStart: "22:15", dayEnd: "06:45" };
       expect(displayStore.getPreferences()).toEqual(expected);
       expect(JSON.parse((await db.getMeta("displayPreferences"))!)).toEqual(expected);
       expect(host.setPreferences({ dayStart: "25:00" }).ok).toBe(false);
@@ -46,6 +49,33 @@ describe("optional local daylight preferences", () => {
       await revived.start(); await flushChannel();
       expect(revived.getSnapshot().preferences).toEqual(expected);
       expect(displayStore.getPreferences()).toEqual(expected);
+    } finally { client.stop(); host.stop(); revived?.stop(); }
+  });
+
+  it.each([["darkPalette", "milk"], ["lightPalette", "midnight"], ["darkPalette", "custom"], ["lightPalette", ""]])("rejects %s %j outside its own six palettes", (key, value) => {
+    expect(DisplayPreferencesSchema.safeParse({ ...legacy, [key]: value }).success).toBe(false);
+  });
+
+  it("syncs and restores a chosen background palette with its appearance", async () => {
+    const db = createMemoryDB(), hub = createMemoryHub(), locks = createMemoryLockProvider();
+    const host = createControlHost({ db, channel: hub.createChannel(), store: createCanvasStore(), lockProvider: locks, reminderPollMs: 1000000 });
+    const displayStore = createCanvasStore();
+    const client = createDisplayClient({ db, channel: hub.createChannel(), store: displayStore });
+    let revived: ReturnType<typeof createControlHost> | undefined;
+    try {
+      await host.start(); await client.start(); await flushChannel();
+      expect(host.setPreferences({ theme: "light", lightPalette: "mint" }).ok).toBe(true);
+      expect(host.setPreferences({ darkPalette: "ocean" }).ok).toBe(true);
+      expect(host.setPreferences({ darkPalette: "peach" } as never).ok).toBe(false);
+      await flushChannel();
+      const expected = { ...DEFAULT_DISPLAY_PREFERENCES, theme: "light", lightPalette: "mint", darkPalette: "ocean" };
+      expect(displayStore.getPreferences()).toEqual(expected);
+      expect(displayStore.getState().ambient.theme).toBe("light");
+      expect(JSON.parse((await db.getMeta("displayPreferences"))!)).toEqual(expected);
+      host.stop(); await flushChannel();
+      revived = createControlHost({ db, channel: hub.createChannel(), store: createCanvasStore(), lockProvider: locks, reminderPollMs: 1000000 });
+      await revived.start(); await flushChannel();
+      expect(revived.getSnapshot().preferences).toEqual(expected);
     } finally { client.stop(); host.stop(); revived?.stop(); }
   });
 });

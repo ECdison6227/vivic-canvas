@@ -5,7 +5,7 @@ import type { DisplayPreferences } from "@/sync/protocol";
 /**
  * Motion Director: derives component states from *confirmed* store
  * transitions. It never owns state — it only maps the store onto the locked
- * components (SmoothUI Siri Orb, React Bits Grainient, subtitle layer).
+ * components (SmoothUI Siri Orb, 流光以太 atmosphere, subtitle layer).
  */
 
 export type DerivedStage = "STANDBY" | "AWAKENING" | "WORKSPACE" | "FOCUS";
@@ -76,15 +76,3 @@ export const resolveTheme = (
   const daylight = start <= end ? current >= start && current < end : current >= start || current < end;
   return daylight ? "light" : "dark";
 };
-
-export const GRAINIENT_PRESETS = {
-  light: {
-    colors: ["#f8faff", "#dec9fa", "#fadcea", "#bcd7fa", "#ffe9d6"],
-    lightMode: true,
-  },
-  dark: {
-    // Desaturated slate smoke, close to the user's reference recording.
-    colors: ["#11131f", "#1a1d2c", "#242737", "#2f3243", "#3d4153"],
-    lightMode: false,
-  },
-} as const;

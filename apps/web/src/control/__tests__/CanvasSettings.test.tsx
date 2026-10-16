@@ -61,6 +61,9 @@ describe("CanvasSettings", () => {
     expect([...container.querySelectorAll("input[type=time]")].every(input => (input as HTMLInputElement).disabled)).toBe(true);
   });
   it("shows accessible local time defaults without writing them, and saves explicit overnight edits through the owner", async () => {
+    // New installs default to dark; the schedule only applies once the user picks 自动.
+    expect(host.getSnapshot().preferences.theme).toBe("dark");
+    expect(host.setPreferences({ theme: "auto" }).ok).toBe(true);
     const update = vi.spyOn(host, "setPreferences");
     await render();
     expect(container.querySelector<HTMLInputElement>('input[aria-label="白天开始时间"]')?.value).toBe("07:00");

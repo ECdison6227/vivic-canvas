@@ -14,7 +14,7 @@ export const AWAKENING_TOTAL_MS = (REVEAL_DURATION_S + REVEAL_DELAY_S + 0.06) * 
 
 /**
  * Opaque black layer for STANDBY. On `stage.awaken`, a circular mask expands
- * from the orb (screen centre) until the Grainient underneath fills the
+ * from the orb (screen centre) until the atmosphere underneath fills the
  * screen — the orb is never hidden first, the surface just opens out of it.
  * Reduced motion: plain cross-fade.
  */

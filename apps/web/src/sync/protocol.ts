@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { ActionEnvelopeSchema, VivicStateSchema } from "@/contracts";
 import { ActivitySchema, TargetChoiceSchema } from "@vivic/contracts";
+import { DARK_PALETTE_IDS, LIGHT_PALETTE_IDS } from "@/components/atmosphere/palettes";
 
 /**
  * BroadcastChannel('vivic:canvas:v1') message protocol — ARCHITECTURE §4.
@@ -36,10 +37,14 @@ export const DisplayPreferencesSchema = z.strictObject({
   reducedMotion: z.boolean(), subtitles: z.boolean(),
   dayStart: z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/).optional(),
   dayEnd: z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/).optional(),
+  /** Background palette per appearance; absent means 午夜蓝紫 / 云朵蓝紫. The motion is fixed. */
+  darkPalette: z.enum(DARK_PALETTE_IDS).optional(),
+  lightPalette: z.enum(LIGHT_PALETTE_IDS).optional(),
 });
 export type DisplayPreferences = z.infer<typeof DisplayPreferencesSchema>;
+// 2026-10-17: the default background is the dark 午夜蓝紫 palette, so the default theme is dark.
 export const DEFAULT_DISPLAY_PREFERENCES: DisplayPreferences = {
-  theme: "auto", reducedMotion: false, subtitles: true,
+  theme: "dark", reducedMotion: false, subtitles: true,
 };
 
 const msgBase = {
