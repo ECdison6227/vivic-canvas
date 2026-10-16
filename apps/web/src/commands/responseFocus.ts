@@ -6,7 +6,7 @@ import { reminderVisible } from "@/canvas/reminderPresentation";
  * scheduling never passes here; explicit highlight/camera instructions win. */
 export function focusResponseActions(actions: Action[], state: VivicState): Action[] {
   const creates = actions.filter(a => a.type === "card.create");
-  const quiet = new Set(creates.flatMap(a => a.type === "card.create" && (!reminderVisible({ record: a.card }) || a.card.type === "CountdownCard" && Boolean(a.card.sourceData.schedule || a.card.sourceData.timeZone || a.card.sourceData.condition)) ? [a.card.id] : []));
+  const quiet = new Set(creates.flatMap(a => a.type === "card.create" && (!reminderVisible({ record: a.card }) || a.card.type === "CountdownCard" && !a.card.sourceData.event && Boolean(a.card.sourceData.schedule || a.card.sourceData.timeZone || a.card.sourceData.condition)) ? [a.card.id] : []));
   actions = actions.filter(a => !(a.type === "card.focus" && quiet.has(a.targetId)) && !(a.type === "canvas.fit" && creates.length > 0 && creates.length === quiet.size));
   if (creates.length === 1 && quiet.size === 1) return actions;
   if (actions.length >= 12 || actions.some(a => ["card.focus", "card.highlight", "canvas.restore"].includes(a.type))) return actions;

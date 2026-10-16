@@ -50,6 +50,8 @@ export interface DisplayClient {
   getStatus: () => DisplayClientStatus;
   beginCardDrag: (cardId: string) => CanvasDrag | null;
   requestCardMove: (drag: CanvasDrag, x: number, y: number) => boolean;
+  /** A card dropped here from the user page: ask the owner to place it at (x, y). */
+  requestCardToCanvas: (canvasId: string, cardId: string, x: number, y: number) => boolean;
 }
 
 export const createDisplayClient = (
@@ -287,6 +289,16 @@ export const createDisplayClient = (
       deps.channel.post({ type: "interaction", canvasId, epoch: instanceId,
         version: drag.version, seq: 0, requestId: drag.requestId,
         payload: { ownerEpoch: epoch, interaction: { kind: "card.move", cardId: drag.cardId, from: drag.from, x, y } } });
+      return true;
+    },
+    requestCardToCanvas: (forCanvas, cardId, x, y) => {
+      if (!canInteract() || forCanvas !== canvasId || !CoordinateSchema.safeParse(x).success || !CoordinateSchema.safeParse(y).success) return false;
+      const entry = store.getState().cards.find(c => c.record.id === cardId && !c.exitingRequestId);
+      if (!entry || entry.record.layout.surface !== "user") return false;
+      const { surface: _surface, ...from } = entry.record.layout;
+      deps.channel.post({ type: "interaction", canvasId, epoch: instanceId,
+        version: version!, seq: 0, requestId: newId("dock"),
+        payload: { ownerEpoch: epoch, interaction: { kind: "card.surface", cardId, from, surface: "display", x, y } } });
       return true;
     },
     getStatus: () => ({ canvasId, version, ownerAlive: ownerAlive && Date.now() - lastOwnerSeenAt < 3600, hydrated, canInteract: canInteract(), viewKey: `${canvasId}:${epoch}` }),

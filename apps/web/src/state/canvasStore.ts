@@ -1,16 +1,18 @@
 import { presentCards, groupedReminder, completedCountdown, reminderGroupKey, reminderVisible } from "@/canvas/reminderPresentation";
 import { CARD_METRICS, CARD_INNER_HEIGHT } from "@/cards/metrics";
+import { TODO_VISIBLE_ITEMS, usesFixedHeight } from "@/cards/sizing";
 import { useSyncExternalStore } from "react";
 import {
   ActionEnvelopeSchema,
   CardRecordSchema,
+  onUserSurface,
   type Action,
   type ActionEnvelope,
   type CardRecord,
   validCardTarget,
 } from "@/contracts";
 import { CanvasInteractionSchema, DEFAULT_DISPLAY_PREFERENCES, DisplayPreferencesSchema,
-  type DisplayPreferences } from "@/sync/protocol";
+  type CanvasInteraction, type DisplayPreferences } from "@/sync/protocol";
 
 export type VisualStage = "STANDBY" | "AWAKENING" | "WORKSPACE";
 export type ThemeMode = "auto" | "light" | "dark";
@@ -100,6 +102,8 @@ const initialState = (): VivicState => ({
 
 const cardHeight = ({ record }: CardState): number => {
   const width = Math.max(80, record.layout.width);
+  // Scene cards render at exactly their layout height and clamp/scroll inside.
+  if (usesFixedHeight(record)) return Math.max(record.layout.height, 56 + CARD_INNER_HEIGHT);
   if (record.type === "CountdownCard") {
     const text = record.sourceData.reminderText;
     const chars = Math.max(1, Math.floor((width - 168) / 18));
@@ -112,8 +116,11 @@ const cardHeight = ({ record }: CardState): number => {
   const chars = Math.max(1, Math.floor((width - 84) / CARD_METRICS.bodySize));
   if (record.type === "TodoCard") {
     const todoChars = Math.max(1, Math.floor((width - 112) / CARD_METRICS.bodySize));
-    const items = record.displayProps.items.slice(0, 5);
-    return Math.max(record.layout.height, CARD_INNER_HEIGHT + Math.max(0, items.length - 1) * CARD_METRICS.rowGap + items.reduce((sum, item) =>
+    const items = record.displayProps.items.slice(0, TODO_VISIBLE_ITEMS);
+    // A titled list adds its title, progress bar and, past five rows, a "还有 N 项" line.
+    const header = record.displayProps.title ? Math.max(1, Math.ceil(record.displayProps.title.length / Math.max(1, Math.floor((width - 120) / 17)))) * 23 + 20 : 0;
+    const more = record.displayProps.items.length > items.length ? 20 + CARD_METRICS.rowGap : 0;
+    return Math.max(record.layout.height, CARD_INNER_HEIGHT + header + more + Math.max(0, items.length - 1) * CARD_METRICS.rowGap + items.reduce((sum, item) =>
       sum + Math.max(1, Math.ceil(item.text.length / todoChars)) * CARD_METRICS.lineHeight, 0));
   }
   if (record.type === "NoteCard" && record.variant === "expanded") {
@@ -121,7 +128,8 @@ const cardHeight = ({ record }: CardState): number => {
       .reduce((sum, text) => sum + text.split("\n").reduce((count, line) => count + Math.max(1, Math.ceil(line.length / chars)), 0), 0);
     return Math.max(record.layout.height, CARD_INNER_HEIGHT + lines * CARD_METRICS.lineHeight + (record.displayProps.bullets?.length ?? 0) * CARD_METRICS.rowGap);
   }
-  return Math.max(record.layout.height, record.type === "ChartCard" ? 144 + CARD_INNER_HEIGHT : record.type === "SearchResultCard" ? 80 + CARD_INNER_HEIGHT : 56 + CARD_INNER_HEIGHT);
+  return Math.max(record.layout.height, record.type === "ChartCard" ? 144 + CARD_INNER_HEIGHT + (record.displayProps.title ? 34 : 0)
+    : record.type === "SearchResultCard" ? 80 + CARD_INNER_HEIGHT : 56 + CARD_INNER_HEIGHT);
 };
 /** Persisted layout bounds, using the same conservative content heights as placement. */
 export const hasUnpinnedOverlap = (cards: CardState[]): boolean => presentCards(cards).some(({ entry: left }, index, visible) => !left.exitingRequestId && visible.slice(index + 1).some(({ entry: right }) => {
@@ -229,7 +237,8 @@ const applyAction = (
       const card = state.cards.find(
         (c) => c.record.id === action.targetId && !c.exitingRequestId,
       );
-      if (!card) return state;
+      // A card on the user page is not on the canvas: never dim the stage for it.
+      if (!card || onUserSurface(card.record)) return state;
       return {
         ...state,
         cards: !reminderVisible(card) ? relayout(state.cards, new Set(state.cards.filter(c => reminderVisible(c)).map(c => c.record.id)), card.record.id) : state.cards,
@@ -519,6 +528,32 @@ export const createCanvasStore = (): CanvasStore => {
   const listeners = new Set<() => void>();
   const emit = () => listeners.forEach((l) => l());
 
+  /** User page ⇄ Display. A drop point places the card exactly there (like a
+   * manual drag); otherwise it takes the next free slot and nothing else moves. */
+  const moveBetweenSurfaces = (requestId: string, entry: CardState,
+    action: Extract<CanvasInteraction, { kind: "card.surface" }>): DispatchResult => {
+    const layout = entry.record.layout;
+    const current = layout.surface ?? "display";
+    if (current === action.surface && action.x === undefined) {
+      state = withProcessed(state, requestId); emit();
+      return { ok: true, deduplicated: false };
+    }
+    const { surface: _previous, ...rest } = layout;
+    const nextLayout = action.surface === "user" ? { ...rest, surface: "user" as const }
+      : { ...rest, ...(action.x !== undefined && action.y !== undefined ? { x: action.x, y: action.y } : {}) };
+    const candidate = CardRecordSchema.safeParse({ ...entry.record, layout: nextLayout,
+      metadata: { ...entry.record.metadata, updatedAt: new Date().toISOString() } });
+    if (!candidate.success) return { ok: false, error: "invalid-card" };
+    let cards = state.cards.map(c => c === entry ? { ...c, record: candidate.data } : c);
+    if (action.surface === "display" && action.x === undefined) {
+      cards = relayout(cards, new Set(cards.filter(c => c !== entry && c.record.id !== entry.record.id).map(c => c.record.id)));
+    }
+    const leavingFocus = action.surface === "user" && state.focus?.cardId === entry.record.id;
+    state = withProcessed({ ...state, cards, ...(leavingFocus ? { focus: null } : {}) }, requestId);
+    emit();
+    return { ok: true, deduplicated: false };
+  };
+
   return {
     getState: () => state,
     subscribe(listener) {
@@ -545,6 +580,7 @@ export const createCanvasStore = (): CanvasStore => {
       if (Object.keys(action.from).some(key => layout[key as keyof typeof layout] !== action.from[key as keyof typeof action.from]))
         return { ok: false, error: "layout-conflict" };
       if (action.kind === "card.move" && layout.pinned) return { ok: false, error: "card-pinned" };
+      if (action.kind === "card.surface") return moveBetweenSurfaces(requestId, entry, action);
       const candidate = CardRecordSchema.safeParse({ ...entry.record,
         layout: action.kind === "card.move" ? { ...layout, x: action.x, y: action.y } : { ...layout, pinned: action.pinned },
         metadata: { ...entry.record.metadata, updatedAt: new Date().toISOString() },

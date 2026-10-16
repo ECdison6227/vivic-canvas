@@ -1,3 +1,4 @@
+import { clearMedia } from "@/cards/scene/mediaStore";
 import { CanvasRecordSchema, type CanvasRecord } from "./canvasRecord";
 
 /**
@@ -127,6 +128,8 @@ export const openVivicDB = (): Promise<VivicDB> =>
           tx.objectStore("canvases").put(record);
           tx.objectStore("meta").put({ key: "lastCanvasId", value: record.id });
           await txDone(tx);
+          // Photos added to scene cards live in their own local database.
+          await clearMedia();
         },
         close() {
           db.close();

@@ -1,0 +1,67 @@
+/* User page card area: the same card surface as the Display canvas. */
+.vivic-user-dock {
+  position: relative;
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--border);
+  background: var(--background);
+  transition: border-color 160ms, background 160ms;
+}
+.vivic-user-dock[data-receiving] {
+  border-color: color-mix(in oklab, var(--vivic-accent) 60%, var(--border));
+  background: color-mix(in oklab, var(--vivic-accent) 5%, var(--background));
+}
+.vivic-user-dock-drop {
+  position: absolute;
+  inset: 8px;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  border: 2px dashed color-mix(in oklab, var(--vivic-accent) 70%, transparent);
+  border-radius: var(--radius-xl);
+  background: color-mix(in oklab, var(--vivic-accent) 8%, var(--background));
+  color: color-mix(in oklab, var(--vivic-accent) 80%, var(--foreground));
+  font-size: 14px;
+  font-weight: 600;
+  pointer-events: none;
+}
+.vivic-user-dock-empty {
+  padding: 20px 16px;
+  border: 1px dashed var(--vivic-line);
+  border-radius: var(--radius-lg);
+  color: var(--vivic-muted-ink);
+  font-size: 13px;
+  line-height: 1.6;
+  text-align: center;
+}
+.vivic-user-dock-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+  gap: 14px;
+  align-items: start;
+}
+.vivic-user-card {
+  position: relative;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: var(--vivic-card-padding-y) var(--vivic-card-padding-x) 12px;
+  border-radius: var(--radius-xl);
+  border: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
+  background: var(--card);
+  color: var(--card-foreground);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.035), 0 10px 30px -18px rgb(0 0 0 / 0.15);
+}
+.vivic-user-card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--vivic-line);
+}
+@media (hover: none) {
+  .vivic-user-card .vivic-move-handle { opacity: 1; }
+}

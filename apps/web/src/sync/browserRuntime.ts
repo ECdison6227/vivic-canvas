@@ -1,4 +1,5 @@
 import { createMemoryDB, openVivicDB, type VivicDB } from "@/persistence/db";
+import { collectMediaRefs, deleteMedia, listMediaRefs } from "@/cards/scene/mediaStore";
 import { createBroadcastSyncChannel } from "./channel";
 import { createControlHost, type ControlHost } from "./controlHost";
 import { resetLocalPreferences } from "@/ai/resetLocalPreferences";
@@ -30,6 +31,13 @@ export const getControlHost = (): Promise<ControlHost> => {
         try { resetLocalPreferences(); } catch { /* Canvas state still refreshes if preferences storage is denied. */ }
       } });
       await host.start();
+      // Drop locally stored photos that no saved card references any more.
+      if (host.getSnapshot().ownerMode === "owner") void (async () => {
+        const used = new Set<string>();
+        for (const canvas of await db.getAllCanvases()) collectMediaRefs(canvas.cardsById, used);
+        const stale = (await listMediaRefs()).filter(ref => !used.has(ref));
+        if (stale.length) await deleteMedia(stale);
+      })().catch(() => undefined);
       document.addEventListener("visibilitychange", () => {
         if (!document.hidden) void host.checkReminders();
       });
@@ -57,6 +65,9 @@ export const beginCanvasDrag = (cardId: string): CanvasDrag | null =>
   displayRuntime?.client.beginCardDrag(cardId) ?? null;
 export const commitCanvasDrag = (drag: CanvasDrag, x: number, y: number): boolean =>
   displayRuntime?.client.requestCardMove(drag, x, y) ?? false;
+/** Display side of a user-page → Display drop. */
+export const requestCardToCanvas = (canvasId: string, cardId: string, x: number, y: number): boolean =>
+  displayRuntime?.client.requestCardToCanvas(canvasId, cardId, x, y) ?? false;
 
 /** Display page singleton (read-only reader, pinned via ?canvasId=). */
 export const getDisplayRuntime = (

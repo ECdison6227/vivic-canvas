@@ -1,4 +1,4 @@
-import type { CountdownCard } from "@/contracts";
+import { onUserSurface, type CountdownCard } from "@/contracts";
 import type { CardState } from "@/state/canvasStore";
 import { CARD_INNER_HEIGHT } from "@/cards/metrics";
 export const completedCountdown = (entry: CardState) => entry.record.type === "CountdownCard" && Boolean(entry.record.sourceData.notifiedAt) && !entry.record.sourceData.schedule;
@@ -18,7 +18,9 @@ export interface PresentedCard { entry: CardState; reminders?: CountdownCard[]; 
  * conditions but occupy no display/layout space. */
 export function presentCards(cards: CardState[], options: { focusId?: string; now?: number } = {}): PresentedCard[] {
   const now = options.now ?? Date.now();
-  const visible = (entry: CardState) => reminderVisible(entry, now) || entry.record.id === options.focusId && !completedCountdown(entry);
+  // Cards moved to the user page are not part of the Display canvas at all.
+  const visible = (entry: CardState) => !onUserSurface(entry.record)
+    && (reminderVisible(entry, now) || entry.record.id === options.focusId && !completedCountdown(entry));
   const grouped = (entry: CardState) => entry.record.type === "CountdownCard" && Boolean(entry.record.sourceData.reminderText) && !entry.record.layout.pinned && !entry.exitingRequestId && visible(entry);
   const groups = new Map<string, CardState[]>();
   for (const card of cards.filter(grouped)) {
@@ -26,7 +28,7 @@ export function presentCards(cards: CardState[], options: { focusId?: string; no
     groups.set(key, [...(groups.get(key) ?? []), card]);
   }
   return cards.flatMap(entry => {
-    if (!visible(entry) && !entry.exitingRequestId) return [];
+    if (onUserSurface(entry.record) || (!visible(entry) && !entry.exitingRequestId)) return [];
     if (!grouped(entry)) return [{ entry, memberIds: [entry.record.id] }];
     const group = groups.get(reminderGroupKey(entry))!;
     if (entry !== group[0]) return [];

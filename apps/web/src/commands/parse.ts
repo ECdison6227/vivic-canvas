@@ -1,4 +1,4 @@
-import type { Action, CardRecord } from "@/contracts";
+import { isDateCountdown, type Action, type CardRecord } from "@/contracts";
 import { newId } from "@/lib/id";
 import type { VivicState } from "@/state/canvasStore";
 import { resolveReference, type ResolvedCard } from "./references";
@@ -143,7 +143,7 @@ export const parseCommand = (
 
   const timerState = input.match(/^(暂停|继续|恢复)(.*(?:提醒|倒计时))[。！!]?$/);
   if (timerState && !/然后|并且|同时|不要|[，,；;\n]/.test(input)) {
-    const reference = timerState[2]!, timerCards = ctx.state.cards.filter(card => card.record.type === "CountdownCard" && !card.exitingRequestId && !completedCountdown(card));
+    const reference = timerState[2]!, timerCards = ctx.state.cards.filter(card => card.record.type === "CountdownCard" && !isDateCountdown(card.record) && !card.exitingRequestId && !completedCountdown(card));
     const name = reference.replace(/(?:的)?(?:提醒|倒计时)$/, "");
     const named = timerCards.filter(card => card.record.type === "CountdownCard" && (card.record.sourceData.reminderText === name || card.record.metadata.aliases?.includes(name)));
     const generic = /^(?:(?:这|那)(?:个|张)?|刚才(?:那个)?|最近|左边(?:的)?|右边(?:的)?|第[一二两三四五六七八九十\d]+(?:个|张)(?:的)?)?(?:提醒|倒计时)$/.test(reference);
