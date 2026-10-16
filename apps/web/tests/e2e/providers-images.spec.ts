@@ -83,3 +83,18 @@ test("TEST invalid image never becomes an attachment or a model request", async 
   await page.getByLabel("选择图片附件").setInputFiles({ name: "TEST-invalid.svg", mimeType: "image/svg+xml", buffer: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>') });
   await expect(page.getByRole("alert")).toContainText("PNG"); await expect(page.getByAltText("待发送图片预览")).toHaveCount(0); expect(calls).toBe(0);
 });
+
+test("TEST Continue with ChatGPT opens the authorization page in a popup without a second click", async ({ page, context }) => {
+  await connectionFixture(page);
+  const authUrl = "https://auth.openai.com/oauth/authorize?client_id=TEST";
+  await context.route("https://auth.openai.com/**", route => route.fulfill({ contentType: "text/html", body: "<title>TEST OpenAI</title>TEST" }));
+  await page.route("**/api/gpt/login/start", route => route.fulfill({ json: { ok: true, login: { phase: "waiting" } } }));
+  await page.route("**/api/gpt/login/status", route => route.fulfill({ json: { login: { phase: "waiting", authUrl, needsInput: true } } }));
+  await page.getByTestId("llm-provider").click(); await page.getByRole("option", { name: "GPT · Pi 登录", exact: true }).click();
+  const popupPromise = page.waitForEvent("popup");
+  await page.locator("[data-vivic-gpt-login]").click();
+  const popup = await popupPromise;
+  await expect.poll(() => popup.url()).toBe(authUrl);
+  // The fallback link stays for blocked popups.
+  await expect(page.locator("[data-vivic-gpt-auth-link]")).toHaveAttribute("href", authUrl);
+});
