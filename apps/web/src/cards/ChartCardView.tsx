@@ -6,6 +6,9 @@ import type { ChartCard } from "./dataCardTypes";
 import { StyledDataTable } from "./StyledDataTable";
 import { renderVivicSpec } from "./vivicGUILibrary";
 import { CARD_INNER_HEIGHT, CARD_METRICS } from "./metrics";
+import { ChartColumn, ChartLine, ChartPie } from "lucide-react";
+import { useCardEditor } from "./scene/cardContext";
+import "./scene/sceneCards.css";
 
 type ChartProps = ChartCard["displayProps"];
 
@@ -26,10 +29,31 @@ const fallbackReason = ({ chartKind, points }: ChartProps): string | undefined =
 };
 
 /** All marks, axes, labels and hover details come from Recharts, never custom SVG. */
+const KINDS = [["line", "折线", ChartLine], ["bar", "柱状", ChartColumn], ["pie", "饼图", ChartPie]] as const;
+const TITLE_HEIGHT = 34;
+
+/** A titled chart (data_visualization scene) adds its title; the user page can switch chart kind. */
 export const ChartCardView = ({ card }: { card: ChartCard }) => {
+  const editor = useCardEditor(card);
+  const title = card.displayProps.title;
+  if (!title && !editor.editable) return <ChartBody card={card} reserved={0} />;
+  return <div className="flex min-w-0 flex-col gap-2" data-vivic-chart-card>
+    <div className="flex items-center justify-between gap-2 pr-6">
+      {title ? <h3 className="vivic-scene-title m-0">{title}</h3> : <span />}
+      {editor.editable && <div className="nodrag flex shrink-0 gap-0.5" role="group" aria-label="图表类型">
+        {KINDS.map(([kind, label, Icon]) => <button key={kind} type="button" className="vivic-scene-icon-button" aria-label={label} aria-pressed={card.displayProps.chartKind === kind}
+          data-vivic-chart-kind-option={kind} style={card.displayProps.chartKind === kind ? { color: "var(--vivic-accent)", background: "var(--vivic-accent-soft)" } : undefined}
+          onClick={() => editor.patch({ chartKind: kind })}><Icon size={15} /></button>)}
+      </div>}
+    </div>
+    <ChartBody card={card} reserved={TITLE_HEIGHT} />
+  </div>;
+};
+
+const ChartBody = ({ card, reserved }: { card: ChartCard; reserved: number }) => {
   const { chartKind, points, xLabel, yLabel } = card.displayProps;
   const fallback = fallbackReason(card.displayProps);
-  const height = Math.max(144, Math.min(640, card.layout.height - CARD_INNER_HEIGHT));
+  const height = Math.max(144, Math.min(640, card.layout.height - CARD_INNER_HEIGHT - reserved));
 
   if (fallback) return <div data-vivic-chart-fallback={fallback}>
     {points.length ? <StyledDataTable

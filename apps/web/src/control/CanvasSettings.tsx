@@ -1,6 +1,7 @@
 import { useState, useSyncExternalStore } from "react";
 import { Switch, ToggleGroup } from "radix-ui";
 import { Pin, PinOff } from "lucide-react";
+import { CARD_TYPE_LABELS } from "@/contracts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DEFAULT_DAY_START, DEFAULT_DAY_END } from "@/motion/motionDirector";
@@ -74,8 +75,8 @@ export const CanvasSettings = ({ host, disabled = false, selectedCardId }: Canva
             {visible.map(({ record }) => (
               <li key={`${snapshot.activeCanvasId}:${record.id}`} className="flex items-center justify-between gap-2 text-sm">
                 <span className="min-w-0 break-words">{record.metadata.aliases?.[0]
-                  || (record.type === "CountdownCard" ? record.sourceData.reminderText : undefined)
-                  || ({ CountdownCard: "倒计时", TodoCard: "待办", NoteCard: "便笺", SearchResultCard: "搜索结果", WeatherCard: "天气", TableCard: "表格", ChartCard: "图表" }[record.type])}</span>
+                  || (record.type === "CountdownCard" ? record.sourceData.event?.title ?? record.sourceData.reminderText : undefined)
+                  || CARD_TYPE_LABELS[record.type]}</span>
                 <Button type="button" variant="ghost" size="sm" disabled={readonly} aria-pressed={record.layout.pinned}
                   aria-label={`${record.layout.pinned ? "取消固定" : "固定"} ${record.id}`} data-vivic-pin={record.id}
                   onClick={() => report(host.setCardPinned(record.id, !record.layout.pinned, snapshot.activeCanvasId ?? undefined))}>

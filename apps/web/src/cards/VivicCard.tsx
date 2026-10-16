@@ -1,50 +1,25 @@
-import { ReminderListView } from "./ReminderListView";
+import type { ComponentType } from "react";
 import type { CardRecord } from "@/contracts";
 import type { HighlightState } from "@/state/canvasStore";
-import { CountdownCardView } from "./CountdownCardView";
-import { TodoCardView } from "./TodoCardView";
-import { SearchResultCardView } from "./SearchResultCardView";
-import { WeatherCardView } from "./WeatherCardView";
-import { TableCardView } from "./TableCardView";
-import { ChartCardView } from "./ChartCardView";
-import { NoteCardView } from "./NoteCardView";
+import { CARD_VIEWS } from "./registry";
+import { CardErrorBoundary } from "./scene/CardErrorBoundary";
+import type { CardViewProps } from "./scene/types";
 
 /**
  * Card registry renderer. Only registered, schema-gated types reach this
  * point — unknown types were rejected at the contract boundary and never hit
- * a React component.
+ * a React component. A failing card shows a contained fallback.
  */
 export const VivicCard = ({
   record,
   highlight,
+  height,
 }: {
   record: CardRecord;
   highlight?: HighlightState | null;
+  /** Display canvas only: exact content height for fixed-height scene cards. */
+  height?: number;
 }) => {
-  switch (record.type) {
-    case "CountdownCard":
-      return record.sourceData.reminderText ? <ReminderListView cards={[record]} highlightedId={highlight?.cardId} /> : <CountdownCardView card={record} />;
-    case "TodoCard":
-      return (
-        <TodoCardView
-          card={record}
-          highlightedItemId={
-            highlight?.cardId === record.id ? highlight.itemId : undefined
-          }
-        />
-      );
-    case "SearchResultCard":
-      return <SearchResultCardView card={record} />;
-    case "NoteCard":
-      return <NoteCardView card={record} />;
-    case "WeatherCard":
-      return <WeatherCardView card={record} />;
-    case "TableCard":
-      return <TableCardView
-        card={record}
-        highlightedItemId={highlight?.cardId === record.id ? highlight.itemId : undefined}
-      />;
-    case "ChartCard":
-      return <ChartCardView card={record} />;
-  }
+  const View = CARD_VIEWS[record.type] as ComponentType<CardViewProps>;
+  return <CardErrorBoundary card={record}><View card={record} highlight={highlight} height={height} /></CardErrorBoundary>;
 };
