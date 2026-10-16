@@ -44,10 +44,20 @@ function oauthStorage(storage: CredentialStore): CredentialStore {
     async delete(provider, options) { allowed(provider); return storage.delete(provider, options); },
   };
 }
+/**
+ * Pi bounds a token refresh by a fixed 15 s and passes only that timeout in.
+ * Through a slow proxy the cold tunnel alone takes ~10 s, so refreshes timed
+ * out roughly hourly — and a refresh abandoned after OpenAI rotated the token
+ * can lose the only valid refresh token. Same refresh, longer bound.
+ */
+export const GPT_REFRESH_TIMEOUT_MS = 60_000;
+const patientRefresh = (oauth: OAuthAuth): OAuthAuth => ({
+  ...oauth, refresh: credential => oauth.refresh(credential, AbortSignal.timeout(GPT_REFRESH_TIMEOUT_MS)),
+});
 function runtime(storage: CredentialStore, oauthLogin?: OAuthAuth["login"]) {
   const models = createModels({ credentials: oauthStorage(storage), authContext: { env: async () => undefined, fileExists: async () => false } });
   for (const provider of [openaiProvider(), openaiCodexProvider()]) {
-    const oauth = provider.auth.oauth;
+    const oauth = provider.auth.oauth && patientRefresh(provider.auth.oauth);
     models.setProvider({ ...provider, auth: { oauth: oauth && oauthLogin && provider.id === "openai" ? { ...oauth, login: oauthLogin } : oauth } });
   }
   return models;
@@ -63,6 +73,10 @@ const errorCode = (error: unknown) => {
     if (typeof code === "string" && /^[A-Z][A-Z0-9_]{2,40}$/.test(code)) return code;
   }
 };
+const hasTimeout = (error: unknown) => {
+  for (let value = error, depth = 0; value instanceof Error && depth < 4; value = value.cause, depth++) if (value.name === "TimeoutError") return true;
+  return false;
+};
 const UNSUPPORTED_REGION = "unsupported_country_region_territory";
 /**
  * Fixed text for OpenAI token-endpoint failures. Upstream messages can embed
@@ -73,6 +87,7 @@ function tokenEndpointFailure(error: unknown, action: string): string | undefine
   const status = /token request failed \((\d{3})\)/.exec(text)?.[1];
   if (status && text.includes(UNSUPPORTED_REGION)) return `${action}失败（HTTP ${status}：${UNSUPPORTED_REGION}）。OpenAI 拒绝了 Vivic 后端当前的网络出口地区。后端会通过系统代理访问 OpenAI，请确认代理已开启且节点所在地区受支持（也可用 VIVIC_OPENAI_PROXY 指定代理）。`;
   if (status) return `${action}失败（HTTP ${status}）。请稍后重新登录。`;
+  if (hasTimeout(error)) return `${action}超时：经代理连接 OpenAI 授权服务器太慢。已保存的授权没有失效，请稍后重试，无需重新登录。`;
   const code = errorCode(error);
   if (code || /fetch failed/i.test(text)) return `${action}失败：Vivic 后端无法连接 OpenAI 授权服务器${code ? `（${code}）` : ""}。浏览器能完成授权不代表本机后端可以访问 auth.openai.com，请检查后端网络。`;
 }
@@ -132,12 +147,15 @@ export class GptProvider {
   /**
    * While the Control page is open, keep the tunnel to the inference host
    * open so the next request skips the ~10 s cold proxy handshake. The HEAD
-   * carries no credentials and its reply is discarded.
+   * carries no credentials and its reply is discarded. The same tick lets Pi
+   * renew a token that is about to expire (a no-op otherwise), so a request
+   * rarely has to wait for the hourly refresh.
    */
   keepWarm(now = Date.now()) {
     const c = this.#connection;
     if (!c || now - this.#lastTraffic < GPT_KEEP_WARM_MS) return;
     this.#lastTraffic = now;
+    void c.runtime.getAuth(c.route, { signal: AbortSignal.timeout(GPT_REFRESH_TIMEOUT_MS + 10_000) }).catch(() => undefined);
     void gptFetch(this.#deps.fetchImpl)(c.route === "openai" ? GPT_MODELS : CODEX_RESPONSES, { method: "HEAD", signal: AbortSignal.timeout(30_000) })
       .then(response => response.body?.cancel(), () => undefined);
   }
