@@ -16,8 +16,8 @@ import { gotoControl, sendCommand } from "./helpers1";
 
 const here = fileURLToPath(new URL(".", import.meta.url));
 const ENV_FILE = path.resolve(here, "../../../local-api/.env.local");
-const API = "http://127.0.0.1:8788";
-const STUB_PORT = 45991;
+const API = `http://127.0.0.1:${process.env.VIVIC_E2E_API_PORT ?? 8788}`;
+const STUB_PORT = Number(process.env.VIVIC_E2E_STUB_PORT ?? 45991);
 const SECRET_KEY = "[redacted]";
 
 const readToken = (): string =>
