@@ -2,6 +2,10 @@
 
 交接日期：2026-10-15。工作目录 `/Users/cjr/Projects/vivic`，macOS Apple M1 / 8 GiB。用户准备切换 Agent，当前任务是交付和人工测试，**不是要求重新开始项目或再次完整重做 PoC**。
 
+## 2026-10-17 场景识别与 20 种动态卡片
+
+用户要求实现场景识别与卡片渲染：模型只返回 `{"cards":[{scene_id, data}]}`，服务端核对证据（不编造数字/日期/链接/作者/图片）并按契约校验后生成卡片；20 个场景与 20 种卡片一一对应（`packages/contracts/src/scenes.ts`），复用并升级 CountdownCard（日期模式，不进提醒调度）、TodoCard、ChartCard，其余 17 种为新类型。卡片先出现在副屏，可拖到 Control 的“用户页卡片”区编辑，再拖回副屏松手处；用户页组件 `control/UserCardDock.tsx` 待新用户使用页合入后挂到新页面。开发版 `/playground` 可查看全部卡片。分支 `feature/scene-cards`，详见 [场景卡片](scene-cards-20261017.md)。
+
 ## 2026-10-16 联网搜索回退链
 
 搜索不再绑死所选模型：依次尝试所选模型的搜索（GPT 仅在已连接时）、另一条已连接搜索、无凭据公共搜索，改用其他路径时提示写明来源；公共搜索可经 `VIVIC_SEARCH_PROXY`/环境/系统代理（含 macOS）出网，网页正文读取仍只直连；未连接模型时明显的查资料问题也会联网。详见 [搜索回退链](search-fallback-20261016.md)。
