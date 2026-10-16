@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { zstdDecompressSync } from "node:zlib";
 import { InMemoryCredentialStore, type CredentialStore, type OAuthCredential } from "@earendil-works/pi-ai";
-import { GptProvider, type GptDeps } from "../src/gpt/provider.js";
+import { GptProvider, GPT_CONNECT_TIMEOUT_MS, GPT_KEEP_WARM_MS, type GptDeps } from "../src/gpt/provider.js";
 import { searchGpt } from "../src/gpt/search.js";
 import { CODEX_RESPONSES, completedResponse, gptFetch, GPT_MODELS, GPT_RESPONSES, MAX_GPT_RESPONSE_BYTES } from "../src/gpt/transport.js";
 
@@ -397,7 +397,7 @@ describe("GPT provider through the real pinned Pi SDK", () => {
     const f = await fixture();
     const deadline = new AbortController();
     const timeout = AbortSignal.timeout.bind(AbortSignal);
-    vi.spyOn(AbortSignal, "timeout").mockImplementation(ms => ms === 20_000 ? deadline.signal : timeout(ms));
+    vi.spyOn(AbortSignal, "timeout").mockImplementation(ms => ms === GPT_CONNECT_TIMEOUT_MS ? deadline.signal : timeout(ms));
     const entered = deferred<void>();
     f.fetchImpl.mockImplementationOnce(async (_input, init) => new Promise<Response>((_resolve, reject) => {
       init!.signal!.addEventListener("abort", () => reject(new TypeError("PRIVATE_TEST cancelled catalog network")), { once: true });
@@ -420,7 +420,7 @@ describe("GPT provider through the real pinned Pi SDK", () => {
     expect(cancelled).toHaveBeenCalled();
   });
 
-  it.each([502, 503, 504, "network"] as const)("inference %s failure never automatically repeats the POST", async failure => {
+  it.each([429, 502, 503, 504, "network"] as const)("transient inference %s failure is retried exactly once", async failure => {
     const f = await fixture(); await f.gpt.connect("pi", MODEL);
     f.fetchImpl.mockClear();
     f.respond(() => {
@@ -428,8 +428,62 @@ describe("GPT provider through the real pinned Pi SDK", () => {
       return new Response("PRIVATE_TEST inference rejection", { status: failure });
     });
     const result = await f.gpt.generate([{ role: "user", content: "TEST inference" }]);
-    expect(result.ok).toBe(false);
+    expect(result).toMatchObject({ ok: false, code: "network" });
     expect(JSON.stringify(result)).not.toContain("PRIVATE_TEST");
+    expect(f.fetchImpl.mock.calls.map(([url]) => String(url))).toEqual([GPT_RESPONSES, GPT_RESPONSES]);
+    await f.gpt.disconnect();
+  });
+
+  it("keeps the inference tunnel warm with a credential-free HEAD at most once a minute", async () => {
+    const f = await fixture();
+    f.gpt.keepWarm();
+    expect(f.fetchImpl).not.toHaveBeenCalled();
+    await f.gpt.connect("pi", MODEL);
+    f.fetchImpl.mockClear();
+    f.gpt.keepWarm(Date.now() + 1000);
+    expect(f.fetchImpl).not.toHaveBeenCalled();
+    const later = Date.now() + GPT_KEEP_WARM_MS + 1;
+    f.gpt.keepWarm(later);
+    f.gpt.keepWarm(later + 1000);
+    await vi.waitFor(() => expect(f.fetchImpl).toHaveBeenCalledTimes(1));
+    const [url, init] = f.fetchImpl.mock.calls[0]!;
+    expect(String(url)).toBe(GPT_MODELS);
+    expect(init?.method).toBe("HEAD");
+    expect(new Headers(init?.headers).get("authorization")).toBeNull();
+    await f.gpt.disconnect();
+  });
+
+  it("a transient inference failure that recovers on the retry returns the result", async () => {
+    const f = await fixture(); await f.gpt.connect("pi", MODEL);
+    f.fetchImpl.mockClear();
+    let calls = 0;
+    f.respond(() => {
+      if (++calls === 1) throw new TypeError("PRIVATE_TEST dropped tunnel");
+      return piSse({ reply: "TEST recovered" });
+    });
+    expect(await f.gpt.generate([{ role: "user", content: "TEST inference" }])).toEqual({ ok: true, value: { reply: "TEST recovered" } });
+    expect(calls).toBe(2);
+    await f.gpt.disconnect();
+  });
+
+  it.each([400, 401, 403])("inference HTTP %s refusal is not repeated", async status => {
+    const f = await fixture(); await f.gpt.connect("pi", MODEL);
+    f.fetchImpl.mockClear();
+    f.respond(() => new Response("PRIVATE_TEST refusal", { status }));
+    const result = await f.gpt.generate([{ role: "user", content: "TEST inference" }]);
+    expect(result).toMatchObject({ ok: false, code: "provider", status });
+    expect(f.fetchImpl.mock.calls.map(([url]) => String(url))).toEqual([GPT_RESPONSES]);
+    await f.gpt.disconnect();
+  });
+
+  it("invalid JSON output is left to the planner's repair attempt, not retried here", async () => {
+    const f = await fixture(); await f.gpt.connect("pi", MODEL);
+    f.fetchImpl.mockClear();
+    f.respond(() => eventResponse([
+      { type: "response.output_text.delta", output_index: 0, content_index: 0, delta: "not json" },
+      { type: "response.completed", response: { id: "resp_TEST", status: "completed", output: [{ id: "msg_TEST", type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text: "not json", annotations: [] }] }] } },
+    ]));
+    expect(await f.gpt.generate([{ role: "user", content: "TEST inference" }])).toMatchObject({ ok: false, code: "invalid-response" });
     expect(f.fetchImpl.mock.calls.map(([url]) => String(url))).toEqual([GPT_RESPONSES]);
     await f.gpt.disconnect();
   });

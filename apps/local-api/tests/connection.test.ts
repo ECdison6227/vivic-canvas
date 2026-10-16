@@ -48,6 +48,50 @@ describe("Plan connection and permission diagnostics", () => {
     expect(credentials.getSecret()?.apiKey).toBe(KEY);
   });
 
+  it.each([
+    ["no content after thinking", { choices: [{ finish_reason: "length", message: { content: "", reasoning: "TEST thinking" } }] }],
+    ["prose instead of JSON", { choices: [{ finish_reason: "stop", message: { content: "好的" } }] }],
+  ])("an accepted Plan generation with %s still connects", async (_label, reply) => {
+    const credentials = new CredentialStore();
+    const app = createApp({ credentials, config: testConfig(), fetchImpl: fetchStub({
+      "/models": () => modelsOk(["step-3.5-flash"]),
+      "/chat/completions": () => Response.json(reply),
+    }) });
+    const response = await app.request("/api/credentials/stepfun/validate", {
+      method: "POST", headers: authed, body: JSON.stringify({ apiKey: KEY }),
+    });
+    expect(await response.json()).toMatchObject({ ok: true, connected: true });
+    expect(credentials.getSecret()?.apiKey).toBe(KEY);
+  });
+
+  it("a transient model-directory failure is retried once before the probe", async () => {
+    const credentials = new CredentialStore();
+    const calls: string[] = [];
+    let catalog = 0;
+    const app = createApp({ credentials, config: testConfig(), fetchImpl: fetchStub({
+      "/models": () => ++catalog === 1 ? new Response("busy", { status: 503 }) : modelsOk(["step-3.5-flash"]),
+      "/chat/completions": () => chatOk({ ok: true }),
+    }, url => calls.push(url)) });
+    const response = await app.request("/api/credentials/stepfun/validate", {
+      method: "POST", headers: authed, body: JSON.stringify({ apiKey: KEY }),
+    });
+    expect(await response.json()).toMatchObject({ ok: true, connected: true });
+    expect(calls.filter(url => url.endsWith("/models"))).toHaveLength(2);
+  });
+
+  it("a rejected key's model directory is not retried", async () => {
+    const credentials = new CredentialStore();
+    const calls: string[] = [];
+    const app = createApp({ credentials, config: testConfig(), fetchImpl: fetchStub({
+      "/models": () => Response.json({ error: { message: "invalid key" } }, { status: 401 }),
+    }, url => calls.push(url)) });
+    const response = await app.request("/api/credentials/stepfun/validate", {
+      method: "POST", headers: authed, body: JSON.stringify({ apiKey: KEY }),
+    });
+    expect(await response.json()).toMatchObject({ ok: false, connected: false });
+    expect(calls).toHaveLength(1);
+  });
+
   it("planner 403 preserves a redacted reason and does not recommend reconnecting", async () => {
     const credentials = new CredentialStore();
     credentials.set({ apiKey: KEY, models: ["step-3.5-flash"], defaultModel: "step-3.5-flash", checkedAt: "now" });

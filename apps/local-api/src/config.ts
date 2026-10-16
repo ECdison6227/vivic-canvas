@@ -3,8 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 
 export const STEPFUN_PLAN_BASE_URL = "https://api.stepfun.com/step_plan/v1";
-export const INFERENCE_TIMEOUT_MS = 45_000;
-export const CONNECTION_TIMEOUT_MS = 12_000;
+export const INFERENCE_TIMEOUT_MS = 60_000;
+export const CONNECTION_TIMEOUT_MS = 30_000;
 export const SPEECH_TIMEOUT_MS = 15_000;
 export const INTENT_BUDGET_MS = 90_000;
 

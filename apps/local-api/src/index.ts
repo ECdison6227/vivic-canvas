@@ -1,10 +1,12 @@
 import fs from "node:fs";
+import { homedir } from "node:os";
 import path from "node:path";
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { createApp } from "./app.js";
 import { loadConfig } from "./config.js";
 import { installOpenAIEgress, redactProxy } from "./openaiProxy.js";
+import { filePreferences } from "./preferences.js";
 
 // Before anything fetches: OpenAI must leave through the user's proxy.
 const egress = installOpenAIEgress();
@@ -14,7 +16,11 @@ console.log(egressProxy
   : "[vivic-local-api] OpenAI egress direct (no proxy configured)");
 
 const config = loadConfig();
-const app = createApp({ config });
+// Automated browser runs set VIVIC_PREFERENCES=off so they never restore or
+// overwrite the user's real connection choice.
+const preferences = process.env.VIVIC_PREFERENCES === "off" ? undefined
+  : filePreferences(path.join(homedir(), ".vivic", "preferences.json"));
+const app = createApp({ config, preferences });
 
 /**
  * Production story (documented in README): after `pnpm --filter @vivic/web

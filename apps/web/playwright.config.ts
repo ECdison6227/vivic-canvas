@@ -32,6 +32,7 @@ export default defineConfig({
       timeout: 30_000,
       env: {
         PORT: "8788",
+        VIVIC_PREFERENCES: "off",
         STEPFUN_BASE_URL: "http://127.0.0.1:45991/v1",
       },
     },
