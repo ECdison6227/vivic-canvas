@@ -11,12 +11,39 @@ const fingerprint = (value: unknown): string => {
   return `${(a >>> 0).toString(36)}-${(b >>> 0).toString(36)}`;
 };
 
+/** Short Chinese name of every registered card type (Control lists, search, references). */
+export const CARD_TYPE_LABELS: Record<CardRecord["type"], string> = {
+  CountdownCard: "倒计时", TodoCard: "待办", NoteCard: "便笺", SearchResultCard: "搜索结果", WeatherCard: "天气", TableCard: "表格", ChartCard: "图表",
+  PaperCard: "文献", GalleryCard: "照片墙", WeeklyScheduleCard: "周计划", RoadmapCard: "路线图", NewsCard: "资讯", TimelineCard: "时间线",
+  QuoteCard: "金句", StoryCarouselCard: "照片故事", ActivityFeedCard: "动态", ProgressRingCard: "目标进度", HabitHeatmapCard: "习惯打卡",
+  BookCard: "书籍", MonthCalendarCard: "月历", ComparisonCard: "方案对比", LinkPreviewCard: "链接收藏", PhotoCoverCard: "照片纪念", NotificationCard: "通知",
+};
+
+const hostname = (url: string): string | undefined => url.match(/^https?:\/\/([^/?#:@]+)/i)?.[1]?.toLowerCase();
+
+/** The headline field of each scene card, if it has one. */
+const sceneTitle = (card: CardRecord): string | undefined => {
+  switch (card.type) {
+    case "PaperCard": case "GalleryCard": case "WeeklyScheduleCard": case "RoadmapCard": case "TimelineCard": case "StoryCarouselCard":
+    case "ActivityFeedCard": case "ProgressRingCard": case "BookCard": case "ComparisonCard": case "PhotoCoverCard": case "NotificationCard":
+      return card.displayProps.title;
+    case "NewsCard": return card.displayProps.headline;
+    case "QuoteCard": return card.displayProps.text;
+    case "HabitHeatmapCard": return card.displayProps.habit;
+    case "MonthCalendarCard": return card.displayProps.title ?? card.displayProps.month;
+    case "LinkPreviewCard": return card.displayProps.title ?? hostname(card.displayProps.url);
+    case "TodoCard": case "ChartCard": return card.displayProps.title;
+    default: return undefined;
+  }
+};
+
 export const cardTitle = (card: CardRecord): string => card.metadata.aliases?.[0]
-  || (card.type === "CountdownCard" ? card.sourceData.reminderText : undefined)
+  || (card.type === "CountdownCard" ? card.sourceData.event?.title ?? card.sourceData.reminderText : undefined)
   || (card.type === "NoteCard" ? card.displayProps.text || card.displayProps.bullets?.[0] : undefined)
+  || sceneTitle(card)
   || (card.type === "TodoCard" ? card.displayProps.items[0]?.text : undefined)
   || (card.type === "SearchResultCard" ? card.displayProps.title : undefined)
-  || ({ CountdownCard: "倒计时", TodoCard: "待办", NoteCard: "便笺", SearchResultCard: "搜索结果", WeatherCard: "天气", TableCard: "表格", ChartCard: "图表" }[card.type]);
+  || CARD_TYPE_LABELS[card.type];
 
 export const cardTargets = (card: CardRecord): CardTarget[] => {
   const rows: CardTarget[] = [];

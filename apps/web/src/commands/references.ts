@@ -2,7 +2,7 @@ import type { CardRecord } from "@/contracts";
 import type { VivicState } from "@/state/canvasStore";
 import { zhToNumber } from "./zhNumber";
 import { completedCountdown } from "@/canvas/reminderPresentation";
-import { cardTitle } from "@/contracts";
+import { CARD_TYPE_LABELS, cardTitle } from "@/contracts";
 
 /**
  * Natural-language reference resolution (CARD_CONTRACT §4). Chinese-first
@@ -19,9 +19,28 @@ const TYPE_KEYWORDS: Array<[RegExp, CardRecord["type"]]> = [
   [/搜索|资料|结果|search/i, "SearchResultCard"],
   [/表格|table/i, "TableCard"],
   [/图表|chart/i, "ChartCard"],
+  // Scene cards: only names of the card itself, so a reference never guesses a scene.
+  [/论文|文献/, "PaperCard"],
+  [/照片墙|相册/, "GalleryCard"],
+  [/照片故事|故事轮播|轮播/, "StoryCarouselCard"],
+  [/照片封面|纪念卡|照片卡/, "PhotoCoverCard"],
+  [/周计划|日程|本周安排/, "WeeklyScheduleCard"],
+  [/月历|日历/, "MonthCalendarCard"],
+  [/路线图|里程碑|规划/, "RoadmapCard"],
+  [/新闻|资讯/, "NewsCard"],
+  [/时间线|时间轴/, "TimelineCard"],
+  [/金句|语录|名言|灵感/, "QuoteCard"],
+  [/动态/, "ActivityFeedCard"],
+  [/进度环|目标进度|目标/, "ProgressRingCard"],
+  [/打卡|习惯|热力图/, "HabitHeatmapCard"],
+  [/书籍|读书|这本书/, "BookCard"],
+  [/对比|比较|方案/, "ComparisonCard"],
+  [/链接|网页收藏|书签|收藏/, "LinkPreviewCard"],
+  [/通知/, "NotificationCard"],
 ];
 
 const TYPE_LABEL: Record<CardRecord["type"], string> = {
+  ...CARD_TYPE_LABELS,
   CountdownCard: "倒计时",
   TodoCard: "待办",
   WeatherCard: "天气",

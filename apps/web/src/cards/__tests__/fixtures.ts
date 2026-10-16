@@ -1,4 +1,4 @@
-import type { CardRecord } from "@/contracts";
+import type { CardRecord, SceneCardType } from "@/contracts";
 
 /** Synthetic TEST / DEMO fixtures only. No request or live-data claim is made. */
 const stamp = "2026-10-15T08:00:00.000Z";
@@ -18,4 +18,7 @@ export const testCards = {
   TableCard: { ...common, id: "TEST-table", type: "TableCard", displayProps: { columns: ["TEST item", "TEST value", "TEST state"], rows: [["TEST same", 0, false], ["TEST same", -5.25, null], ["TEST third", 8, true]] } },
   ChartCard: { ...common, id: "TEST-chart", type: "ChartCard", displayProps: { chartKind: "line", points: [{ x: "TEST A", y: -2 }, { x: "TEST B", y: 0 }, { x: "TEST C", y: 6 }], xLabel: "TEST sample", yLabel: "TEST units" } },
   NoteCard: { ...common, id: "TEST-note", type: "NoteCard", displayProps: { text: "TEST note\nTEST second line\nTEST third line\nTEST fourth line", bullets: ["TEST bullet one", "TEST bullet two"] } },
-} satisfies Record<CardRecord["type"], CardRecord>;
+} satisfies Record<Exclude<CardRecord["type"], SceneOnlyType>, CardRecord>;
+
+/** Scene-only card types have their own fixtures in cards/scene/fixtures.ts. */
+type SceneOnlyType = Exclude<SceneCardType, "CountdownCard" | "TodoCard" | "ChartCard">;
