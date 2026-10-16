@@ -2,37 +2,44 @@ import { defineConfig } from "@playwright/test";
 
 // Playwright manages its own dev servers so it never touches the user's
 // dev processes: web on :5174, local decision API on 127.0.0.1:8788 with a
-// stubbed StepFun base URL (per-test in-process stub on :45991).
+// stubbed StepFun base URL (per-test in-process stub on :45991). When those
+// ports belong to another project, VIVIC_E2E_WEB_PORT / VIVIC_E2E_API_PORT /
+// VIVIC_E2E_STUB_PORT move the whole run elsewhere (never reuse a foreign server).
+export const E2E_WEB_PORT = Number(process.env.VIVIC_E2E_WEB_PORT ?? 5174);
+export const E2E_API_PORT = Number(process.env.VIVIC_E2E_API_PORT ?? 8788);
+export const E2E_STUB_PORT = Number(process.env.VIVIC_E2E_STUB_PORT ?? 45991);
+
 export default defineConfig({
   testDir: "./tests/e2e",
   timeout: 90_000,
   workers: 1,
   reporter: [["list"]],
   use: {
-    baseURL: "http://localhost:5174",
+    baseURL: `http://localhost:${E2E_WEB_PORT}`,
     viewport: { width: 1440, height: 900 },
     deviceScaleFactor: 2,
     // Exercise playback state without emitting office audio.
-    launchOptions: { args: ["--mute-audio"] },
+    launchOptions: { args: ["--mute-audio"], ...(process.env.VIVIC_E2E_CHROMIUM ? { executablePath: process.env.VIVIC_E2E_CHROMIUM } : {}) },
   },
   webServer: [
     {
-      command: "pnpm dev --port 5174 --strictPort",
-      url: "http://localhost:5174",
+      command: `pnpm dev --port ${E2E_WEB_PORT} --strictPort`,
+      url: `http://localhost:${E2E_WEB_PORT}`,
       reuseExistingServer: true,
       timeout: 30_000,
       env: {
-        VIVIC_LOCAL_API: "http://127.0.0.1:8788",
+        VIVIC_LOCAL_API: `http://127.0.0.1:${E2E_API_PORT}`,
       },
     },
     {
       command: "pnpm --filter @vivic/local-api start",
-      url: "http://127.0.0.1:8788/healthz",
+      url: `http://127.0.0.1:${E2E_API_PORT}/healthz`,
       reuseExistingServer: true,
       timeout: 30_000,
       env: {
-        PORT: "8788",
-        STEPFUN_BASE_URL: "http://127.0.0.1:45991/v1",
+        PORT: String(E2E_API_PORT),
+        STEPFUN_BASE_URL: `http://127.0.0.1:${E2E_STUB_PORT}/v1`,
+        VIVIC_ALLOWED_ORIGINS: `http://localhost:${E2E_WEB_PORT},http://127.0.0.1:${E2E_WEB_PORT}`,
       },
     },
   ],
