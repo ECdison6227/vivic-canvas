@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import path from "node:path";
-import { activeCanvasId, controlDispatch, sendCommand, todoCardRecord } from "./helpers1";
+import { activeCanvasId, controlDispatch, sendCommand, showSettings, todoCardRecord } from "./helpers1";
 test.use({ video: { mode: "on", size: { width: 1440, height: 900 } } });
 test("dated, recurring and canvas-condition reminders persist without model requests, and only owner notifies silently", async ({ page, context }, info) => {
   await context.addInitScript(() => {
@@ -26,7 +26,7 @@ test("dated, recurring and canvas-condition reminders persist without model requ
   await sendCommand(page, "当待办第1项完成后提醒我TEST完成条件");
   const condition = page.locator("[data-vivic-reminder]").filter({ hasText: "TEST完成条件" });
   await expect(condition).toContainText("等待条件");
-  await page.locator("[data-vivic-notification-toggle]").click(); await expect(page.locator("[data-vivic-notification-toggle]")).toHaveText("关闭系统通知");
+  await showSettings(page); await page.locator("[data-vivic-notification-toggle]").click(); await expect(page.locator("[data-vivic-notification-toggle]")).toHaveText("关闭系统通知");
   const reader = await context.newPage(); await reader.goto("/control");
   await expect(reader.locator("[data-vivic-control]")).toHaveAttribute("data-vivic-owner", "readonly");
   await sendCommand(page, "把待办第一项标记为完成");
@@ -37,7 +37,7 @@ test("dated, recurring and canvas-condition reminders persist without model requ
   await reader.close();
   await sendCommand(page, "每隔5秒提醒我TEST循环");
   const recurring = page.locator("[data-vivic-reminder]").filter({ hasText: "TEST循环" });
-  await expect(recurring).toHaveCount(1); await recurring.getByRole("button", { name: "暂停TEST循环" }).click();
+  await expect(recurring).toHaveCount(1); await showSettings(page); await recurring.getByRole("button", { name: "暂停TEST循环" }).click();
   await expect(recurring).toContainText("已暂停"); await recurring.getByRole("button", { name: "继续TEST循环" }).click();
   await expect.poll(async () => page.locator("[data-vivic-reminder-notice]").filter({ hasText: "TEST循环" }).count(), { timeout: 14000 }).toBe(2);
   await recurring.getByRole("button", { name: "暂停TEST循环" }).click();

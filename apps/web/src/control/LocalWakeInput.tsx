@@ -18,6 +18,8 @@ export interface LocalWakeInputProps {
   cancelKey?: string | number;
   /** Stop/prevent listening while TTS is playing or preparing to play. */
   speaking?: boolean;
+  /** Chat composer footer: a small chip, with the caption only once listening has started. */
+  compact?: boolean;
 }
 type Phase = "idle" | "loading" | "listening" | "recording" | "transcribing" | "delivering" | "done" | "error";
 interface Active { controller: AbortController; session: LocalSpeechSession; mic: MicCapture; accepting: boolean }
@@ -108,8 +110,17 @@ export const LocalWakeInput = (props: LocalWakeInputProps) => {
     : phase === "delivering" ? "已停止麦克风，正在交付语音识别…"
     : phase === "done" ? "本次已结束。请检查转写文字；继续使用需重新开启。"
     : "默认不开麦。一次开启最多前台等待 5 分钟，只收一段后停止；失焦即取消。");
+  const title = props.mode === "vad" ? "本地语音分段（单次）" : `本地唤醒（单次）· 固定短语：${DEFAULT_WAKE_PHRASE}`;
+  if (props.compact) return <div className="vivic-wake" data-vivic-local-wake data-local-wake-phase={phase}>
+    <button type="button" className="vivic-chip" disabled={props.disabled || props.speaking || busy} onClick={begin} title={`${title}。${caption}`}>
+      {phase === "loading" || phase === "transcribing" ? <LoaderCircle className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Mic className="h-3.5 w-3.5" aria-hidden="true" />}
+      {busy ? "监听中…" : phase === "done" ? "重新开启单次监听" : "开启单次监听"}
+    </button>
+    {busy && <button type="button" className="vivic-chip" onClick={() => stop()}><Square className="h-3.5 w-3.5" aria-hidden="true" />取消监听</button>}
+    <p className={`vivic-composer-note ${phase === "error" ? "vivic-composer-note-error" : ""}`} role="status" aria-live="polite" hidden={phase === "idle"}>{caption}</p>
+  </div>;
   return <div className="mt-3" data-vivic-local-wake data-local-wake-phase={phase}>
-    <p className="mb-2 text-xs text-neutral-600">{props.mode === "vad" ? "本地语音分段（单次）" : `本地唤醒（单次）· 固定短语：${DEFAULT_WAKE_PHRASE}`}</p>
+    <p className="mb-2 text-xs text-neutral-600">{title}</p>
     <div className="flex gap-2">
       <Button type="button" variant="outline" disabled={props.disabled || props.speaking || busy} onClick={begin}>
         {phase === "loading" || phase === "transcribing" ? <LoaderCircle className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <Mic className="h-4 w-4" />}

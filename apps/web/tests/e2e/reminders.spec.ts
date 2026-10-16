@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
-import { activeCanvasId, sendCommand } from "./helpers1";
+import { activeCanvasId, sendCommand, showSettings } from "./helpers1";
 
 test.use({ video: { mode: "on", size: { width: 1440, height: 900 } } });
 const evidence = path.resolve(process.cwd(), "../../evidence/manual-feedback/reminders");
@@ -38,6 +38,7 @@ test("pause freezes a timer; resume, edit and cancel keep Display minimal and co
   await sendCommand(page, "30秒后提醒我喝水");
   const row = page.locator('[data-vivic-reminder]');
   await expect(row).toHaveCount(1);
+  await showSettings(page);
   const id = await activeCanvasId(page);
   const display = await context.newPage(); await display.goto(`/display?canvasId=${id}`);
   await row.getByRole("button", { name: "暂停喝水" }).click();

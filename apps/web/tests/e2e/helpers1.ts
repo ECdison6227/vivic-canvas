@@ -63,10 +63,21 @@ export const gotoControl = async (context: import("@playwright/test").BrowserCon
   const page = await context.newPage();
   await page.goto("/control");
   await expect(page).toHaveTitle("Vivic");
-  await expect(page.getByRole("heading", { name: "Vivic 控制端", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "设置", exact: true })).toBeVisible();
   await page.waitForSelector('[data-vivic-control="ready"]');
   return page;
 };
+
+/** `/` (user page) and `/control` (settings) are one owner window; switch in place like a user. */
+const showView = async (page: Page, view: "chat" | "settings") => {
+  const root = page.locator("[data-vivic-control]");
+  if (await root.getAttribute("data-vivic-view") !== view) {
+    await page.locator(view === "chat" ? "[data-vivic-open-chat]" : "[data-vivic-open-settings]").click();
+  }
+  await expect(root).toHaveAttribute("data-vivic-view", view);
+};
+export const showChat = (page: Page) => showView(page, "chat");
+export const showSettings = (page: Page) => showView(page, "settings");
 
 export const gotoDisplay = async (
   context: import("@playwright/test").BrowserContext,
@@ -78,6 +89,7 @@ export const gotoDisplay = async (
 };
 
 export const sendCommand = async (control: Page, text: string) => {
+  await showChat(control);
   await control.locator('[data-vivic-command-input]').fill(text);
   await control.locator('[data-vivic-command-input]').press("Enter");
 };

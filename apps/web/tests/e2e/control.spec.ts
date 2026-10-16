@@ -7,6 +7,7 @@ import {
   gotoControl,
   gotoDisplay,
   sendCommand,
+  showSettings,
   todoCardRecord,
 } from "./helpers1";
 
@@ -66,6 +67,7 @@ test("Scenario 1: minimal countdown via text commands", async ({ browser }) => {
   // 删除这个 + confirm-free unique hit, then 撤销 restores. No duplicates.
   await sendCommand(A, "删除这个");
   await expect(B.locator(".vivic-card")).toHaveCount(0, { timeout: 5000 });
+  await showSettings(A);
   await A.locator("[data-vivic-undo]").click();
   await expect(B.locator(".vivic-card")).toHaveCount(1, { timeout: 5000 });
   await expect(B.locator(".vivic-card")).toHaveCount(1);
@@ -101,6 +103,7 @@ test("B05: ambiguous delete clarifies, never deletes blindly", async ({
   await A.locator("[data-vivic-clarify-candidate]").first().click();
   await expect(B.locator(".vivic-card")).toHaveCount(1, { timeout: 5000 });
   await expect(A.locator("[data-vivic-clarify]")).toHaveCount(0);
+  await showSettings(A);
   await A.locator("[data-vivic-undo]").click();
   await expect(B.locator(".vivic-card")).toHaveCount(2, { timeout: 5000 });
   await A.screenshot({ path: path.join(EVIDENCE1, "control-page.png") });
@@ -122,6 +125,7 @@ test("B06: canvases persist across reload, switch keeps per-canvas state", async
   await sendCommand(A, "十分钟倒计时");
   await A.waitForTimeout(800);
   const secondCanvasId = await activeCanvasId(A);
+  await showSettings(A);
 
   // Rename it. (Entering edit mode swaps the row contents, so re-locate.)
   const row = A.locator(`[data-vivic-canvas-item="${secondCanvasId}"]`).locator("..");

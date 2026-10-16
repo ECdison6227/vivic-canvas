@@ -1528,3 +1528,154 @@
 .vivic-search-content [data-aui="caption"] { color: var(--vivic-reading-muted); }
 .vivic-search-content [data-aui="caption"] { font-size: 13px; line-height: 1.55; }
 .vivic-card [data-aui="table"] { font-variant-numeric: tabular-nums; }
+
+/* ------------------------------------------------------------------------
+ * 2026-10-17 user page (/) and settings (/control) over the shared 流光以太
+ * background. Glass tones follow the resolved appearance like the user's
+ * HTML lab (dark: #191922c4 panels, light: #ffffffb4).
+ * --------------------------------------------------------------------- */
+.vivic-atmosphere-grain {
+  position: absolute; inset: 0; z-index: 1; pointer-events: none; opacity: .33; mix-blend-mode: soft-light;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 140 140' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' opacity='.075' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.vivic-control-root { position: relative; min-height: 100dvh; isolation: isolate; color: var(--vc-ink); }
+.vivic-control-root[data-appearance="dark"] {
+  --vc-ink: #f3f1fc; --vc-ink-muted: rgb(226 228 242 / .66);
+  --vc-glass: rgb(25 25 34 / .66); --vc-glass-user: rgb(48 46 74 / .7); --vc-glass-strong: rgb(27 28 40 / .74);
+  --vc-glass-border: rgb(255 255 255 / .11); --vc-glass-border-strong: rgb(255 255 255 / .2);
+  --vc-chip: rgb(255 255 255 / .09); --vc-chip-hover: rgb(255 255 255 / .17);
+  --vc-send: #f1f0fb; --vc-send-ink: #1b1c28; --vc-focus: #b1a2fa; --vc-error: #ffb4b4; --vc-shadow: rgb(0 0 0 / .22);
+}
+.vivic-control-root[data-appearance="light"] {
+  --vc-ink: #2f3650; --vc-ink-muted: #6d7285;
+  --vc-glass: rgb(255 255 255 / .66); --vc-glass-user: rgb(255 255 255 / .86); --vc-glass-strong: rgb(255 255 255 / .78);
+  --vc-glass-border: rgb(255 255 255 / .85); --vc-glass-border-strong: rgb(255 255 255 / .95);
+  --vc-chip: rgb(96 104 130 / .1); --vc-chip-hover: rgb(255 255 255 / .96);
+  --vc-send: #3a4160; --vc-send-ink: #fff; --vc-focus: #8c81dd; --vc-error: #b42318; --vc-shadow: rgb(96 104 150 / .16);
+}
+
+.vivic-chat { position: relative; z-index: 1; display: flex; flex-direction: column; height: 100dvh; }
+.vivic-chat-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 20px 8px; }
+.vivic-round-button {
+  display: grid; place-items: center; width: 40px; height: 40px; flex: none; border-radius: 999px;
+  background: rgb(255 255 255 / .94); color: #1b1d2b; box-shadow: 0 6px 20px var(--vc-shadow); transition: transform .15s, background .15s;
+}
+.vivic-round-button:hover { transform: translateY(-1px); background: #fff; }
+.vivic-avatar {
+  display: grid; place-items: center; width: 40px; height: 40px; flex: none; border-radius: 999px; color: #fff;
+  background: linear-gradient(135deg, #8c7ae6, #4f7ec6 58%, #d18fb8); border: 2px solid rgb(255 255 255 / .78); box-shadow: 0 6px 20px var(--vc-shadow);
+}
+.vivic-chat-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 8px 20px 16px; scrollbar-width: thin; }
+.vivic-chat-column { display: flex; flex-direction: column; gap: 14px; width: 100%; max-width: 640px; min-height: 100%; margin: 0 auto; }
+.vivic-chat-column > :first-child { margin-top: auto; }
+.vivic-bubble {
+  max-width: min(82%, 560px); padding: 11px 15px; border-radius: 16px; font-size: 14px; line-height: 1.65; color: var(--vc-ink);
+  white-space: pre-wrap; overflow-wrap: anywhere; background: var(--vc-glass); border: 1px solid var(--vc-glass-border);
+  backdrop-filter: blur(18px) saturate(1.15); -webkit-backdrop-filter: blur(18px) saturate(1.15); box-shadow: 0 12px 28px var(--vc-shadow);
+}
+.vivic-bubble-user { align-self: flex-end; border-bottom-right-radius: 6px; background: var(--vc-glass-user); }
+.vivic-bubble-assistant { align-self: flex-start; border-bottom-left-radius: 6px; }
+.vivic-bubble-tag { display: inline-flex; align-items: center; gap: 4px; margin-right: 8px; padding: 1px 8px; border-radius: 999px; font-size: 11px; vertical-align: 1px; background: var(--vc-chip); }
+.vivic-typing { display: flex; gap: 5px; padding: 15px 16px; }
+.vivic-typing span { width: 6px; height: 6px; border-radius: 999px; background: var(--vc-ink-muted); animation: vivic-typing 1.2s ease-in-out infinite; }
+.vivic-typing span:nth-child(2) { animation-delay: .15s; }
+.vivic-typing span:nth-child(3) { animation-delay: .3s; }
+@keyframes vivic-typing { 0%, 80%, 100% { opacity: .3; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }
+
+.vivic-chat-footer { padding: 0 20px 18px; }
+.vivic-attachment-group { outline: none; }
+.vivic-composer { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 640px; margin: 0 auto; }
+.vivic-composer-stack { display: flex; flex-direction: column; gap: 8px; }
+.vivic-composer-stack > [hidden] { display: none; }
+.vivic-chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.vivic-chip {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 5px 12px; border-radius: 999px; font-size: 12px; line-height: 1.4;
+  color: var(--vc-ink); background: var(--vc-glass-strong); border: 1px solid var(--vc-glass-border);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); transition: background .15s, border-color .15s;
+}
+.vivic-chip:hover:not(:disabled) { background: var(--vc-chip-hover); }
+.vivic-chip:disabled { cursor: not-allowed; opacity: .5; }
+.vivic-chip-quiet { background: transparent; }
+.vivic-composer-card {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 12px 14px; border-radius: 16px; font-size: 13px;
+  color: var(--vc-ink); background: var(--vc-glass-strong); border: 1px solid var(--vc-glass-border); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+}
+.vivic-composer-card-hint { font-size: 12px; color: var(--vc-ink-muted); }
+.vivic-composer-progress {
+  display: flex; align-items: center; gap: 8px; align-self: center; min-height: 34px; padding: 4px 14px; border-radius: 999px; font-size: 12px;
+  color: var(--vc-ink); background: var(--vc-glass-strong); border: 1px solid var(--vc-glass-border); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+}
+.vivic-composer-progress:has(.vivic-chip) { padding-right: 6px; }
+.vivic-composer-progress-time { color: var(--vc-ink-muted); font-variant-numeric: tabular-nums; }
+.vivic-composer-note { font-size: 12px; line-height: 1.5; text-align: center; color: var(--vc-ink-muted); }
+.vivic-composer-note-error { color: var(--vc-error); }
+.vivic-attachment-row { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+.vivic-attachment-thumb { height: 64px; max-width: 120px; object-fit: cover; border-radius: 12px; border: 1px solid var(--vc-glass-border); }
+.vivic-composer-bar {
+  position: relative; display: flex; align-items: center; gap: 2px; min-height: 52px; padding: 6px 6px 6px 20px; border-radius: 26px;
+  background: var(--vc-glass-strong); border: 1px solid var(--vc-glass-border-strong); box-shadow: 0 16px 40px var(--vc-shadow);
+  backdrop-filter: blur(20px) saturate(1.2); -webkit-backdrop-filter: blur(20px) saturate(1.2); transition: border-color .15s;
+}
+.vivic-composer-bar:focus-within { border-color: var(--vc-focus); }
+.vivic-composer-input { flex: 1; min-width: 0; height: 40px; border: 0; outline: none; background: transparent; font-size: 14px; color: var(--vc-ink); }
+.vivic-composer-input::placeholder { color: var(--vc-ink-muted); }
+.vivic-composer-input:disabled { cursor: not-allowed; opacity: .6; }
+.vivic-voice { display: flex; align-items: center; gap: 2px; }
+.vivic-composer-icon {
+  display: grid; place-items: center; width: 38px; height: 38px; flex: none; border-radius: 999px; color: var(--vc-ink-muted);
+  transition: background .15s, color .15s, box-shadow .15s; touch-action: none; user-select: none; -webkit-user-select: none;
+}
+.vivic-composer-icon:hover:not(:disabled) { background: var(--vc-chip); color: var(--vc-ink); }
+.vivic-composer-icon:disabled { cursor: not-allowed; opacity: .4; }
+.vivic-ptt[aria-pressed="true"] { background: #e5484d; color: #fff; box-shadow: 0 0 0 6px rgb(229 72 77 / .24); }
+.vivic-composer-send {
+  display: grid; place-items: center; width: 38px; height: 38px; flex: none; margin-left: 2px; border-radius: 999px;
+  background: var(--vc-send); color: var(--vc-send-ink); transition: opacity .15s, transform .15s;
+}
+.vivic-composer-send:disabled { cursor: not-allowed; opacity: .3; }
+.vivic-composer-send:not(:disabled):hover { transform: translateY(-1px); }
+.vivic-round-button:focus-visible, .vivic-composer-icon:focus-visible, .vivic-composer-send:focus-visible,
+.vivic-chip:focus-visible, .vivic-settings-back:focus-visible { outline: 2px solid var(--vc-focus); outline-offset: 2px; }
+.vivic-composer-meta { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 14px; font-size: 11px; color: var(--vc-ink-muted); }
+.vivic-mode-pill { display: inline-flex; align-items: center; gap: 6px; }
+.vivic-mode-pill::before { content: ""; width: 6px; height: 6px; border-radius: 999px; background: #9aa0b4; }
+.vivic-mode-pill[data-tone="connected"]::before { background: #5ad19a; box-shadow: 0 0 0 3px rgb(90 209 154 / .2); }
+.vivic-mode-pill[data-tone="warning"]::before { background: #f5b14c; }
+.vivic-toggle { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.vivic-toggle input { width: 14px; height: 14px; accent-color: #8c81dd; }
+.vivic-wake { display: inline-flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; }
+.vivic-wake .vivic-chip { min-height: 24px; padding: 2px 10px; font-size: 11px; }
+.vivic-wake .vivic-composer-note { flex-basis: 100%; }
+
+.vivic-readonly-notice {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; padding: 10px 14px; border-radius: 12px;
+  font-size: 13px; color: #78350f; background: rgb(255 251 235 / .96); border: 1px solid #fcd34d;
+}
+
+.vivic-settings { position: relative; z-index: 1; min-height: 100dvh; }
+.vivic-settings-header {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 16px; color: var(--vc-ink);
+  background: var(--vc-glass-strong); border: 1px solid var(--vc-glass-border); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+}
+.vivic-settings-header h1 { flex: 1; }
+.vivic-settings-back {
+  display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px 0 10px; border-radius: 999px; font-size: 13px; font-weight: 500;
+  color: #1b1d2b; background: rgb(255 255 255 / .94); box-shadow: 0 4px 14px var(--vc-shadow);
+}
+/* Settings panels keep their light content and float as frosted sheets over either palette. */
+.vivic-settings section {
+  color: #171717; background-color: rgb(255 255 255 / .9); border-color: rgb(255 255 255 / .6);
+  backdrop-filter: blur(18px) saturate(1.2); -webkit-backdrop-filter: blur(18px) saturate(1.2); box-shadow: 0 10px 30px rgb(15 18 40 / .12);
+}
+
+@media (max-width: 560px) {
+  .vivic-chat-header { padding: 12px 14px 6px; }
+  .vivic-chat-scroll { padding: 6px 14px 12px; }
+  .vivic-chat-footer { padding: 0 12px 12px; }
+  .vivic-bubble { max-width: 88%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vivic-typing span { animation: none; }
+  .vivic-round-button, .vivic-composer-send { transition: none; }
+}

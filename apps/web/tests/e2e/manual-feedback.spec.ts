@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import path from "node:path";
-import { activeCanvasId, sendCommand } from "./helpers1";
+import { activeCanvasId, sendCommand, showSettings } from "./helpers1";
 test.use({ video: { mode: "on", size: { width: 1440, height: 900 } } });
 test.beforeEach(async ({ context }) => {
   await context.addInitScript(() => {
@@ -47,13 +47,13 @@ test("pinning splits a reminder out of the group, preserves its coordinates on a
   await sendCommand(page, "60分钟后提醒我TEST固定"); await expect(display.locator("[data-vivic-reminder-row]")).toHaveCount(1);
   await sendCommand(page, "60分钟后提醒我TEST合并"); await expect(display.locator("[data-vivic-reminder-row]")).toHaveCount(2);
   const id = await page.locator("[data-vivic-reminder]").filter({ hasText: "TEST固定" }).getAttribute("data-vivic-reminder");
-  await page.locator(`[data-vivic-pin="${id}"]`).click(); await expect(display.locator(".vivic-card")).toHaveCount(2);
+  await showSettings(page); await page.locator(`[data-vivic-pin="${id}"]`).click(); await expect(display.locator(".vivic-card")).toHaveCount(2);
   const position = () => page.evaluate(id => window.__vivic!.getState().cards.find(card => card.record.id === id)!.record.layout, id!);
   const fixed = await position();
   await sendCommand(page, "60分钟后提醒我TEST新增"); await expect(display.locator("[data-vivic-reminder-row]")).toHaveCount(3);
   await expect(display.locator(".vivic-card")).toHaveCount(2); expect(await position()).toEqual(fixed);
   await display.reload(); await expect(display.locator(".vivic-card")).toHaveCount(2);
-  await page.locator(`[data-vivic-pin="${id}"]`).click(); await expect(display.locator(".vivic-card")).toHaveCount(1);
+  await showSettings(page); await page.locator(`[data-vivic-pin="${id}"]`).click(); await expect(display.locator(".vivic-card")).toHaveCount(1);
   await expect(display.locator("[data-vivic-reminder-row]")).toHaveCount(3);
   await display.close();
 });

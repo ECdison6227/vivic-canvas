@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { activeCanvasId, sendCommand as submit } from "./helpers1";
+import { activeCanvasId, sendCommand as submit, showSettings } from "./helpers1";
 async function sendCommand(page: import("@playwright/test").Page, text: string) {
   await submit(page, text);
   await expect(page.locator("[data-vivic-command-feedback]")).toHaveAttribute("aria-busy", "false");
@@ -71,6 +71,7 @@ test("reminder chime is independent of TTS and comes only from the owner (silent
   const notes = () => page.evaluate(() => (window as unknown as { __testChime: { notes: number } }).__testChime.notes);
   await expect.poll(notes).toBe(2);
   expect(await readonly.evaluate(() => (window as unknown as { __testChime: { notes: number } }).__testChime.notes)).toBe(0);
+  await showSettings(page);
   await page.locator("[data-vivic-reminder-sound]").click();
   await sendCommand(page, "2秒后提醒我休息");
   await expect(page.locator("[data-vivic-command-feedback]")).toHaveAttribute("aria-busy", "false");

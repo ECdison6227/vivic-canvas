@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { showChat } from "./helpers1";
 
 // Explicit TEST protocol fixtures. These tests do not log in, send images to a
 // provider, record a physical microphone or play audio.
@@ -31,6 +32,7 @@ test("TEST GPT/Pi connection keeps StepFun voice independent; text mode sends no
     const body = route.request().postDataJSON(); submitted = true; expect(body).not.toHaveProperty("attachments");
     await route.fulfill({ json: { kind: "clarify", usedProvider: "gpt", message: "TEST GPT 文字回复" } });
   });
+  await showChat(page);
   await page.locator("[data-vivic-command-input]").fill("TEST GPT 文字指令"); await page.locator("[data-vivic-command-send]").click();
   await expect(page.locator("[data-vivic-command-feedback]")).toContainText("TEST GPT 文字回复");
   expect(submitted).toBe(true); expect(audioRequests).toEqual([]);
@@ -38,7 +40,7 @@ test("TEST GPT/Pi connection keeps StepFun voice independent; text mode sends no
 });
 
 test("TEST image selection decodes locally and sends only after explicit Send", async ({ page, context }) => {
-  await connectionFixture(page, true);
+  await connectionFixture(page, true); await showChat(page);
   const canvasId = await page.evaluate(() => (window.__vivicControl!.snapshot() as { activeCanvasId: string }).activeCanvasId);
   const display = await context.newPage(); await display.goto(`/display?canvasId=${canvasId}`);
   let calls = 0, imageData = "";
@@ -66,7 +68,7 @@ test("TEST image selection decodes locally and sends only after explicit Send", 
 });
 
 test("TEST image cannot be sent without vision and is cleared when the canvas changes", async ({ page }) => {
-  await connectionFixture(page, false);
+  await connectionFixture(page, false); await showChat(page);
   let calls = 0; await page.route("**/api/intent", () => { calls++; });
   const png = await page.screenshot({ clip: { x: 0, y: 0, width: 80, height: 80 } });
   await page.getByLabel("选择图片附件").setInputFiles({ name: "TEST-local.png", mimeType: "image/png", buffer: png });
@@ -78,7 +80,7 @@ test("TEST image cannot be sent without vision and is cleared when the canvas ch
 });
 
 test("TEST invalid image never becomes an attachment or a model request", async ({ page }) => {
-  await connectionFixture(page, true);
+  await connectionFixture(page, true); await showChat(page);
   let calls = 0; await page.route("**/api/intent", () => { calls++; });
   await page.getByLabel("选择图片附件").setInputFiles({ name: "TEST-invalid.svg", mimeType: "image/svg+xml", buffer: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>') });
   await expect(page.getByRole("alert")).toContainText("PNG"); await expect(page.getByAltText("待发送图片预览")).toHaveCount(0); expect(calls).toBe(0);

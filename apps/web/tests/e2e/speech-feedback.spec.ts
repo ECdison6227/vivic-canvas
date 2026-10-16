@@ -1,7 +1,7 @@
 import { expect, test, type Route } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { activeCanvasId, sendCommand } from "./helpers1";
+import { activeCanvasId, sendCommand, showSettings } from "./helpers1";
 
 interface TestAudio {
   currentTime: number; paused: boolean; volume: number;
@@ -101,6 +101,7 @@ test("fixed cues are opt-in, restore thinking, and cancel with their owning requ
   await page.waitForTimeout(600);
   expect(assets).toBe(0); expect(cloud).toBe(0);
   await page.locator("[data-vivic-command-cancel]").click();
+  await showSettings(page);
   await page.locator("[data-vivic-tts-toggle]").check();
   await sendCommand(page, "TEST 等待复杂规划");
   await expect.poll(() => assets).toBe(1);

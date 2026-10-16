@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import path from "node:path";
-import { activeCanvasId, controlDispatch, sendCommand, todoCardRecord } from "./helpers1";
+import { activeCanvasId, controlDispatch, sendCommand, showSettings, todoCardRecord } from "./helpers1";
 
 const stamp = "2026-10-16T00:00:00.000Z";
 test.use({ actionTimeout: 10000 });
@@ -12,7 +12,7 @@ const boot = async (page: Page) => {
   return activeCanvasId(page);
 };
 const inspect = (page: Page, id: string) => page.locator(`[data-vivic-inspect-card="${id}"]`);
-const openInspector = async (page: Page, id: string) => { await inspect(page, id).locator("[data-vivic-inspect-toggle]").click(); };
+const openInspector = async (page: Page, id: string) => { await showSettings(page); await inspect(page, id).locator("[data-vivic-inspect-toggle]").click(); };
 const popup = (page: Page) => page.locator("[data-vivic-subcard-popover]");
 const addChild = async (page: Page, id: string, itemId: string, text: string) => {
   const row = inspect(page, id); await row.locator(`[data-vivic-subcard-trigger="${itemId}"]`).click();

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import path from "node:path";
-import { activeCanvasId, controlDispatch, sendCommand, todoCardRecord } from "./helpers1";
+import { activeCanvasId, controlDispatch, sendCommand, showSettings, todoCardRecord } from "./helpers1";
 
 test.use({ video: { mode: "on", size: { width: 1440, height: 900 } } });
 
@@ -52,6 +52,7 @@ test("explicit reset clears only isolated app data, cancels pending work, and re
   await page.route("**/api/intent", route => { held = route; });
   await sendCommand(page, "TEST 等待中的复杂请求");
   await expect.poll(() => Boolean(held)).toBe(true);
+  await showSettings(page);
   await page.locator("[data-vivic-clear-local-data]").click();
   await page.getByRole("alertdialog").screenshot({ path: path.join(evidence, "TEST-confirmation.png") });
   await page.getByRole("button", { name: "清除全部", exact: true }).click();

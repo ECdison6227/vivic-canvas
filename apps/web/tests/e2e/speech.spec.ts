@@ -1,5 +1,5 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
-import { sendCommand } from "./helpers1";
+import { sendCommand, showSettings } from "./helpers1";
 
 const connected = async (page: Page) => {
   await page.route("**/api/providers/status", route => route.fulfill({ json: {
@@ -41,6 +41,7 @@ test("TTS is opt-in and an unavailable Plan voice reports failure without blocki
   await sendCommand(page, "显示全部");
   await expect(page.locator('[data-vivic-command-feedback]')).toHaveText("已显示全部卡片");
   expect(calls).toBe(0);
+  await showSettings(page);
   await page.locator('[data-vivic-tts-toggle]').check();
   await sendCommand(page, "显示全部");
   await expect(page.locator('[data-vivic-tts-note]')).toContainText("HTTP 403");

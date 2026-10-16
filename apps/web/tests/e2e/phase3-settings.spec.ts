@@ -1,7 +1,7 @@
 import { expect, test, type BrowserContext } from "@playwright/test";
 import { testCards } from "../../src/cards/__tests__/fixtures";
 import type { CardRecord } from "../../src/contracts";
-import { activeCanvasId, controlDispatch } from "./helpers1";
+import { activeCanvasId, controlDispatch, showChat } from "./helpers1";
 
 const runtimeErrors = new WeakMap<BrowserContext, string[]>();
 test.beforeEach(({ context }) => {
@@ -60,6 +60,8 @@ test.describe("TEST scheduled theme", () => {
     await controlDispatch(page, "TEST-theme-clock", canvasId, [
       { type: "stage.awaken" }, { type: "card.create", card: testCards.NoteCard },
     ]);
+    // New installs default to dark (2026-10-17); the day schedule belongs to 自动.
+    await page.getByRole("radio", { name: "自动", exact: true }).click();
     await page.getByLabel("白天开始时间", { exact: true }).fill("06:00");
     await page.getByLabel("白天结束时间", { exact: true }).fill("07:00");
     const stage = display.locator("[data-vivic-stage]");
@@ -98,6 +100,7 @@ test("TEST note expand/collapse preserves content, handles ambiguity, and stays 
   const rendered = display.locator('[data-card-id="TEST-density-note"] [data-vivic-note-variant]');
   await expect(rendered).toHaveAttribute("data-vivic-note-variant", "minimal");
   const submit = async (text: string) => {
+    await showChat(page);
     await page.locator("[data-vivic-command-input]").fill(text);
     await page.locator("[data-vivic-command-send]").click();
   };

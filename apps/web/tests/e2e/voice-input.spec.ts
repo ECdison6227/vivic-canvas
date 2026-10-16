@@ -26,7 +26,8 @@ const hold = async (page: Page) => {
 };
 
 test.beforeEach(async ({ page }) => {
-  await page.goto("/control");
+  // Voice and text input live on the user page.
+  await page.goto("/");
   await expect(page.locator('[data-vivic-control]')).toHaveAttribute("data-vivic-owner", "owner");
 });
 

@@ -9,12 +9,14 @@ import { completedCountdown } from "@/canvas/reminderPresentation";
 import type { ResolvedCard } from "@/commands/references";
 import { applyUrlTheme } from "@/lib/urlTheme";
 import { newId } from "@/lib/id";
-import { canvasStore } from "@/state/canvasStore";
+import { canvasStore, useDisplayPreferences } from "@/state/canvasStore";
 import { getControlHost } from "@/sync/browserRuntime";
 import type { ControlHost } from "@/sync/controlHost";
 import { AiSection } from "./AiSection";
 import { CanvasManager } from "./CanvasManager";
-import { CommandSection, type ClarifyState } from "./CommandSection";
+import type { ClarifyState } from "./ChatComposer";
+import { ChatPage, type ChatTurn } from "./ChatPage";
+import { BackgroundSettings } from "./BackgroundSettings";
 import { DataActions } from "./DataActions";
 import { RemindersSection } from "./RemindersSection";
 import type { ReminderNotice } from "@/reminders/reminders";
@@ -28,8 +30,15 @@ import type { Attachment } from "@/ai/attachments";
 import { startsNewInstruction } from "@vivic/contracts";
 import { focusResponseActions } from "@/commands/responseFocus";
 import { armReminderSound } from "@/reminders/sound";
+import { ArrowLeft } from "lucide-react";
+import { useReducedMotion } from "motion/react";
+import { AtmosphereBackground } from "@/components/atmosphere/AtmosphereBackground";
+import { paletteFor } from "@/components/atmosphere/palettes";
+import { useResolvedTheme } from "@/stage/useResolvedTheme";
+import { pathForView, viewForPath, type ControlView } from "./controlView";
 
 export const INTENT_TIMEOUT_MS = 100_000;
+const MAX_TURNS = 50;
 
 /** A non-action result must still reach Display after the thinking lease ends. */
 const publishFeedback = (host: ControlHost, text: string) => {
@@ -54,7 +63,32 @@ declare global {
 export const ControlApp = () => {
   const [host, setHost] = useState<ControlHost | null>(null);
   const [clarify, setClarify] = useState<ClarifyState | null>(null);
-  const [feedback, setFeedback] = useState<string | null>(null);
+  const [feedback, setFeedbackState] = useState<string | null>(null);
+  // The ref mirrors feedback synchronously so a new turn can freeze the previous reply.
+  const feedbackRef = useRef<string | null>(null);
+  const setFeedback = useCallback((next: string | null | ((prev: string | null) => string | null)) => {
+    const value = typeof next === "function" ? next(feedbackRef.current) : next;
+    feedbackRef.current = value;
+    setFeedbackState(value);
+  }, []);
+  const [turns, setTurns] = useState<ChatTurn[]>([]);
+  const startTurn = useCallback((text: string, image: boolean) => {
+    const reply = feedbackRef.current;
+    setTurns(prev => [...prev.slice(0, -1), ...prev.slice(-1).map(turn => ({ ...turn, reply })),
+      { id: newId("turn"), text, image, reply: null }].slice(-MAX_TURNS));
+    setFeedback(null);
+  }, [setFeedback]);
+  const [view, setView] = useState<ControlView>(() => viewForPath(window.location.pathname));
+  useEffect(() => {
+    const sync = () => setView(viewForPath(window.location.pathname));
+    window.addEventListener("popstate", sync);
+    return () => window.removeEventListener("popstate", sync);
+  }, []);
+  const navigate = useCallback((next: ControlView) => {
+    const path = pathForView(next);
+    if (window.location.pathname !== path) window.history.pushState(null, "", `${path}${window.location.search}`);
+    setView(next);
+  }, []);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [backendOnline, setBackendOnline] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
@@ -91,7 +125,7 @@ export const ControlApp = () => {
     host?.setActivity(current.requestId, null);
     setBusy(false);
     setFeedback("已取消本次请求");
-  }, [host]);
+  }, [host, setFeedback]);
 
   useEffect(() => {
     window.addEventListener("vivic:provider-change", cancelPending);
@@ -278,7 +312,7 @@ export const ControlApp = () => {
       if (!res.ok) publishFeedback(h, message);
       if (res.ok && result.spokenText) void speakText(result.spokenText, { requestId: newId("speech") });
     },
-    [],
+    [setFeedback],
   );
 
   const pickClarify = useCallback(
@@ -304,7 +338,7 @@ export const ControlApp = () => {
       setFeedback(res.ok ? `${message}${clarify.action === "delete" ? "，可撤销" : ""}` : res.error);
       if (res.ok) void speakText(message, { requestId: newId("speech") });
     },
-    [host, clarify],
+    [host, clarify, setFeedback],
   );
 
   useEffect(() => {
@@ -320,7 +354,7 @@ export const ControlApp = () => {
     };
     const unsubscribe = host.subscribe(check), timer = setInterval(check, 1000);
     check(); return () => { unsubscribe(); clearInterval(timer); };
-  }, [host, clarify]);
+  }, [host, clarify, setFeedback]);
 
   const submitCommand = useCallback(
     (text: string, attachments?: Attachment[]) => {
@@ -329,6 +363,9 @@ export const ControlApp = () => {
       if (!snap.activeCanvasId || snap.ownerMode !== "owner") return;
       armReminderSound();
       const trimmed = text.trim();
+      // A request still running is answered "已取消" in its own turn before this one starts.
+      if (pending.current) cancelPending();
+      startTurn(trimmed, Boolean(attachments?.length));
       if (clarify && !attachments?.length) {
         const number = choiceNumber(trimmed);
         if (number !== null) {
@@ -472,13 +509,13 @@ export const ControlApp = () => {
         }
       })();
     },
-    [host, applyResult, cancelPending, clarify, pickClarify],
+    [host, applyResult, cancelPending, clarify, pickClarify, setFeedback, startTurn],
   );
 
 
   if (!host) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-neutral-50 text-sm text-neutral-500">
+      <div className="flex min-h-screen items-center justify-center bg-[#0C1224] text-sm text-white/70">
         正在载入本地画布…
       </div>
     );
@@ -487,6 +524,9 @@ export const ControlApp = () => {
   return (
     <ControlShell
       host={host}
+      view={view}
+      onNavigate={navigate}
+      turns={turns}
       clarify={clarify}
       feedback={feedback}
       suggestions={suggestions}
@@ -503,6 +543,9 @@ export const ControlApp = () => {
 
 interface ShellProps {
   host: ControlHost;
+  view: ControlView;
+  onNavigate: (view: ControlView) => void;
+  turns: ChatTurn[];
   clarify: ClarifyState | null;
   feedback: string | null;
   suggestions: string[];
@@ -515,99 +558,118 @@ interface ShellProps {
   onCancel: () => void;
 }
 
+/**
+ * One owner window, two pages that stay mounted (drafts, voice and in-flight
+ * requests survive the switch) over the shared 流光以太 background.
+ */
 const ControlShell = (props: ShellProps) => {
   const snap = useSyncExternalStore(props.host.subscribe, props.host.getSnapshot);
   const readonly = snap.ownerMode !== "owner";
+  const theme = useResolvedTheme();
+  const preferences = useDisplayPreferences();
+  const reduced = useReducedMotion() || preferences.reducedMotion;
 
   const openDisplay = () => {
     const id = snap.activeCanvasId ?? "";
     window.open(`/display?canvasId=${encodeURIComponent(id)}`, "_blank");
   };
+  const readonlyNotice = readonly && (
+    <div className="vivic-readonly-notice" data-vivic-readonly-notice>
+      <span>另一个控制窗口正在写入，本窗口为只读。</span>
+      <button
+        type="button"
+        className="rounded-md border border-amber-400 bg-white px-3 py-1 text-xs font-medium hover:bg-amber-100"
+        onClick={() => props.host.takeover()}
+        data-vivic-takeover
+      >
+        接管控制权
+      </button>
+    </div>
+  );
 
   return (
     <div
-      className="min-h-screen bg-neutral-50 text-neutral-900"
+      className="vivic-control-root"
       data-vivic-control="ready"
       data-vivic-owner={snap.ownerMode}
       data-vivic-active-canvas={snap.activeCanvasId ?? ""}
+      data-vivic-view={props.view}
+      data-appearance={theme}
     >
-      <div className="mx-auto flex max-w-3xl flex-col gap-5 px-5 py-8">
-        <header className="flex flex-wrap items-center justify-between gap-3">
-          <h1 className="text-lg font-semibold tracking-tight">Vivic 控制端</h1>
-          <QuickFind host={props.host} />
-        </header>
+      <AtmosphereBackground theme={theme} palette={paletteFor(theme, preferences)} paused={reduced} className="fixed inset-0" />
 
-        {readonly && (
-          <div
-            className="flex items-center justify-between rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900"
-            data-vivic-readonly-notice
-          >
-            <span>另一个控制窗口正在写入，本窗口为只读。</span>
-            <button
-              type="button"
-              className="rounded-md border border-amber-400 bg-white px-3 py-1 text-xs font-medium hover:bg-amber-100"
-              onClick={() => props.host.takeover()}
-              data-vivic-takeover
-            >
-              接管控制权
+      <ChatPage
+        hidden={props.view !== "chat"}
+        turns={props.turns}
+        feedback={props.feedback}
+        notice={props.view === "chat" ? readonlyNotice : null}
+        onOpenSettings={() => props.onNavigate("settings")}
+        ownerKey={`${snap.activeCanvasId}:${snap.ownerMode}`}
+        disabled={readonly || !snap.ready}
+        clarify={props.clarify}
+        suggestions={props.suggestions}
+        backendOnline={props.backendOnline}
+        onSubmit={props.onSubmit}
+        onPickClarify={props.onPickClarify}
+        onPreviewClarify={candidate => {
+          const current = props.host.getSnapshot();
+          if (current.ownerMode === "owner" && current.activeCanvasId === props.clarify?.canvasId) {
+            props.host.dispatch({ schemaVersion: "0.6", requestId: newId("preview"), canvasId: current.activeCanvasId,
+              actions: [{ type: "card.highlight", targetId: candidate.card.id, durationMs: 5000 }] });
+          }
+        }}
+        onCancelClarify={props.onCancelClarify}
+        busy={props.busy}
+        onCancel={props.onCancel}
+      />
+
+      <div className="vivic-settings" hidden={props.view !== "settings"} data-vivic-settings>
+        <div className="mx-auto flex max-w-3xl flex-col gap-5 px-5 py-8">
+          <header className="vivic-settings-header">
+            <button type="button" className="vivic-settings-back" onClick={() => props.onNavigate("chat")} data-vivic-open-chat>
+              <ArrowLeft className="h-4 w-4" aria-hidden="true" />返回聊天
             </button>
-          </div>
-        )}
+            <h1 className="text-lg font-semibold tracking-tight">设置</h1>
+            <QuickFind host={props.host} />
+          </header>
 
-        <AiSection disabled={readonly || !snap.ready} onBackendChange={props.onBackendChange} />
-        <LocalSpeechSettings disabled={readonly || !snap.ready} onBeforeClear={props.onCancel} />
+          {props.view === "settings" && readonlyNotice}
 
-        <CommandSection
-          ownerKey={`${snap.activeCanvasId}:${snap.ownerMode}`}
-          disabled={readonly || !snap.ready}
-          clarify={props.clarify}
-          feedback={props.feedback}
-          suggestions={props.suggestions}
-          backendOnline={props.backendOnline}
-          onSubmit={props.onSubmit}
-          onPickClarify={props.onPickClarify}
-          onPreviewClarify={candidate => {
-            const current = props.host.getSnapshot();
-            if (current.ownerMode === "owner" && current.activeCanvasId === props.clarify?.canvasId) {
-              props.host.dispatch({ schemaVersion: "0.6", requestId: newId("preview"), canvasId: current.activeCanvasId,
-                actions: [{ type: "card.highlight", targetId: candidate.card.id, durationMs: 5000 }] });
-            }
-          }}
-          onCancelClarify={props.onCancelClarify}
-          busy={props.busy}
-          onCancel={props.onCancel}
-        />
+          <AiSection disabled={readonly || !snap.ready} onBackendChange={props.onBackendChange} />
+          <LocalSpeechSettings disabled={readonly || !snap.ready} onBeforeClear={props.onCancel} />
 
-        <section className="rounded-xl border border-neutral-200 bg-white p-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              onClick={openDisplay}
-              disabled={!snap.activeCanvasId}
-              className="rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-700 disabled:opacity-50"
-              data-vivic-open-display
-            >
-              打开 Vivic 展示窗口
-            </button>
-            <p className="text-xs text-neutral-500">
-              把打开的窗口拖到第二屏，按 F11 或 ⌃⌘F 全屏；本页负责全部输入与设置。
-            </p>
-          </div>
-        </section>
+          <section className="rounded-xl border border-neutral-200 bg-white p-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={openDisplay}
+                disabled={!snap.activeCanvasId}
+                className="rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-700 disabled:opacity-50"
+                data-vivic-open-display
+              >
+                打开 Vivic 展示窗口
+              </button>
+              <p className="text-xs text-neutral-500">
+                把打开的窗口拖到第二屏，按 F11 或 ⌃⌘F 全屏；文字和语音输入在聊天页，本页负责设置。
+              </p>
+            </div>
+          </section>
 
-        <CanvasManager
-          host={props.host}
-          canvases={snap.canvases}
-          activeCanvasId={snap.activeCanvasId}
-          readonly={readonly}
-        />
-        <CanvasSettings host={props.host} disabled={readonly || !snap.ready} />
-        <CardSubcardsSection key={`${snap.activeCanvasId}:${snap.ownerMode}:${snap.ownerId}:${snap.ready}`} host={props.host} />
-        <LocalDecisionSettings disabled={readonly || !snap.ready} />
+          <CanvasManager
+            host={props.host}
+            canvases={snap.canvases}
+            activeCanvasId={snap.activeCanvasId}
+            readonly={readonly}
+          />
+          <CanvasSettings host={props.host} disabled={readonly || !snap.ready} />
+          <BackgroundSettings host={props.host} disabled={readonly || !snap.ready} resolvedTheme={theme} />
+          <CardSubcardsSection key={`${snap.activeCanvasId}:${snap.ownerMode}:${snap.ownerId}:${snap.ready}`} host={props.host} />
+          <LocalDecisionSettings disabled={readonly || !snap.ready} />
 
-        <RemindersSection host={props.host} readonly={readonly} />
+          <RemindersSection host={props.host} readonly={readonly} />
 
-        <DataActions host={props.host} readonly={readonly || !snap.ready} onBeforeClear={props.onCancel} />
+          <DataActions host={props.host} readonly={readonly || !snap.ready} onBeforeClear={props.onCancel} />
+        </div>
       </div>
     </div>
   );
