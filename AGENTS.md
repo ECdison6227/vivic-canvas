@@ -2,8 +2,8 @@
 
 先读 [README_FIRST.md](README_FIRST.md) 和 [当前交接](docs/AGENT_HANDOFF.md)，再按任务读取模块。原产品约束见 [完整规约](Vivic_Kimi_Handoff_v0.6/AGENTS.md)，不要根据旧阶段报告重复开发。
 
-- 这是 Web 信息画布，Control/Display 双视图；Display 保持极简。2026-10-16 用户反馈更新：纯计时器只有数字；带事项的提醒显示事项与时间，未固定提醒合并呈现，到时后退出画布、记录留在 Control。
-- 保留已批准的 SmoothUI Orb、React Bits Grainient、Assistant UI styled registry、React Flow、Motion、Radix/shadcn、Lucide、Recharts；不要自行重画替代。
+- 这是 Web 信息画布，Control/Display 双视图；Display 保持极简。2026-10-16 用户反馈更新：纯计时器只有数字；带事项的提醒显示事项与时间，未固定提醒合并呈现，到时后退出画布、记录留在 Control。2026-10-17 起 Control 分为用户页 `/`（只有设置按钮、头像、对话和文字/语音输入）与设置页 `/control`，二者是同一个 owner 窗口，见 [用户页](docs/user-page-20261017.md)。
+- 保留已批准的 SmoothUI Orb、Assistant UI styled registry、React Flow、Motion、Radix/shadcn、Lucide、Recharts；不要自行重画替代。背景按用户 2026-10-17 提供的 HTML 改为「流光以太」（`components/atmosphere/`），三页共用；用户只能换 6 深 + 6 浅配色，不开放动画形式选择。
 - LLM 只接 StepFun Coding Plan、GPT/Pi OAuth。语音独立；Pi 只迁移认证/模型，不启用 coding tools、session、扩展或 skills，不开发新 OAuth 协议。
 - 模型只生成校验后的 Action/数据，不能执行代码或虚构联网数据。图片仅用于当前明确发送的请求。
 - 凭据不进入源码、文档、日志、浏览器存储或画布；`.env*`、`.cache/`、`evidence/` 默认不入 Git。不要删除本机验收证据。
