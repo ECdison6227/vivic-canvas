@@ -33,7 +33,7 @@ import {
 import { parseSyncMessage, DisplayPreferencesSchema, DEFAULT_DISPLAY_PREFERENCES,
   type DisplayPreferences, type CanvasInteraction, type SyncMessage } from "./protocol";
 import { isDue, reminderText, sameDelivery, conditionSatisfied, deliveredNoticeCurrent, ReminderInboxSchema, type ReminderNotice, type ReminderSummary } from "@/reminders/reminders";
-import { nextReminderOccurrence, type CountdownCard } from "@vivic/contracts";
+import { isDateCountdown, nextReminderOccurrence, type CardSurface, type CountdownCard } from "@vivic/contracts";
 import { presentCards } from "@/canvas/reminderPresentation";
 import { playReminderSound } from "@/reminders/sound";
 
@@ -84,6 +84,8 @@ export interface ControlHost {
   dispatch: (raw: unknown) => DispatchResult;
   setCardPinned: (cardId: string, pinned: boolean, canvasId?: string) => DispatchResult;
   moveCard: (cardId: string, x: number, y: number, canvasId?: string) => DispatchResult;
+  /** Move a card to the user page, or back onto the Display canvas (auto-placed). */
+  setCardSurface: (cardId: string, surface: CardSurface, canvasId?: string) => DispatchResult;
   setPreferences: (patch: Partial<DisplayPreferences>) => DispatchResult;
   arrangeCanvas: () => DispatchResult;
   setActivity: (requestId: string, activity: VivicState["activity"]) => void;
@@ -149,7 +151,8 @@ export const createControlHost = (deps: ControlHostDeps): ControlHost => {
     const cards = record.id === activeCanvasId
       ? store.getState().cards.filter(c => !c.exitingRequestId).map(c => c.record)
       : record.cardOrder.map(id => record.cardsById[id]!);
-    return cards.filter(c => c?.type === "CountdownCard").map(card => ({
+    // Date countdowns (birthdays, exams…) are display cards, never scheduled reminders.
+    return cards.filter(c => c?.type === "CountdownCard" && !isDateCountdown(c)).map(card => ({
       canvasId: record.id, canvasTitle: record.title, card: card as import("@/contracts").CountdownCard,
     }));
   });
@@ -391,11 +394,14 @@ export const createControlHost = (deps: ControlHostDeps): ControlHost => {
     return result;
   }
 
-  const localInteraction = (cardId: string, change: { kind: "card.move"; x: number; y: number } | { kind: "card.pin"; pinned: boolean }, canvasId = activeCanvasId ?? ""): DispatchResult => {
+  type LocalChange = { kind: "card.move"; x: number; y: number } | { kind: "card.pin"; pinned: boolean }
+    | { kind: "card.surface"; surface: CardSurface; x?: number; y?: number };
+  const localInteraction = (cardId: string, change: LocalChange, canvasId = activeCanvasId ?? ""): DispatchResult => {
     if (!writable()) return { ok: false, error: "readonly-not-owner" };
     const card = canvasId === activeCanvasId ? store.getState().cards.find(c => c.record.id === cardId)?.record : records.get(canvasId)?.cardsById[cardId];
     if (!card) return { ok: false, error: "missing-card" };
-    return applyInteraction(canvasId, newId("interaction"), { ...change, cardId, from: card.layout } satisfies CanvasInteraction);
+    const { surface: _surface, ...from } = card.layout;
+    return applyInteraction(canvasId, newId("interaction"), { ...change, cardId, from } satisfies CanvasInteraction);
   };
   const setPreferences: ControlHost["setPreferences"] = patch => {
     if (!writable()) return { ok: false, error: "readonly-not-owner" };
@@ -936,6 +942,7 @@ export const createControlHost = (deps: ControlHostDeps): ControlHost => {
     dispatch,
     setCardPinned: (cardId, pinned, canvasId) => localInteraction(cardId, { kind: "card.pin", pinned }, canvasId),
     moveCard: (cardId, x, y, canvasId) => localInteraction(cardId, { kind: "card.move", x, y }, canvasId),
+    setCardSurface: (cardId, surface, canvasId) => localInteraction(cardId, { kind: "card.surface", surface }, canvasId),
     setPreferences,
     arrangeCanvas,
     setActivity,

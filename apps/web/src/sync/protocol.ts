@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { ActionEnvelopeSchema, VivicStateSchema } from "@/contracts";
-import { ActivitySchema, TargetChoiceSchema } from "@vivic/contracts";
+import { ActivitySchema, CardSurfaceSchema, TargetChoiceSchema } from "@vivic/contracts";
 
 /**
  * BroadcastChannel('vivic:canvas:v1') message protocol — ARCHITECTURE §4.
@@ -29,8 +29,18 @@ export const CanvasInteractionSchema = z.discriminatedUnion("kind", [
     from: LayoutBaselineSchema, x: CoordinateSchema, y: CoordinateSchema }),
   z.strictObject({ kind: z.literal("card.pin"), cardId: z.string().min(1).max(128),
     from: LayoutBaselineSchema, pinned: z.boolean() }),
+  // Move a card between the Display canvas and the user page. A drop on the
+  // canvas carries the drop point; without one the card is placed automatically.
+  z.strictObject({ kind: z.literal("card.surface"), cardId: z.string().min(1).max(128),
+    from: LayoutBaselineSchema, surface: CardSurfaceSchema, x: CoordinateSchema.optional(), y: CoordinateSchema.optional() })
+    .refine(value => (value.x === undefined) === (value.y === undefined), "x 与 y 需同时提供"),
 ]);
 export type CanvasInteraction = z.infer<typeof CanvasInteractionSchema>;
+/** What a Display window may ask the owner for: drag on the canvas, or receive a card dropped from the user page. */
+export const DisplayInteractionSchema = z.union([
+  CanvasInteractionSchema.options[0],
+  CanvasInteractionSchema.options[2].refine(value => value.surface === "display" && value.x !== undefined, "展示端只能把卡片放回画布的指定位置"),
+]);
 export const DisplayPreferencesSchema = z.strictObject({
   theme: z.enum(["auto", "light", "dark"]),
   reducedMotion: z.boolean(), subtitles: z.boolean(),
@@ -59,8 +69,9 @@ export const SyncMessageSchema = z.discriminatedUnion("type", [
   z.strictObject({
     ...msgBase, type: z.literal("interaction"),
     payload: z.strictObject({ ownerEpoch: z.string().min(1).max(64),
-      // Display is allowed to request a move only. Pin/settings stay Control-only.
-      interaction: CanvasInteractionSchema.options[0] }),
+      // Display may request a move or take back a card dropped from the user
+      // page. Pin/settings and sending cards away stay Control-only.
+      interaction: DisplayInteractionSchema }),
   }),
   z.strictObject({
     ...msgBase,

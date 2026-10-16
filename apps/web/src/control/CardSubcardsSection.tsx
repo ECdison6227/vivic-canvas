@@ -1,7 +1,7 @@
 import { useMemo, useSyncExternalStore, useState, useEffect } from "react";
 import { Accordion } from "radix-ui";
 import { ChevronDown } from "lucide-react";
-import { cardTitle, validCardTarget, type Action } from "@/contracts";
+import { cardTitle, isDateCountdown, onUserSurface, validCardTarget, type Action } from "@/contracts";
 import { canvasStore, useVivicState } from "@/state/canvasStore";
 import { completedCountdown } from "@/canvas/reminderPresentation";
 import { VivicCard } from "@/cards/VivicCard";
@@ -47,9 +47,13 @@ export const CardSubcardsSection = ({ host }: { host: ControlHost }) => {
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <SubcardAnchor card={record}>整张卡片的扩充</SubcardAnchor>
               <div className="flex gap-1"><Button variant="ghost" size="sm" disabled={!editable} onClick={() => context.dispatch({ type: "card.highlight", targetId: record.id, durationMs: 5000 })}>定位</Button>
+                <Button variant="ghost" size="sm" disabled={!editable} data-vivic-toggle-surface={record.id} onClick={() => {
+                  const result = host.setCardSurface(record.id, onUserSurface(record) ? "display" : "user");
+                  if (!result.ok) setError("暂时无法移动这张卡片，请检查控制权。");
+                }}>{onUserSurface(record) ? "放回副屏" : "移到用户页"}</Button>
                 <Button variant="ghost" size="sm" disabled={!editable} onClick={() => {
                   if (!context.dispatch({ type: "card.delete", targetId: record.id })) setError("尚未删除，请检查控制权。");
-                }}>删除{record.type === "CountdownCard" ? "这项提醒" : "这张卡片"}</Button></div>
+                }}>删除{record.type === "CountdownCard" && !isDateCountdown(record) ? "这项提醒" : "这张卡片"}</Button></div>
             </div>
             <div className="rounded-xl border border-neutral-200 p-4" style={{ maxWidth: "100%" }}>
               <VivicCard record={record} highlight={highlight} />

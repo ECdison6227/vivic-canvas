@@ -24,6 +24,7 @@ import { LocalSpeechSettings } from "./LocalSpeechSettings";
 import { CanvasSettings } from "./CanvasSettings";
 import { CardSubcardsSection } from "./CardSubcardsSection";
 import { QuickFind } from "./QuickFind";
+import { UserCardDock } from "./UserCardDock";
 import type { Attachment } from "@/ai/attachments";
 import { startsNewInstruction } from "@vivic/contracts";
 import { focusResponseActions } from "@/commands/responseFocus";
@@ -577,6 +578,8 @@ const ControlShell = (props: ShellProps) => {
           busy={props.busy}
           onCancel={props.onCancel}
         />
+
+        <UserCardDock key={`${snap.activeCanvasId}:${snap.ownerMode}`} host={props.host} />
 
         <section className="rounded-xl border border-neutral-200 bg-white p-4">
           <div className="flex flex-wrap items-center gap-3">

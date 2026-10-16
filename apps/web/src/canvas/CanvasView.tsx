@@ -3,8 +3,11 @@ import { ReminderListView } from "@/cards/ReminderListView";
 import { TargetBadge } from "@/cards/TargetBadge";
 import { SubcardAnchor } from "@/cards/SubcardAnchor";
 import { SubcardThemeContext } from "@/cards/SubcardEditorContext";
-import type { CountdownCard } from "@/contracts";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { cardTitle, type CountdownCard } from "@/contracts";
+import { GripHorizontal } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import { fixedContentHeight } from "@/cards/sizing";
+import { carriesCard, readCardDrag, startCardDrag } from "@/cards/surfaceDrag";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -23,7 +26,7 @@ import {
   type FocusState,
   type HighlightState,
 } from "@/state/canvasStore";
-import { beginCanvasDrag, commitCanvasDrag } from "@/sync/browserRuntime";
+import { beginCanvasDrag, commitCanvasDrag, getDisplayStatus, requestCardToCanvas } from "@/sync/browserRuntime";
 import type { CanvasDrag } from "@/sync/displayClient";
 import { resolveTheme } from "@/motion/motionDirector";
 
@@ -38,19 +41,41 @@ interface VivicNodeData extends Record<string, unknown> {
   highlight: HighlightState | null;
 }
 
+/** Drag a card off the stage onto the user page (another window). */
+const MoveToUserHandle = ({ entry }: { entry: CardState }) => <span
+  className="vivic-move-handle nodrag nopan"
+  draggable
+  role="button"
+  tabIndex={-1}
+  title="拖到用户页"
+  aria-label={`把「${cardTitle(entry.record).slice(0, 40)}」拖到用户页`}
+  data-vivic-move-handle={entry.record.id}
+  onDragStart={event => {
+    const canvasId = getDisplayStatus()?.canvasId;
+    if (!canvasId) { event.preventDefault(); return; }
+    const card = event.currentTarget.closest(".vivic-card");
+    const rect = card?.getBoundingClientRect();
+    startCardDrag(event, { v: 1, canvasId, cardId: entry.record.id, from: "display",
+      grabX: rect ? event.clientX - rect.left : undefined, grabY: rect ? event.clientY - rect.top : undefined }, cardTitle(entry.record), card);
+  }}
+><GripHorizontal size={14} aria-hidden /></span>;
+
 const VivicNode = ({ data }: NodeProps<Node<VivicNodeData>>) => {
   const { entry, focused, dimmed, highlight } = data;
   return (
     <div
       className="vivic-card"
       data-card-id={entry.record.id}
+      data-scene-type={entry.record.type}
       data-focused={focused || undefined}
       data-dimmed={dimmed || undefined}
       data-highlighted={!data.reminders && highlight?.cardId === entry.record.id || undefined}
       data-exiting={entry.exitingRequestId ? true : undefined}
       style={{ width: entry.record.layout.width }}
     >
-      {data.reminders ? <ReminderListView cards={data.reminders} focusedId={data.focusedId} highlightedId={highlight?.cardId} /> : <VivicCard record={entry.record} highlight={highlight} />}
+      {data.reminders ? <ReminderListView cards={data.reminders} focusedId={data.focusedId} highlightedId={highlight?.cardId} />
+        : <VivicCard record={entry.record} highlight={highlight} height={fixedContentHeight(entry.record)} />}
+      {!data.reminders && !entry.exitingRequestId && <MoveToUserHandle entry={entry} />}
       {!data.reminders && (entry.record.type !== "CountdownCard" || !entry.record.sourceData.reminderText) && <TargetBadge cardId={entry.record.id} />}
       {!data.reminders && (entry.record.type !== "CountdownCard" || !entry.record.sourceData.reminderText) && <div className="vivic-card-expansion"><SubcardAnchor card={entry.record} /></div>}
     </div>
@@ -236,8 +261,39 @@ const CanvasInner = ({ resolvedTheme }: { resolvedTheme?: "light" | "dark" }) =>
     void rf.fitView({ duration: reducedMotion ? 0 : 450, padding: 0.3, minZoom: 0.05, maxZoom: 1.1 });
   }, [fitRequestId, rf, reducedMotion]);
 
+  // A card dragged here from the user page lands where it is dropped.
+  const dragDepth = useRef(0);
+  const [receiving, setReceiving] = useState(false);
+  const dropProps = {
+    onDragEnter: (event: DragEvent) => {
+      if (!carriesCard(event, "user")) return;
+      dragDepth.current += 1; setReceiving(true);
+    },
+    onDragOver: (event: DragEvent) => {
+      if (!carriesCard(event, "user")) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+    },
+    onDragLeave: (event: DragEvent) => {
+      if (!carriesCard(event, "user")) return;
+      dragDepth.current = Math.max(0, dragDepth.current - 1);
+      if (!dragDepth.current) setReceiving(false);
+    },
+    onDrop: (event: DragEvent) => {
+      dragDepth.current = 0; setReceiving(false);
+      const payload = readCardDrag(event, "user");
+      if (!payload) return;
+      event.preventDefault();
+      const card = canvasStore.getState().cards.find(entry => entry.record.id === payload.cardId)?.record;
+      const point = rf.screenToFlowPosition({ x: event.clientX, y: event.clientY });
+      const grabX = Math.min(payload.grabX ?? 40, card?.layout.width ?? 40), grabY = payload.grabY ?? 24;
+      requestCardToCanvas(payload.canvasId, payload.cardId, Math.round(point.x - grabX), Math.round(point.y - grabY));
+    },
+  };
+
   return (
-    <SubcardThemeContext.Provider value={resolvedTheme ?? resolveTheme(preferences.theme, themeAt, preferences)}><div ref={wrapperRef} className="absolute inset-0 z-10" data-vivic-canvas>
+    <SubcardThemeContext.Provider value={resolvedTheme ?? resolveTheme(preferences.theme, themeAt, preferences)}><div ref={wrapperRef} className="absolute inset-0 z-10" data-vivic-canvas {...dropProps}>
+      {receiving && <div className="vivic-drop-overlay" data-vivic-drop-overlay="display">松开，把卡片放回副屏</div>}
       <ReactFlow
         nodes={nodes}
         nodeTypes={nodeTypes}
