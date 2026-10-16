@@ -674,7 +674,13 @@ const Grainient = ({
       gl.deleteVertexArray(vao);
       gl.deleteProgram(field.program);
       gl.deleteProgram(composite.program);
-      gl.getExtension('WEBGL_lose_context')?.loseContext();
+      // StrictMode re-runs this effect on the same canvas; losing the context
+      // there would leave the remount with a dead context. Release it only
+      // once the canvas has actually left the document.
+      const release = gl.getExtension('WEBGL_lose_context');
+      setTimeout(() => {
+        if (!canvas.isConnected) release?.loseContext();
+      }, 0);
     };
   }, []);
 

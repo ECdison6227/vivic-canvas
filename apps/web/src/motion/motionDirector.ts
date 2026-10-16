@@ -83,7 +83,8 @@ export const GRAINIENT_PRESETS = {
     lightMode: true,
   },
   dark: {
-    colors: ["#0a0d1c", "#171338", "#352a63", "#4a3578", "#7a5c9e"],
+    // Desaturated slate smoke, close to the user's reference recording.
+    colors: ["#11131f", "#1a1d2c", "#242737", "#2f3243", "#3d4153"],
     lightMode: false,
   },
 } as const;
