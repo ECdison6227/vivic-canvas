@@ -75,6 +75,32 @@ test("each sent message keeps its own reply, and drafts survive a trip to settin
   await display.close();
 });
 
+test("tapping a numbered choice answers the question as the user, keeping the question in the log", async ({ page }) => {
+  await page.goto("/");
+  await expect(root(page)).toHaveAttribute("data-vivic-owner", "owner");
+  const added = async (text: string) => { await sendCommand(page, text); await expect(page.locator("[data-vivic-command-feedback]")).toHaveText("已记下 1 条待办"); };
+  await added("加待办：合同初审");
+  await added("添加待办：周报大纲");
+  await sendCommand(page, "删除那个卡片");
+  const candidates = page.locator("[data-vivic-clarify-candidate]");
+  await expect(candidates).toHaveCount(2);
+  const question = (await page.locator("[data-vivic-command-feedback]").textContent())!;
+  expect(question).toContain("请回复几号");
+  const label = (await candidates.first().textContent())!;
+  await candidates.first().click();
+  await expect(page.locator("[data-vivic-command-feedback]")).toContainText("可撤销");
+  const log = page.locator("[data-vivic-chat-log]");
+  await expect(log.locator("[data-vivic-chat-user]").last()).toHaveText(label);
+  await expect(log.locator(".vivic-bubble-assistant").filter({ hasText: question })).toHaveCount(1);
+  await expect(page.locator("[data-vivic-clarify]")).toHaveCount(0);
+  await added("加待办：第三项");
+  await sendCommand(page, "删除那个卡片");
+  await expect(candidates).toHaveCount(2);
+  await page.locator("[data-vivic-clarify]").getByRole("button", { name: "取消", exact: true }).click();
+  await expect(log.locator("[data-vivic-chat-user]").last()).toHaveText("取消");
+  await expect(page.locator("[data-vivic-command-feedback]")).toHaveText("已取消选择");
+});
+
 test("a palette choice changes the shared 流光以太 background on Display, user page and settings at once", async ({ page, context }, info) => {
   await page.goto("/control");
   await expect(root(page)).toHaveAttribute("data-vivic-owner", "owner");

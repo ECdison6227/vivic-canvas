@@ -512,6 +512,17 @@ export const ControlApp = () => {
     [host, applyResult, cancelPending, clarify, pickClarify, setFeedback, startTurn],
   );
 
+  // A tapped choice is the user's answer, so the question keeps its own bubble.
+  const answerClarify = useCallback((candidate: ResolvedCard) => {
+    const index = clarify?.candidates.findIndex(item => item.card.id === candidate.card.id) ?? -1;
+    if (index >= 0) startTurn(`${index + 1}号 · ${candidate.label}`, false);
+    pickClarify(candidate);
+  }, [clarify, pickClarify, startTurn]);
+  const dismissClarify = useCallback(() => {
+    if (!host) return;
+    startTurn("取消", false);
+    setClarify(null); host.setTargetChoice(null); setFeedback("已取消选择");
+  }, [host, setFeedback, startTurn]);
 
   if (!host) {
     return (
@@ -531,8 +542,8 @@ export const ControlApp = () => {
       feedback={feedback}
       suggestions={suggestions}
       onSubmit={submitCommand}
-      onPickClarify={pickClarify}
-      onCancelClarify={() => { setClarify(null); host.setTargetChoice(null); setFeedback("已取消选择"); }}
+      onPickClarify={answerClarify}
+      onCancelClarify={dismissClarify}
       backendOnline={backendOnline}
       onBackendChange={setBackendOnline}
       busy={busy}
