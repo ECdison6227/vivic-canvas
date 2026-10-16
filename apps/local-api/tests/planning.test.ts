@@ -184,7 +184,8 @@ describe("generic planner compatibility and execution validation", () => {
   ])("rejects fabricated or unrendered $type data even when contract-valid", async (fields) => {
     const { deps } = setup(() => chatOk({ actions: [{ type: "card.create", card: { ...note(), ...fields } }] }));
     expect((await runIntent({ text: "查资料并生成信息卡", canvasContext: emptyContext() }, deps)).kind).toBe("clarify");
-    expect(buildSystemPrompt()).toContain("禁止创建或修改 WeatherCard、TableCard、ChartCard、SearchResultCard");
+    expect(buildSystemPrompt()).toContain("actions 中禁止创建或修改 WeatherCard、TableCard、SearchResultCard");
+    expect(buildSystemPrompt()).toContain("ChartCard 只能经场景卡片 data_visualization 用用户给出的数值生成");
   });
   it("fits multi-card generic batches instead of focusing each card", async () => {
     const { deps } = setup(() => chatOk({ actions: [{ type: "card.create", card: note("n1") }, { type: "card.focus", targetId: "n1" },

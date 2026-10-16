@@ -1,20 +1,31 @@
-import { CountdownSourceDataSchema, TodoCardSchema, NoteCardSchema, type Action } from "@vivic/contracts";
+import { CardRecordSchema, CountdownSourceDataSchema, SCENES, TodoCardSchema, NoteCardSchema, type Action } from "@vivic/contracts";
 import type { CanvasContext } from "../schemas.js";
 
 const CREATABLE = new Set(["CountdownCard", "TodoCard", "NoteCard"]);
-// Data cards are created by verified adapters, but all seven registered
-// renderers support safe focus/delete/highlight of an existing card.
-const TARGETABLE = new Set([...CREATABLE, "SearchResultCard", "WeatherCard", "TableCard", "ChartCard"]);
+/** Scene cards are only created through the scene builder (`cards`), never raw `actions`. */
+const SCENE_ONLY = new Set<string>(SCENES.map(scene => scene.cardType).filter(type => !CREATABLE.has(type) && type !== "ChartCard"));
+// Data cards are created by verified adapters, but every registered renderer
+// supports safe focus/delete/highlight of an existing card.
+const TARGETABLE = new Set([...CREATABLE, "SearchResultCard", "WeatherCard", "TableCard", "ChartCard", ...SCENE_ONLY]);
+/** Model edits re-validate the whole display schema; grounding is checked separately. */
+const UPDATABLE_SCENE = new Set([...SCENE_ONLY, "ChartCard"]);
+const displaySchemaOf = (type: string) => CardRecordSchema.options.find(option => option.shape.type.value === type)?.shape.displayProps;
 type Target = Pick<CanvasContext["cards"][number], "type" | "displayProps" | "sourceDataSummary">;
 
-/** Validate against the same sequential state the reducer will consume. */
-export const actionExecutionIssue = (actions: Action[], ctx: CanvasContext): string | null => {
+/** Validate against the same sequential state the reducer will consume. `prebuilt`
+ * holds ids of scene cards the server already built and validated this turn. */
+export const actionExecutionIssue = (actions: Action[], ctx: CanvasContext, prebuilt: ReadonlySet<string> = new Set()): string | null => {
   const targets = new Map<string, Target>(ctx.cards.map((c) => [c.id, c]));
   const usedIds = new Set(targets.keys());
   for (const action of actions) {
     if (action.type === "card.subcard.set" || action.type === "card.subcard.delete") return "子卡片请通过控制端编辑并校验原行";
-    if (action.type === "card.create") {
+    if (action.type === "card.create" && prebuilt.has(action.card.id)) {
+      if (usedIds.has(action.card.id)) return "新卡片 id 重复";
+      usedIds.add(action.card.id);
+      targets.set(action.card.id, { type: action.card.type, displayProps: action.card.displayProps, sourceDataSummary: action.card.sourceData });
+    } else if (action.type === "card.create") {
       const { card } = action;
+      if (SCENE_ONLY.has(card.type) || (card.type === "CountdownCard" && card.sourceData.event)) return "场景卡片必须通过 cards 输出 {scene_id, data}，不能在 actions 里直接创建";
       if (!CREATABLE.has(card.type)) return "尚未接入真实数据的卡片不能创建（Weather/Table/Chart/Search）";
       if (usedIds.has(card.id)) return "新卡片 id 重复";
       if (card.sources.length) return "没有联网数据源，不能虚构来源";
@@ -40,6 +51,13 @@ export const actionExecutionIssue = (actions: Action[], ctx: CanvasContext): str
             return "便笺展开/收起仅改变 variant，不能同时改写展示内容或原文";
           }
           // Density-only actions preserve displayProps and sourceData exactly, including full original text.
+          continue;
+        }
+        if (UPDATABLE_SCENE.has(target.type)) {
+          if (!action.displayProps || (action.sourceData && Object.keys(action.sourceData).length)) return "场景卡片只能更新 displayProps 字段";
+          const display = { ...target.displayProps, ...action.displayProps };
+          if (!displaySchemaOf(target.type)?.safeParse(display).success) return "更新字段不符合卡片类型";
+          targets.set(action.targetId, { ...target, displayProps: display });
           continue;
         }
         if (!CREATABLE.has(target.type)) return "尚未接入真实数据的卡片不能修改数据";
