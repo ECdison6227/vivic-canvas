@@ -4,7 +4,7 @@
  * injects the local session token) and reports which card type came back.
  * Uses the user's connected model plan, so run it deliberately, not in CI:
  *
- *   node apps/local-api/node_modules/tsx/dist/cli.mjs scripts/verify-scene-cards-live.ts http://127.0.0.1:5179 [--connect-gpt] [--only <scene_id>]
+ *   node apps/local-api/node_modules/tsx/dist/cli.mjs scripts/verify-scene-cards-live.ts http://127.0.0.1:5179 [--connect-gpt] [--only <scene_id>|no-card]
  *
  * Never prints credentials; writes a summary to evidence/scene-cards/.
  */
@@ -34,6 +34,7 @@ const canvasContext = { canvasId: "live-scene-check", stage: "WORKSPACE", viewpo
 const only = process.argv.includes("--only") ? process.argv[process.argv.indexOf("--only") + 1] : undefined;
 const cases = [...SCENE_CASES.map(item => ({ group: "scene", scene: item.scene, input: item.input })), ...CONFUSABLE_CASES.map(item => ({ group: "confusable", ...item }))]
   .filter(item => !only || item.scene === only);
+const noCardCases = !only || only === "no-card" ? NO_CARD_CASES : [];
 const results = [];
 for (const item of cases) {
   const started = Date.now();
@@ -49,7 +50,7 @@ for (const item of cases) {
   console.log(`${pass ? "PASS" : "MISS"} ${item.group.padEnd(10)} ${item.scene.padEnd(20)} → ${types.join(",") || result.kind} (${Date.now() - started} ms)`);
 }
 // Plain chat and evidence-less requests must not invent a card.
-for (const item of only ? [] : NO_CARD_CASES) {
+for (const item of noCardCases) {
   const started = Date.now();
   const result = await post("/api/intent", { text: item.input, canvasContext }).catch(error => ({ kind: "error", message: String(error) }) as Record<string, unknown>);
   const actions = ((result.envelope as { actions?: Array<{ type: string }> } | undefined)?.actions ?? []);

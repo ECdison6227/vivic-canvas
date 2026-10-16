@@ -13,14 +13,15 @@ import { DisplayApp } from "@/display/DisplayApp";
 const rawPath = window.location.pathname.replace(/\/+$/, "") || "/";
 const isDisplay = rawPath === "/display";
 const isPlayground = import.meta.env.DEV && rawPath === "/playground";
-const CardPlayground = lazy(() => import("@/dev/CardPlayground").then(module => ({ default: module.CardPlayground })));
+// Production builds drop the playground chunk entirely.
+const CardPlayground = import.meta.env.DEV ? lazy(() => import("@/dev/CardPlayground").then(module => ({ default: module.CardPlayground }))) : null;
 
 if (rawPath !== "/display" && rawPath !== "/control" && !isPlayground) {
   window.location.replace(`/control${window.location.search}`);
 }
 
 function App() {
-  if (isPlayground) return <Suspense fallback={null}><CardPlayground /></Suspense>;
+  if (isPlayground && CardPlayground) return <Suspense fallback={null}><CardPlayground /></Suspense>;
   return isDisplay ? <DisplayApp /> : <ControlApp />;
 }
 
