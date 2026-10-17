@@ -1,7 +1,7 @@
 import { CanvasView } from "@/canvas/CanvasView";
 import { useVivicState, useDisplayPreferences } from "@/state/canvasStore";
 import { BackgroundLayer } from "./BackgroundLayer";
-import { BlackVeil } from "./BlackVeil";
+import { AwakeningClock } from "./AwakeningClock";
 import { OrbLayer } from "./OrbLayer";
 import { SubtitleLayer } from "./SubtitleLayer";
 import { useResolvedTheme } from "./useResolvedTheme";
@@ -11,7 +11,7 @@ import { motion, useReducedMotion, MotionConfig } from "motion/react";
  * Display layering (bottom → top):
  * z-0  流光以太 atmosphere (independent, never transformed with the canvas)
  * z-10 React Flow canvas + cards
- * z-20 standby black veil / wake reveal mask
+ * (no veil: standby shows the same background as the user page)
  * z-30 SmoothUI Siri Orb
  * z-40 transient subtitle
  */
@@ -34,7 +34,7 @@ export const StageRoot = () => {
         animate={{ opacity: reminderAlert ? 1 : 0 }} transition={{ duration: reduced ? 0 : 0.6 }}
       />
       {stage === "WORKSPACE" && <CanvasView resolvedTheme={resolvedTheme} />}
-      <BlackVeil />
+      <AwakeningClock />
       <OrbLayer />
       <SubtitleLayer />
     </div></MotionConfig>

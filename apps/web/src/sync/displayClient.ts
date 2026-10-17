@@ -278,7 +278,8 @@ export const createDisplayClient = (
       if (!canInteract()) return null;
       const entry = store.getState().cards.find(c => c.record.id === cardId && !c.exitingRequestId && !c.record.layout.pinned);
       if (!entry) return null;
-      return { canvasId, ownerEpoch: epoch, version: version!, requestId: newId("drag"), cardId, from: { ...entry.record.layout } };
+      const { x, y, width, height, pinned } = entry.record.layout;
+      return { canvasId, ownerEpoch: epoch, version: version!, requestId: newId("drag"), cardId, from: { x, y, width, height, pinned } };
     },
     requestCardMove: (drag, x, y) => {
       if (!canInteract() || drag.canvasId !== canvasId || drag.ownerEpoch !== epoch ||
@@ -295,7 +296,7 @@ export const createDisplayClient = (
       if (!canInteract() || forCanvas !== canvasId || !CoordinateSchema.safeParse(x).success || !CoordinateSchema.safeParse(y).success) return false;
       const entry = store.getState().cards.find(c => c.record.id === cardId && !c.exitingRequestId);
       if (!entry || entry.record.layout.surface !== "user") return false;
-      const { surface: _surface, ...from } = entry.record.layout;
+      const { surface: _surface, userPos: _userPos, ...from } = entry.record.layout;
       deps.channel.post({ type: "interaction", canvasId, epoch: instanceId,
         version: version!, seq: 0, requestId: newId("dock"),
         payload: { ownerEpoch: epoch, interaction: { kind: "card.surface", cardId, from, surface: "display", x, y } } });

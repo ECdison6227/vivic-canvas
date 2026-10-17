@@ -76,6 +76,19 @@ describe("cards move between the Display canvas and the user page", () => {
     expect(client.requestCardToCanvas(canvasId, "a", 10, 10)).toBe(false);
   });
 
+  it("keeps the user-page drop point, moves it there, and forgets it when the card returns", async () => {
+    const { host, store, find } = await setup();
+    const canvasSpot = { x: find(store, "a").layout.x, y: find(store, "a").layout.y };
+    expect(host.setCardSurface("a", "user", { x: 420.4, y: 180 }).ok).toBe(true);
+    expect(find(store, "a").layout).toMatchObject({ surface: "user", userPos: { x: 420, y: 180 }, ...canvasSpot });
+    expect(host.setCardSurface("a", "user", { x: 60, y: 90 }).ok).toBe(true);
+    expect(find(store, "a").layout.userPos).toEqual({ x: 60, y: 90 });
+    expect(host.setCardSurface("a", "display", { x: 700, y: 40 }).ok).toBe(true);
+    expect(find(store, "a").layout).toMatchObject({ x: 700, y: 40 });
+    expect(find(store, "a").layout.userPos).toBeUndefined();
+    expect(find(store, "a").layout.surface).toBeUndefined();
+  });
+
   it("never dims the stage for a focus on a user-page card", async () => {
     const { host, store, canvasId } = await setup();
     host.setCardSurface("a", "user");

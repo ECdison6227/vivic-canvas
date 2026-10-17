@@ -538,9 +538,12 @@ export const createCanvasStore = (): CanvasStore => {
       state = withProcessed(state, requestId); emit();
       return { ok: true, deduplicated: false };
     }
-    const { surface: _previous, ...rest } = layout;
-    const nextLayout = action.surface === "user" ? { ...rest, surface: "user" as const }
-      : { ...rest, ...(action.x !== undefined && action.y !== undefined ? { x: action.x, y: action.y } : {}) };
+    // On the user page x/y is the drop point there (userPos); the canvas spot is kept.
+    // Back on the Display x/y is the canvas drop point and the page position is dropped.
+    const { surface: _previous, userPos, ...rest } = layout;
+    const point = action.x !== undefined && action.y !== undefined ? { x: action.x, y: action.y } : undefined;
+    const nextLayout = action.surface === "user" ? { ...rest, surface: "user" as const, ...(point ?? userPos ? { userPos: point ?? userPos } : {}) }
+      : { ...rest, ...(point ?? {}) };
     const candidate = CardRecordSchema.safeParse({ ...entry.record, layout: nextLayout,
       metadata: { ...entry.record.metadata, updatedAt: new Date().toISOString() } });
     if (!candidate.success) return { ok: false, error: "invalid-card" };

@@ -4,7 +4,7 @@
 
 ## 2026-10-17 场景识别与 20 种动态卡片
 
-用户要求实现场景识别与卡片渲染：模型只返回 `{"cards":[{scene_id, data}]}`，服务端核对证据（不编造数字/日期/链接/作者/图片）并按契约校验后生成卡片；20 个场景与 20 种卡片一一对应（`packages/contracts/src/scenes.ts`），复用并升级 CountdownCard（日期模式，不进提醒调度）、TodoCard、ChartCard，其余 17 种为新类型。卡片先出现在副屏，可拖到 Control 的“用户页卡片”区编辑，再拖回副屏松手处；用户页组件 `control/UserCardDock.tsx` 待新用户使用页合入后挂到新页面。开发版 `/playground` 可查看全部卡片。分支 `feature/scene-cards`，详见 [场景卡片](scene-cards-20261017.md)。
+用户要求实现场景识别与卡片渲染：模型只返回 `{"cards":[{scene_id, data}]}`，服务端核对证据（不编造数字/日期/链接/作者/图片）并按契约校验后生成卡片；20 个场景与 20 种卡片一一对应（`packages/contracts/src/scenes.ts`），复用并升级 CountdownCard（日期模式，不进提醒调度）、TodoCard、ChartCard，其余 17 种为新类型。卡片只在展示页出现并保留到用户要求删除；需要时拖到用户使用页任意位置操作（用户使用页不保留对话，只有输入框），再拖回展示页松手处。展示页待机不再黑屏，始终与用户使用页同一背景。开发版 `/playground` 可查看全部卡片。分支 `feature/scene-cards-v2`（基于 feature/user-page），详见 [场景卡片](scene-cards-20261017.md)。
 
 ## 2026-10-17 用户页、三页统一背景与配色设置
 

@@ -15,7 +15,7 @@ import type { ControlHost } from "@/sync/controlHost";
 import { AiSection } from "./AiSection";
 import { CanvasManager } from "./CanvasManager";
 import type { ClarifyState } from "./ChatComposer";
-import { ChatPage, type ChatTurn } from "./ChatPage";
+import { ChatPage } from "./ChatPage";
 import { BackgroundSettings } from "./BackgroundSettings";
 import { DataActions } from "./DataActions";
 import { RemindersSection } from "./RemindersSection";
@@ -38,7 +38,6 @@ import { useResolvedTheme } from "@/stage/useResolvedTheme";
 import { pathForView, viewForPath, type ControlView } from "./controlView";
 
 export const INTENT_TIMEOUT_MS = 100_000;
-const MAX_TURNS = 50;
 
 /** A non-action result must still reach Display after the thinking lease ends. */
 const publishFeedback = (host: ControlHost, text: string) => {
@@ -64,20 +63,13 @@ export const ControlApp = () => {
   const [host, setHost] = useState<ControlHost | null>(null);
   const [clarify, setClarify] = useState<ClarifyState | null>(null);
   const [feedback, setFeedbackState] = useState<string | null>(null);
-  // The ref mirrors feedback synchronously so a new turn can freeze the previous reply.
+  // The ref mirrors feedback synchronously for updaters that read the previous line.
   const feedbackRef = useRef<string | null>(null);
   const setFeedback = useCallback((next: string | null | ((prev: string | null) => string | null)) => {
     const value = typeof next === "function" ? next(feedbackRef.current) : next;
     feedbackRef.current = value;
     setFeedbackState(value);
   }, []);
-  const [turns, setTurns] = useState<ChatTurn[]>([]);
-  const startTurn = useCallback((text: string, image: boolean) => {
-    const reply = feedbackRef.current;
-    setTurns(prev => [...prev.slice(0, -1), ...prev.slice(-1).map(turn => ({ ...turn, reply })),
-      { id: newId("turn"), text, image, reply: null }].slice(-MAX_TURNS));
-    setFeedback(null);
-  }, [setFeedback]);
   const [view, setView] = useState<ControlView>(() => viewForPath(window.location.pathname));
   useEffect(() => {
     const sync = () => setView(viewForPath(window.location.pathname));
@@ -363,9 +355,9 @@ export const ControlApp = () => {
       if (!snap.activeCanvasId || snap.ownerMode !== "owner") return;
       armReminderSound();
       const trimmed = text.trim();
-      // A request still running is answered "已取消" in its own turn before this one starts.
+      // A request still running is cancelled before this one starts; the page keeps no history.
       if (pending.current) cancelPending();
-      startTurn(trimmed, Boolean(attachments?.length));
+      setFeedback(null);
       if (clarify && !attachments?.length) {
         const number = choiceNumber(trimmed);
         if (number !== null) {
@@ -509,20 +501,13 @@ export const ControlApp = () => {
         }
       })();
     },
-    [host, applyResult, cancelPending, clarify, pickClarify, setFeedback, startTurn],
+    [host, applyResult, cancelPending, clarify, pickClarify, setFeedback],
   );
 
-  // A tapped choice is the user's answer, so the question keeps its own bubble.
-  const answerClarify = useCallback((candidate: ResolvedCard) => {
-    const index = clarify?.candidates.findIndex(item => item.card.id === candidate.card.id) ?? -1;
-    if (index >= 0) startTurn(`${index + 1}号 · ${candidate.label}`, false);
-    pickClarify(candidate);
-  }, [clarify, pickClarify, startTurn]);
   const dismissClarify = useCallback(() => {
     if (!host) return;
-    startTurn("取消", false);
     setClarify(null); host.setTargetChoice(null); setFeedback("已取消选择");
-  }, [host, setFeedback, startTurn]);
+  }, [host, setFeedback]);
 
   if (!host) {
     return (
@@ -537,12 +522,11 @@ export const ControlApp = () => {
       host={host}
       view={view}
       onNavigate={navigate}
-      turns={turns}
       clarify={clarify}
       feedback={feedback}
       suggestions={suggestions}
       onSubmit={submitCommand}
-      onPickClarify={answerClarify}
+      onPickClarify={pickClarify}
       onCancelClarify={dismissClarify}
       backendOnline={backendOnline}
       onBackendChange={setBackendOnline}
@@ -556,7 +540,6 @@ interface ShellProps {
   host: ControlHost;
   view: ControlView;
   onNavigate: (view: ControlView) => void;
-  turns: ChatTurn[];
   clarify: ClarifyState | null;
   feedback: string | null;
   suggestions: string[];
@@ -611,7 +594,8 @@ const ControlShell = (props: ShellProps) => {
 
       <ChatPage
         hidden={props.view !== "chat"}
-        turns={props.turns}
+        host={props.host}
+        theme={theme}
         feedback={props.feedback}
         notice={props.view === "chat" ? readonlyNotice : null}
         onOpenSettings={() => props.onNavigate("settings")}

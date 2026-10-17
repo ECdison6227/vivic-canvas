@@ -3,7 +3,7 @@ import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { activeCanvasId, controlDispatch, gotoControl, gotoDisplay, sendCommand } from "./helpers1";
+import { activeCanvasId, controlDispatch, gotoControl, gotoDisplay, sendCommand, showChat } from "./helpers1";
 
 /**
  * Scene cards end to end, in an isolated TEST browser context:
@@ -147,8 +147,9 @@ test("all 20 scene cards render on the Display and survive reloads of both windo
   expect(new Set(restored).size).toBe(20);
 });
 
-test("drag Display → user page, edit there, drag back to the drop point; state persists", async ({ context }) => {
+test("drag Display → user page drop point, move it there, edit, drag back to the stage drop point; state persists", async ({ context }) => {
   const control = await gotoControl(context);
+  await showChat(control);
   const canvasId = await activeCanvasId(control);
   const fixtures = await loadFixtures(control);
   const todo = fixtures.find(card => card.type === "TodoCard")!;
@@ -157,12 +158,21 @@ test("drag Display → user page, edit there, drag back to the drop point; state
   const display = await gotoDisplay(context, canvasId);
   await expect(displayCard(display, todo.id)).toBeVisible({ timeout: 10_000 });
 
-  // Display → user page.
+  // Display → user page, landing where it was dropped (the page is otherwise empty).
+  await expect(control.locator("[data-vivic-user-card]")).toHaveCount(0);
   const data = await dragFrom(display, `[data-vivic-move-handle="${todo.id}"]`);
   expect(data.map(([type]) => type)).toContain("application/x-vivic-card-from-display");
-  await dropOn(control, "[data-vivic-user-dock]", data);
+  await dropOn(control, "[data-vivic-chat]", data, { x: 520, y: 240 });
   const docked = control.locator(`[data-vivic-user-card="${todo.id}"]`);
   await expect(docked).toBeVisible();
+  // The point where the card was grabbed on the Display sits under the drop point.
+  const grab = JSON.parse(data.find(([type]) => type.endsWith("from-display"))![1]) as { grabX: number; grabY: number };
+  const landed = (await docked.boundingBox())!;
+  expect(Math.abs(landed.x - (520 - grab.grabX))).toBeLessThanOrEqual(2);
+  expect(Math.abs(landed.y - (240 - grab.grabY))).toBeLessThanOrEqual(2);
+  // Drag it to another spot on the same page.
+  await dropOn(control, "[data-vivic-chat]", await dragFrom(control, `[data-vivic-user-handle="${todo.id}"]`), { x: 160, y: 140 });
+  await expect.poll(async () => Math.round((await docked.boundingBox())!.x)).toBeLessThan(300);
   await expect(displayCard(display, todo.id)).toHaveCount(0);
   await expect(displayCard(display, ring.id)).toBeVisible();
 
@@ -172,7 +182,7 @@ test("drag Display → user page, edit there, drag back to the drop point; state
   await docked.locator('input[aria-label="添加待办"]').fill("整理照片");
   await docked.locator('input[aria-label="添加待办"]').press("Enter");
   await expect(docked.locator("[data-vivic-todo-progress]")).toHaveText("3/5");
-  await control.screenshot({ path: path.join(EVIDENCE, "user-page-dock.png"), fullPage: true });
+  await control.screenshot({ path: path.join(EVIDENCE, "user-page-cards.png") });
 
   // User page → Display, dropped at a chosen point on the stage.
   const back = await dragFrom(control, `[data-vivic-user-handle="${todo.id}"]`);
@@ -187,12 +197,15 @@ test("drag Display → user page, edit there, drag back to the drop point; state
   await expect(displayCard(display, todo.id).locator("[data-vivic-todo-progress]")).toHaveText("3/5");
 
   // Button path and persistence after a reload of both windows.
-  await dropOn(control, "[data-vivic-user-dock]", await dragFrom(display, `[data-vivic-move-handle="${ring.id}"]`));
+  await dropOn(control, "[data-vivic-chat]", await dragFrom(display, `[data-vivic-move-handle="${ring.id}"]`), { x: 700, y: 180 });
   await control.reload();
   await control.waitForSelector('[data-vivic-control="ready"]');
+  await showChat(control);
   await expect(control.locator(`[data-vivic-user-card="${ring.id}"]`)).toBeVisible();
+  await control.locator(`[data-vivic-user-card="${ring.id}"]`).hover();
   await control.locator(`[data-vivic-user-card="${ring.id}"] button[aria-label^="增加"]`).click();
   await expect(control.locator(`[data-vivic-user-card="${ring.id}"] [data-progress-values]`)).toContainText("19 / 50");
+  await control.locator(`[data-vivic-user-card="${ring.id}"]`).hover();
   await control.locator(`[data-vivic-send-display="${ring.id}"]`).click();
   await display.reload();
   await expect(displayCard(display, ring.id)).toBeVisible({ timeout: 10_000 });
@@ -200,16 +213,24 @@ test("drag Display → user page, edit there, drag back to the drop point; state
   await display.screenshot({ path: path.join(EVIDENCE, "display-after-return.png") });
 });
 
-test("the user page stays usable on a phone-width screen", async ({ browser }) => {
+test("cards placed on the user page stay reachable on a phone-width screen", async ({ browser }) => {
   const context = await browser.newContext({ viewport: { width: 375, height: 812 }, deviceScaleFactor: 2, timezoneId: ZONE });
   const control = await gotoControl(context);
+  await showChat(control);
   const canvasId = await activeCanvasId(control);
   const fixtures = await loadFixtures(control);
   const picks = ["WeeklyScheduleCard", "ComparisonCard", "GalleryCard"].map(type => fixtures.find(card => card.type === type)!);
-  await controlDispatch(control, "scene-mobile", canvasId, picks.map(card => ({ type: "card.create", card: { ...card, layout: { ...(card.layout as object), surface: "user" } } })));
-  for (const card of picks) await expect(control.locator(`[data-vivic-user-card="${card.id}"]`)).toBeVisible();
+  // Positions saved on a wide screen are clamped into a narrow one.
+  await controlDispatch(control, "scene-mobile", canvasId, picks.map((card, index) => ({ type: "card.create", card: { ...card,
+    layout: { ...(card.layout as object), surface: "user", userPos: { x: 900 + index * 40, y: 200 + index * 120 } } } })));
+  for (const card of picks) {
+    const box = (await control.locator(`[data-vivic-user-card="${card.id}"]`).boundingBox())!;
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(376);
+  }
   const overflow = await control.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);
-  await control.locator("[data-vivic-user-dock]").screenshot({ path: path.join(EVIDENCE, "user-page-mobile.png") });
+  await expect(control.locator("[data-vivic-command-input]")).toBeVisible();
+  await control.screenshot({ path: path.join(EVIDENCE, "user-page-mobile.png") });
   await context.close();
 });

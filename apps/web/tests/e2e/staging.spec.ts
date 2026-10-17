@@ -9,12 +9,15 @@ import {
   setTheme,
 } from "./helpers";
 
-test("A02: standby is pure black with only the orb — no text anywhere", async ({
+test("A02: standby shows the user page's background with only the orb — no veil, no text", async ({
   page,
 }) => {
   await page.goto("/display");
   await page.waitForSelector(".siri-orb");
   await page.waitForTimeout(1200);
+  // Same 流光以太 background as the user page from the very first frame.
+  await expect(page.locator('[data-vivic-layer="background"]')).toBeVisible();
+  await expect(page.locator('[data-vivic-layer="veil"]')).toHaveCount(0);
   const visibleText = await page.evaluate(() =>
     document.body.innerText.trim(),
   );
@@ -26,14 +29,15 @@ test("A02: standby is pure black with only the orb — no text anywhere", async 
   await page.screenshot({ path: path.join(EVIDENCE, "standby-orb.png") });
 });
 
-test("A03: awaken reveal is a continuous mask, workspace follows", async ({
+test("A03: awakening keeps the same background, workspace follows", async ({
   page,
 }) => {
   await page.goto("/display");
   await page.waitForSelector(".siri-orb");
   await fire(page, "awaken", [{ type: "stage.awaken" }]);
-  // Mid-reveal: the veil mask is animating, orb still visible.
+  // Mid-awakening: still the shared background, no black layer anywhere.
   await page.waitForTimeout(420);
+  await expect(page.locator('[data-vivic-layer="veil"]')).toHaveCount(0);
   await expect(page.locator('[data-vivic-stage]')).toHaveAttribute(
     "data-vivic-stage",
     "AWAKENING",
@@ -63,17 +67,15 @@ test("A05/A07: workspace light + dark with three minimal cards", async ({
   await page.screenshot({ path: path.join(EVIDENCE, "workspace-dark.png") });
 });
 
-test("A08: prefers-reduced-motion gets a calm cross-fade, no reveal mask", async ({
+test("A08: prefers-reduced-motion reaches the workspace without any mask", async ({
   page,
 }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/display");
   await page.waitForSelector(".siri-orb");
   await fire(page, "awaken", [{ type: "stage.awaken" }]);
-  // Reduced-motion path: veil cross-fades, never animates the circular mask.
-  const veil = page.locator('[data-vivic-layer="veil"]');
-  expect(await veil.getAttribute("data-awaken-reveal")).toBeNull();
-  await expect(veil).not.toHaveCSS("mask-image", /radial-gradient/);
+  // Reduced-motion path: no veil and no circular mask at all.
+  await expect(page.locator('[data-vivic-layer="veil"]')).toHaveCount(0);
   await page.waitForSelector('[data-vivic-stage="WORKSPACE"]', {
     timeout: 6000,
   });

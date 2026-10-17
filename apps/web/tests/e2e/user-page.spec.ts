@@ -13,10 +13,13 @@ test.beforeEach(async ({ context }) => {
 const root = (page: Page) => page.locator("[data-vivic-control]");
 const atmosphere = (page: Page) => page.locator("[data-vivic-atmosphere]");
 
-test("user page is only settings, avatar, conversation and one text/voice input; settings keeps the rest", async ({ page }, info) => {
+test("user page is only settings, avatar and one text/voice input over the background; settings keeps the rest", async ({ page }, info) => {
   await page.goto("/");
   await expect(root(page)).toHaveAttribute("data-vivic-owner", "owner");
   await expect(root(page)).toHaveAttribute("data-vivic-view", "chat");
+  // No conversation, welcome bubble or card list: the rest of the page is background.
+  await expect(page.locator("[data-vivic-chat-log], .vivic-bubble, [data-vivic-user-card]")).toHaveCount(0);
+  await expect(page.locator("[data-vivic-command-feedback]")).toBeHidden();
   const settings = page.getByRole("button", { name: "设置", exact: true });
   const avatar = page.getByRole("img", { name: "我的头像" });
   const viewport = page.viewportSize()!;
@@ -52,11 +55,10 @@ test("user page is only settings, avatar, conversation and one text/voice input;
   await expect(page).toHaveURL(/\/$/);
 });
 
-test("each sent message keeps its own reply, and drafts survive a trip to settings", async ({ page, context }) => {
+test("the user page keeps no history: one status line per command, and drafts survive a trip to settings", async ({ page, context }) => {
   await page.goto("/");
   await expect(root(page)).toHaveAttribute("data-vivic-owner", "owner");
   const feedback = page.locator("[data-vivic-command-feedback]");
-  await expect(feedback).toContainText("你好，我是 Vivic");
   const display = await context.newPage(); await display.goto(`/display?canvasId=${await activeCanvasId(page)}`);
   await sendCommand(page, "十分钟倒计时");
   await expect(feedback).toHaveText("10分倒计时已就位");
@@ -68,14 +70,14 @@ test("each sent message keeps its own reply, and drafts survive a trip to settin
   await expect(page.locator("[data-vivic-command-input]")).toHaveValue("TEST 尚未发送的草稿");
   await sendCommand(page, "加待办：买菜");
   await expect(feedback).toHaveText("已记下 1 条待办");
-  const log = page.locator("[data-vivic-chat-log]");
-  await expect(log.locator("[data-vivic-chat-user]")).toHaveText(["十分钟倒计时", "加待办：买菜"]);
-  await expect(log.locator(".vivic-bubble-assistant").first()).toHaveText("10分倒计时已就位");
+  // Only the latest status is shown; earlier commands and replies are not kept.
+  await expect(page.getByText("10分倒计时已就位")).toHaveCount(0);
+  await expect(page.locator(".vivic-bubble")).toHaveCount(0);
   await expect(display.locator(".vivic-card")).toHaveCount(2);
   await display.close();
 });
 
-test("tapping a numbered choice answers the question as the user, keeping the question in the log", async ({ page }) => {
+test("a numbered choice can be tapped or cancelled from the input area", async ({ page }) => {
   await page.goto("/");
   await expect(root(page)).toHaveAttribute("data-vivic-owner", "owner");
   const added = async (text: string) => { await sendCommand(page, text); await expect(page.locator("[data-vivic-command-feedback]")).toHaveText("已记下 1 条待办"); };
@@ -86,18 +88,13 @@ test("tapping a numbered choice answers the question as the user, keeping the qu
   await expect(candidates).toHaveCount(2);
   const question = (await page.locator("[data-vivic-command-feedback]").textContent())!;
   expect(question).toContain("请回复几号");
-  const label = (await candidates.first().textContent())!;
   await candidates.first().click();
   await expect(page.locator("[data-vivic-command-feedback]")).toContainText("可撤销");
-  const log = page.locator("[data-vivic-chat-log]");
-  await expect(log.locator("[data-vivic-chat-user]").last()).toHaveText(label);
-  await expect(log.locator(".vivic-bubble-assistant").filter({ hasText: question })).toHaveCount(1);
   await expect(page.locator("[data-vivic-clarify]")).toHaveCount(0);
   await added("加待办：第三项");
   await sendCommand(page, "删除那个卡片");
   await expect(candidates).toHaveCount(2);
   await page.locator("[data-vivic-clarify]").getByRole("button", { name: "取消", exact: true }).click();
-  await expect(log.locator("[data-vivic-chat-user]").last()).toHaveText("取消");
   await expect(page.locator("[data-vivic-command-feedback]")).toHaveText("已取消选择");
 });
 

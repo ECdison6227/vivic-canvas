@@ -85,7 +85,7 @@ export interface ControlHost {
   setCardPinned: (cardId: string, pinned: boolean, canvasId?: string) => DispatchResult;
   moveCard: (cardId: string, x: number, y: number, canvasId?: string) => DispatchResult;
   /** Move a card to the user page, or back onto the Display canvas (auto-placed). */
-  setCardSurface: (cardId: string, surface: CardSurface, canvasId?: string) => DispatchResult;
+  setCardSurface: (cardId: string, surface: CardSurface, position?: { x: number; y: number }, canvasId?: string) => DispatchResult;
   setPreferences: (patch: Partial<DisplayPreferences>) => DispatchResult;
   arrangeCanvas: () => DispatchResult;
   setActivity: (requestId: string, activity: VivicState["activity"]) => void;
@@ -400,7 +400,7 @@ export const createControlHost = (deps: ControlHostDeps): ControlHost => {
     if (!writable()) return { ok: false, error: "readonly-not-owner" };
     const card = canvasId === activeCanvasId ? store.getState().cards.find(c => c.record.id === cardId)?.record : records.get(canvasId)?.cardsById[cardId];
     if (!card) return { ok: false, error: "missing-card" };
-    const { surface: _surface, ...from } = card.layout;
+    const { surface: _surface, userPos: _userPos, ...from } = card.layout;
     return applyInteraction(canvasId, newId("interaction"), { ...change, cardId, from } satisfies CanvasInteraction);
   };
   const setPreferences: ControlHost["setPreferences"] = patch => {
@@ -942,7 +942,8 @@ export const createControlHost = (deps: ControlHostDeps): ControlHost => {
     dispatch,
     setCardPinned: (cardId, pinned, canvasId) => localInteraction(cardId, { kind: "card.pin", pinned }, canvasId),
     moveCard: (cardId, x, y, canvasId) => localInteraction(cardId, { kind: "card.move", x, y }, canvasId),
-    setCardSurface: (cardId, surface, canvasId) => localInteraction(cardId, { kind: "card.surface", surface }, canvasId),
+    setCardSurface: (cardId, surface, position, canvasId) => localInteraction(cardId, { kind: "card.surface", surface,
+      ...(position ? { x: Math.round(position.x), y: Math.round(position.y) } : {}) }, canvasId),
     setPreferences,
     arrangeCanvas,
     setActivity,

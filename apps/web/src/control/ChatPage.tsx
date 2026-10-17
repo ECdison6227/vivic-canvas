@@ -1,17 +1,15 @@
-import { Fragment, useEffect, useRef, type ReactNode } from "react";
-import { ImageIcon, Settings, UserRound } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
+import { Settings, UserRound } from "lucide-react";
 import type { ResolvedCard } from "@/commands/references";
 import type { Attachment } from "@/ai/attachments";
+import type { ControlHost } from "@/sync/controlHost";
 import { ChatComposer, type ClarifyState } from "./ChatComposer";
-
-/** One sent message; `reply` is frozen once the next message starts, the last one shows live feedback. */
-export interface ChatTurn { id: string; text: string; image: boolean; reply: string | null }
-
-export const CHAT_WELCOME = "你好，我是 Vivic。打字或按住麦克风说话就能操作画布，例如“十分钟倒计时”“加待办：买菜；回邮件”“上海天气”。";
+import { UserCardLayer, useUserPageDrop } from "./UserCardLayer";
 
 interface ChatPageProps {
   hidden: boolean;
-  turns: ChatTurn[];
+  host: ControlHost;
+  theme: "light" | "dark";
   feedback: string | null;
   notice?: ReactNode;
   disabled: boolean;
@@ -28,17 +26,30 @@ interface ChatPageProps {
   onOpenSettings: () => void;
 }
 
-/** 用户使用页: deliberately simple — settings (top left), avatar (top right), the conversation and one input. */
-export const ChatPage = ({ hidden, turns, feedback, notice, onOpenSettings, ...composer }: ChatPageProps) => {
-  const scroller = useRef<HTMLDivElement>(null);
-  const live = feedback ?? (turns.length === 0 ? CHAT_WELCOME : "");
+const STATUS_VISIBLE_MS = 6000;
+
+/**
+ * 用户使用页: the shared background, settings (top left), avatar (top right)
+ * and one text/voice input. No conversation is kept — results appear on the
+ * Display. Cards the user drags in from the Display float where they land.
+ */
+export const ChatPage = ({ hidden, host, theme, feedback, notice, onOpenSettings, ...composer }: ChatPageProps) => {
+  const drop = useUserPageDrop(host);
+  // One transient status line (progress, a question, an error), never a log.
+  const [fresh, setFresh] = useState(false);
+  const sticky = composer.busy || Boolean(composer.clarify);
   useEffect(() => {
-    const el = scroller.current;
-    if (el && !hidden) el.scrollTop = el.scrollHeight;
-  }, [hidden, turns.length, live, composer.busy]);
+    // Reveal each new status, then let it fade; the text stays for assistive tech.
+    // oxlint-disable-next-line react/set-state-in-effect
+    setFresh(Boolean(feedback));
+    if (!feedback) return;
+    const timer = setTimeout(() => setFresh(false), STATUS_VISIBLE_MS);
+    return () => clearTimeout(timer);
+  }, [feedback]);
 
   return (
-    <div className="vivic-chat" hidden={hidden} data-vivic-chat>
+    <div className="vivic-chat" hidden={hidden} data-vivic-chat {...drop.handlers}>
+      <UserCardLayer host={host} theme={theme} layerRef={drop.layerRef} receiving={drop.receiving} notice={drop.notice} onNotice={drop.setNotice} />
       <header className="vivic-chat-header">
         <button type="button" className="vivic-round-button" onClick={onOpenSettings}
           aria-label="设置" title="设置" data-vivic-open-settings>
@@ -49,21 +60,10 @@ export const ChatPage = ({ hidden, turns, feedback, notice, onOpenSettings, ...c
           <UserRound className="h-5 w-5" aria-hidden="true" />
         </span>
       </header>
-      <div className="vivic-chat-scroll" ref={scroller}>
-        <div className="vivic-chat-column" data-vivic-chat-log>
-          {turns.map((turn, index) => <Fragment key={turn.id}>
-            <div className="vivic-bubble vivic-bubble-user" data-vivic-chat-user>
-              {turn.image && <span className="vivic-bubble-tag"><ImageIcon className="h-3.5 w-3.5" aria-hidden="true" />图片</span>}
-              {turn.text}
-            </div>
-            {index < turns.length - 1 && turn.reply && <div className="vivic-bubble vivic-bubble-assistant">{turn.reply}</div>}
-          </Fragment>)}
-          {composer.busy && !feedback && <div className="vivic-bubble vivic-bubble-assistant vivic-typing" aria-hidden="true"><span /><span /><span /></div>}
-          <p className="vivic-bubble vivic-bubble-assistant" role="status" aria-live="polite" aria-busy={composer.busy}
-            hidden={!live} data-vivic-command-feedback>{live}</p>
-        </div>
-      </div>
+      <div className="vivic-chat-space" />
       <div className="vivic-chat-footer">
+        <p className="vivic-chat-status" role="status" aria-live="polite" aria-busy={composer.busy}
+          hidden={!feedback} data-visible={(fresh || sticky) || undefined} data-vivic-command-feedback>{feedback}</p>
         <ChatComposer {...composer} />
       </div>
     </div>

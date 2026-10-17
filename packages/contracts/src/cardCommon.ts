@@ -34,6 +34,8 @@ export const LayoutSchema = z.strictObject({
   pinned: z.boolean(),
   /** Absent on every record written before the user page existed; means "display". */
   surface: CardSurfaceSchema.optional(),
+  /** Where the user dropped the card on the user page (page pixels); x/y stay its canvas spot. */
+  userPos: z.strictObject({ x: z.number().finite().min(-100000).max(100000), y: z.number().finite().min(-100000).max(100000) }).optional(),
 });
 
 export const MetadataSchema = z.strictObject({

@@ -17,7 +17,7 @@ vi.mock("@xyflow/react", () => ({
 vi.mock("@/cards/VivicCard", () => ({ VivicCard: () => null }));
 vi.mock("@/sync/browserRuntime", () => ({ beginCanvasDrag: vi.fn(), commitCanvasDrag: vi.fn() }));
 vi.mock("../BackgroundLayer", () => ({ BackgroundLayer: ({ theme }: { theme: string }) => <div data-test-background-theme={theme} /> }));
-vi.mock("../BlackVeil", () => ({ BlackVeil: () => null }));
+vi.mock("../AwakeningClock", () => ({ AwakeningClock: () => null }));
 vi.mock("../OrbLayer", () => ({ OrbLayer: () => null }));
 vi.mock("../SubtitleLayer", () => ({ SubtitleLayer: () => null }));
 vi.mock("motion/react", () => ({
