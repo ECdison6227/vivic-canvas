@@ -4,7 +4,9 @@
 
 ## 2026-10-17 内测落地页 `/landing/`
 
-用户提供的落地页原样接入为 Vite 第二个 HTML 入口 `apps/web/landing/index.html`（不经 React，构建产出 `dist/landing/index.html`；`/landing` 自动补斜杠）。为演示，「申请内测」只做浏览器邮箱格式校验：任一合法邮箱即提示已成为内测用户并跳转用户页 `/`，不发请求、不保存邮箱（原 `/api/waitlist` 调用已移除）；结尾「进入 VIVIC」同页打开 `/`。用户页本身不设门槛。检查见 `tests/e2e/landing.spec.ts`。
+落地页已按用户要求参照 Hark 官网重做为 Vite 第二个入口的 React 页面（`apps/web/landing/index.html` → `src/landing/`），不再是静态 HTML：分屏首屏（左侧「展示窗口」逐句打字→Orb 思考→真实卡片出现→字幕回复，右侧 wordmark 与内测表单）、20 种场景卡片的 3D 弧形轮播（可拖动/暂停）、用户页与展示窗口双窗口流程、五个左右交替的「流光以太」舞台演示（对话出卡、提醒与日期、生成前核对、可直接操作的用户页卡片、12 种背景配色）、逐字上墨的大标语和结尾 CTA。卡片、SiriOrb、AtmosphereBackground 均为产品原组件，示例数据见 `src/landing/demoCards.ts`（单测按 CardRecordSchema 校验）；示例照片沿用 playground 的 Unsplash 远程图，离线时显示卡片自带占位。演示只在可见时播放，尊重减少动态效果；不调用 API、不录音、不保存任何修改。「申请内测」行为不变：任一合法邮箱即提示成功并进入 `/`，不发请求、不保存邮箱。检查见 `tests/e2e/landing.spec.ts`。
+
+单文件版本：`cd apps/web && VITE_LANDING_APP_URL=http://localhost:5175/ LANDING_SINGLE=1 vite build --config vite.landing.config.ts && node scripts/inline-landing.mjs`，产出 `dist-landing-single/vivic-landing.html`（约 3.5 MB，gzip 约 1.1 MB，可直接双击打开）。该文件已部署到 https://edsionc.top/vivic/（服务器 `/var/www/vivic/index.html`，nginx `00-edsionc.conf` 的 `BEGIN/END VIVIC LANDING` 段）；部署版没有同源 Vivic，故「进入 VIVIC」与报名成功都打开本机 `http://localhost:5175/`。
 
 ## 2026-10-17 场景识别与 20 种动态卡片
 

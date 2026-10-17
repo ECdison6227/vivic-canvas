@@ -8,7 +8,7 @@ import { DisplayApp } from "@/display/DisplayApp";
  *   /control     -> settings (same owner window as `/`, switched in place)
  *   /display     -> read-only stage; ?canvasId= pins a canvas
  *   /playground  -> dev builds only: Card Playground with sample data
- *   /landing/    -> static beta landing (landing/index.html, not React); its signup opens /
+ *   /landing/    -> beta landing (landing/index.html -> src/landing/, separate entry); its signup opens /
  *   (unknown)    -> /
  */
 const rawPath = window.location.pathname.replace(/\/+$/, "") || "/";

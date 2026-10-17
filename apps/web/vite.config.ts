@@ -34,7 +34,7 @@ export default defineConfig({
   },
   build: {
     rolldownOptions: {
-      // Second static page: the beta landing at /landing/ (plain HTML, no React).
+      // Second page: the beta landing at /landing/ (its own React entry, src/landing/).
       input: {
         main: path.resolve(__dirname, "index.html"),
         landing: path.resolve(__dirname, "landing/index.html"),
