@@ -31,6 +31,14 @@ test("landing: any valid email is accepted as a beta user and opens the user pag
   expect(posts.filter(url => url.includes("waitlist"))).toEqual([]);
 });
 
+test("landing: any path under /landing (bare, or a link with trailing punctuation) shows the landing, not the user page", async ({ page }) => {
+  for (const path of ["/landing", "/landing/**", "/landing/%EF%BC%89"]) {
+    await page.goto(path);
+    await page.waitForURL(url => url.pathname === "/landing/");
+    await expect(page.locator("#betaEmail")).toBeVisible();
+  }
+});
+
 test("landing: the closing link opens the user page in the same tab", async ({ page }) => {
   await page.goto("/landing/");
   await page.locator(".closing .local-link").click();

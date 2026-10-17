@@ -17,8 +17,9 @@ const isPlayground = import.meta.env.DEV && rawPath === "/playground";
 // Production builds drop the playground chunk entirely.
 const CardPlayground = import.meta.env.DEV ? lazy(() => import("@/dev/CardPlayground").then(module => ({ default: module.CardPlayground }))) : null;
 
-if (window.location.pathname === "/landing") {
-  // The landing is its own HTML entry; only the trailing-slash URL resolves to it.
+if (/^\/landing(?:\/|$)/.test(window.location.pathname) && window.location.pathname !== "/landing/") {
+  // The landing is its own HTML entry; only /landing/ resolves to it. Any other
+  // path under it (/landing, or a pasted link with trailing punctuation) lands there too.
   window.location.replace(`/landing/${window.location.search}${window.location.hash}`);
 } else if (rawPath !== "/display" && rawPath !== "/control" && rawPath !== "/" && !isPlayground) {
   window.location.replace(`/${window.location.search}`);
