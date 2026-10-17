@@ -10,7 +10,7 @@
 | `time-and-reminders.jpg` | 时间与提醒 `#time` |
 | `editable-cards.jpg` | 卡片编辑演示 `#hands` |
 | `ambience.jpg` | 背景与配色 `#ambience` |
-| `community.jpg` | 联系我们 `#contact` |
+| `community.jpg` | 联系我们 `#contact`：小红书、微信、官网和麦当劳 MCP 仓库四个二维码 |
 | `wechat-group.png` | 官网原始图片：`https://edsionc.top/vivic/contact/wechat-group.png` |
 | `xiaohongshu-group.png` | 官网原始图片：`https://edsionc.top/vivic/contact/xiaohongshu-group.png` |
 | `website-qr.png` | 本地生成的标准二维码，内容为 `https://edsionc.top/vivic/`，用于扫码访问官网 |

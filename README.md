@@ -148,6 +148,8 @@ pnpm build             # Web 构建
 
 欢迎交流使用体验、反馈问题，或看看新卡片的进展。下面的交流群二维码直接取自官网；如果二维码更新，可以在 [官网「联系我们」](https://edsionc.top/vivic/#contact) 获取最新版本。
 
+官网底部提供四个二维码：微信交流群、小红书交流群、Vivic 官网访问入口，以及 [麦当劳 MCP 卡片独立项目](https://github.com/ECdison6227/vivic-mcdonalds-mcp)。麦当劳项目计划支持优惠券、到期时间与积分查询，并提供 Vivic 卡片和独立 HTML 两种入口；目前已公开项目说明，源码待接入。
+
 <table>
   <tr>
     <th align="center">微信 · VIVIC demo</th>
@@ -166,7 +168,7 @@ pnpm build             # Web 构建
 <details>
 <summary>查看官网「联系我们」原始截图</summary>
 
-![VIVIC 官网联系我们：微信与小红书内测交流群](docs/images/community.jpg)
+![VIVIC 官网四个二维码：小红书、微信、官网和麦当劳 MCP 项目](docs/images/community.jpg)
 
 </details>
 
