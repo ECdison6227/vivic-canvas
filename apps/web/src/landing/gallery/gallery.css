@@ -30,7 +30,7 @@
 .lp-gallery-meta dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 2px 0 0; font-size: 12.5px; }
 .lp-gallery-meta dt { color: var(--lp-faint); }
 .lp-gallery-meta dd { margin: 0; color: var(--lp-ink-2); min-width: 0; overflow-wrap: anywhere; }
-.lp-gallery code { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 0.95em; }
+.lp-gallery code { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 0.95em; font-variant-ligatures: none; font-feature-settings: "liga" 0, "calt" 0; }
 .lp-gallery-spots { display: flex; flex-wrap: wrap; gap: 5px; }
 .lp-gallery-spots span { padding: 1px 7px; border-radius: 6px; background: var(--lp-line); }
 
@@ -40,3 +40,27 @@
   .lp-gallery-head { grid-template-columns: 1fr; }
   .lp-gallery-stage { min-height: 200px; padding: 20px 12px; }
 }
+
+/* Source panels */
+.lp-source-toggle { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; margin-top: 4px; padding: 6px 12px; border: 1px solid var(--lp-line); border-radius: 999px; background: transparent; color: var(--lp-ink-2); font: inherit; font-size: 12.5px; cursor: pointer; }
+.lp-source-toggle:hover, .lp-source-toggle[aria-expanded="true"] { color: var(--lp-ink); border-color: var(--lp-muted); }
+.lp-source { border-top: 1px solid var(--lp-line); }
+.lp-source-tabs { display: flex; gap: 2px; overflow-x: auto; padding: 8px 12px 0; }
+.lp-source-tabs button { flex: none; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 7px 11px; border: 0; border-radius: 10px 10px 0 0; background: transparent; color: var(--lp-muted); font: inherit; font-size: 12.5px; cursor: pointer; }
+.lp-source-tabs button span { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 11px; opacity: 0.8; }
+.lp-source-tabs button[aria-selected="true"] { background: #11141c; color: #eef0f7; }
+.lp-source-block { background: #11141c; color: #d9dce6; }
+.lp-source-path { display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-bottom: 1px solid rgb(255 255 255 / 0.08); font-size: 11.5px; color: #9aa0b2; }
+.lp-source-path code { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #c9cdda; }
+.lp-source-path span { padding: 0 6px; border-radius: 5px; background: rgb(255 255 255 / 0.1); }
+.lp-source-path small { margin-left: auto; white-space: nowrap; }
+.lp-source-path button { display: grid; place-items: center; width: 26px; height: 26px; border: 0; border-radius: 7px; background: rgb(255 255 255 / 0.08); color: inherit; cursor: pointer; }
+.lp-source-path button:hover { background: rgb(255 255 255 / 0.16); color: #fff; }
+.lp-source-block pre { max-height: 520px; margin: 0; padding: 14px 16px 18px; overflow: auto; font-size: 12px; line-height: 1.6; tab-size: 2; }
+.lp-source-block pre code { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: inherit; white-space: pre; font-variant-ligatures: none; font-feature-settings: "liga" 0, "calt" 0; }
+.lp-shared-group { margin-top: 22px; }
+.lp-shared-group h3 { margin: 0; font-size: 15px; font-weight: 600; }
+.lp-shared-file { margin-top: 8px; overflow: hidden; border: 1px solid var(--lp-line); border-radius: 14px; }
+.lp-shared-file summary { padding: 10px 14px; cursor: pointer; font-size: 13px; color: var(--lp-ink-2); }
+.lp-shared-file[open] summary { border-bottom: 1px solid var(--lp-line); }
+.lp-gallery-item:has(.lp-source) { grid-column: 1 / -1; }

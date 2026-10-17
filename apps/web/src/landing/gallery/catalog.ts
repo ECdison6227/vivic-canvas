@@ -33,7 +33,7 @@ export const CATALOG: CatalogGroup[] = [
   { id: "time", title: "时间与日程", note: "倒计时卡按数据分成三种形态：重要日期、纯计时、带事项的提醒。", entries: [
     { key: "countdown", name: "重要日期倒计时", view: "scene/views/CountdownDateView.tsx", spots: ["hero", "ring", "time"] },
     { key: "timer", name: "纯计时器", view: "CountdownCardView.tsx", spots: ["hero", "ring", "time", "ambience"] },
-    { key: "reminder", name: "带事项的提醒", view: "CountdownCardView.tsx", spots: ["time"] },
+    { key: "reminder", name: "带事项的提醒", view: "ReminderListView.tsx", spots: ["time"] },
     { key: "week", name: "周计划", view: "scene/views/WeeklyScheduleCardView.tsx", spots: ["ring", "how"] },
     { key: "month", name: "月历", view: "scene/views/MonthCalendarCardView.tsx", spots: ["ring", "time"] },
     { key: "notice", name: "通知", view: "scene/views/NotificationCardView.tsx", spots: ["ring", "time"] },
