@@ -2,6 +2,8 @@ import type { ActionEnvelope } from "@/contracts";
 import type { CardState, VivicState } from "@/state/canvasStore";
 import type { Attachment } from "./attachments";
 import { completedCountdown } from "@/canvas/reminderPresentation";
+import type { DeviceFix } from "@/location/deviceLocation";
+import type { CardRecord } from "@/contracts";
 
 /**
  * Browser-side client for the local decision API. All traffic is same-origin
@@ -29,7 +31,9 @@ export interface ProvidersStatusResponse {
 }
 
 export interface IntentResult {
-  kind: "envelope" | "clarify" | "unknown" | "error";
+  kind: "envelope" | "clarify" | "unknown" | "error" | "locale";
+  /** Answer to "我在哪里"; already phrased for display and speech. */
+  locale?: { name: string; admin1?: string; country?: string; basis: "device" | "network"; answer: string };
   envelope?: ActionEnvelope;
   message?: string;
   suggestions?: string[];
@@ -126,4 +130,12 @@ export const postIntent = (
   signal?: AbortSignal,
   attachments?: Attachment[],
   continuation?: { utterance: string; question: string },
-): Promise<IntentResult> => post("/api/intent", { text, canvasContext, ...(attachments?.length ? { attachments } : {}), ...(continuation ? { continuation } : {}) }, signal);
+  deviceLocation?: DeviceFix | null,
+): Promise<IntentResult> => post("/api/intent", { text, canvasContext, ...(attachments?.length ? { attachments } : {}), ...(continuation ? { continuation } : {}),
+  ...(deviceLocation ? { deviceLocation } : {}) }, signal);
+
+/** Verified fields for a "where I am" WeatherCard; Control swaps them into the existing card. */
+export type WeatherHereFields = Pick<CardRecord, "displayProps" | "sourceData" | "sources"> & { aliases: string[] };
+export type WeatherHereResult = ({ kind: "weather" } & WeatherHereFields) | { kind: "clarify" | "error"; message: string };
+export const fetchWeatherHere = (deviceLocation: DeviceFix | null, signal?: AbortSignal): Promise<WeatherHereResult> =>
+  post("/api/weather/here", deviceLocation ? { deviceLocation } : {}, signal);

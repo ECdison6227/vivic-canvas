@@ -17,6 +17,8 @@ import { publicSearchError } from "../search/errors.js";
 import type { Attachment } from "../images.js";
 import { summarizeEvidence } from "./searchSummary.js";
 import { continueWeatherInput } from "../data/weatherInput.js";
+import { parseLocaleIntent, type DevicePosition } from "../data/deviceRegion.js";
+import { localeAnswer } from "../data/index.js";
 import { startsNewInstruction } from "@vivic/contracts";
 import { isMixedInstruction, parseNumericIntent } from "../data/numeric.js";
 import { scheduledReminderIntent } from "./scheduledReminders.js";
@@ -26,9 +28,11 @@ import { localDecisionIntent } from "../decision/intent.js";
 import { buildSceneActions, buildScenePrompt, looksLikeDateCountdown, MAX_SCENE_CARDS, normalizeDateCountdownUpdates, sceneContext, sceneSourceUrl, sceneUpdateIssue, type ScenePage } from "../scenes/index.js";
 import type { DecisionManager } from "../decision/manager.js";
 
-export interface IntentRequest { text: string; canvasContext: CanvasContext; attachments?: Attachment[]; continuation?: { utterance: string; question: string } }
+export interface IntentRequest { text: string; canvasContext: CanvasContext; attachments?: Attachment[]; continuation?: { utterance: string; question: string }; deviceLocation?: DevicePosition }
 export interface IntentResult {
-  kind: "envelope" | "clarify" | "unknown" | "error";
+  kind: "envelope" | "clarify" | "unknown" | "error" | "locale";
+  /** "我在哪里" answers: the place itself, shown and spoken without a card or a model. */
+  locale?: { name: string; admin1?: string; country?: string; basis: "device" | "network"; answer: string };
   envelope?: z.infer<typeof ActionEnvelopeSchema>;
   message?: string;
   suggestions?: string[];
@@ -43,10 +47,12 @@ export interface PipelineDeps {
     fetchContent?: (url: string, signal?: AbortSignal, article?: boolean) => Promise<FetchEvidence> };
   planner?: { provider: "gpt"; connected: boolean; generate: (messages: ChatMessage[], signal?: AbortSignal) => Promise<StepfunResult<unknown>>; isCurrent: () => boolean; };
   isSessionCurrent?: () => boolean;
-  data?: { handleDataIntent: (text: string, context: CanvasContext, signal?: AbortSignal) => Promise<IntentResult | null> };
+  data?: { handleDataIntent: (text: string, context: CanvasContext, signal?: AbortSignal, position?: DevicePosition) => Promise<IntentResult | null>;
+    locale?: (position?: DevicePosition, signal?: AbortSignal) => Promise<{ kind: "locale"; name: string; admin1?: string; country?: string; country_code?: string; basis: "device" | "network" } | { kind: "clarify" | "error"; message: string }> };
 }
 const LookupSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("weather"), city: z.string().trim().min(1).max(100) }),
+  // No city: the adapter uses the device's network region, exactly as for a bare 天气.
+  z.strictObject({ kind: z.literal("weather"), city: z.string().trim().min(1).max(100).optional() }),
   z.strictObject({ kind: z.literal("search"), query: z.string().trim().min(1).max(200) }),
 ]);
 const PlannerOutputSchema = z.union([
@@ -98,8 +104,18 @@ export const runIntent = async (
     const numericFollowup = (numericQuestion?.kind === "clarify" || numericQuestion?.kind === "table" && numericQuestion.rows.length === 0) && !isMixedInstruction(continuation!.utterance)
       ? (/表格|柱状图|条形图|折线图|饼图|图表/.test(req.text) ? req.text
         : `${continuation!.utterance.match(/表格|柱状图|条形图|折线图|饼图|图表/)![0]}：${req.text}`) : null;
+      // "我在哪里" is answered from the device position (or its network region) alone.
+    if (deps.data?.locale && !hasImages && !continuation && parseLocaleIntent(req.text)) {
+      const found = await deps.data.locale(req.deviceLocation, budget.signal);
+      budget.signal.throwIfAborted();
+      if (deps.isSessionCurrent && !deps.isSessionCurrent()) return { kind: "error", message: "模型连接已变更，旧结果已丢弃。" };
+      if (found.kind === "locale") return { kind: "locale", usedProvider: "rules",
+        locale: { name: found.name, ...(found.admin1 ? { admin1: found.admin1 } : {}), ...(found.country ? { country: found.country } : {}),
+          basis: found.basis, answer: localeAnswer(found) } };
+      return { kind: found.kind, message: found.message, usedProvider: "rules" };
+    }
     if (deps.data && !hasImages && (!continuation || weatherFollowup || numericFollowup)) {
-      const dataResult = await deps.data.handleDataIntent(weatherFollowup ?? numericFollowup ?? req.text, req.canvasContext, budget.signal);
+      const dataResult = await deps.data.handleDataIntent(weatherFollowup ?? numericFollowup ?? req.text, req.canvasContext, budget.signal, req.deviceLocation);
       budget.signal.throwIfAborted();
       if (deps.isSessionCurrent && !deps.isSessionCurrent()) return { kind: "error", message: "模型连接已变更，旧结果已丢弃。" };
       if (dataResult) return dataResult;
@@ -215,7 +231,7 @@ export const runIntent = async (
               // Re-enter the existing verified adapter using a closed grammar.
               // The outer signal keeps the original deadline; no model tools,
               // credentials, code or extra network capabilities are exposed.
-              return await runIntent({ text: request.kind === "weather" ? `${request.city}天气` : `搜索 ${request.query}`, canvasContext: req.canvasContext }, deps, budget.signal, true);
+              return await runIntent({ text: request.kind === "weather" ? `${request.city ?? ""}天气` : `搜索 ${request.query}`, canvasContext: req.canvasContext, deviceLocation: req.deviceLocation }, deps, budget.signal, true);
             }
           }
           if (!("actions" in output.data) && "reply" in output.data && typeof output.data.reply === "string") {

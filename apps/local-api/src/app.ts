@@ -9,6 +9,7 @@ import { CredentialStore } from "./credentials.js";
 import { runIntent } from "./intent/pipeline.js";
 import {
   IntentRequestSchema,
+  WeatherHereRequestSchema,
   IntentResponseSchema,
   SpeechRequestSchema,
   ValidateKeyRequestSchema,
@@ -22,7 +23,7 @@ import { createSearchClient, createSearchRoutes, type SearchClient } from "./sea
 import { GptProvider } from "./gpt/provider.js";
 import { searchGpt } from "./gpt/search.js";
 import { cachedProxy, resolveSearchProxy } from "./openaiProxy.js";
-import { createDataClient, type DataClient } from "./data/index.js";
+import { createDataClient, DataError, localeAnswer, weatherCardFields, type DataClient } from "./data/index.js";
 import { validateImageAttachment, imageInputErrorMessage, type ImageDecoder } from "./images.js";
 import { decodeImage } from "./imageDecoder.js";
 import { DecisionManager } from "./decision/manager.js";
@@ -302,6 +303,36 @@ export const createApp = (deps: AppDeps) => {
   app.post("/api/decision/stop", c => c.json(decision.stop()));
   app.post("/api/decision/clear", c => c.json(decision.clear()));
   app.post("/api/decision/enable", c => c.json(decision.enable()));
+
+  // Live refresh of a "where I am" weather card. Returns verified card fields
+  // only; Control replaces the card body locally, so no Action is involved.
+  app.post("/api/weather/here", async c => {
+    const body = WeatherHereRequestSchema.safeParse(await readJson(c));
+    if (!body.success) return c.json({ kind: "error", message: "定位数据格式不正确。" }, 400);
+    try {
+      const weather = await data.weatherHere(body.data.deviceLocation, c.req.raw.signal);
+      if (weather.kind === "clarify") return c.json({ kind: "clarify", message: weather.message });
+      const { spokenText: _spoken, ...fields } = weatherCardFields(weather);
+      return c.json({ kind: "weather", ...fields });
+    } catch (error) {
+      return c.json({ kind: "error", message: (error instanceof DataError ? error : new DataError("unavailable")).message });
+    }
+  });
+
+  // "我在哪里": the place alone, with no card and no model.
+  app.post("/api/locale", async c => {
+    const body = WeatherHereRequestSchema.safeParse(await readJson(c));
+    if (!body.success) return c.json({ kind: "error", message: "定位数据格式不正确。" }, 400);
+    try {
+      const found = await data.locale(body.data.deviceLocation, c.req.raw.signal);
+      if (found.kind !== "locale") return c.json({ kind: found.kind, message: found.message });
+      const { basis, name, admin1, country, country_code } = found;
+      return c.json({ kind: "locale", locale: { name, ...(admin1 ? { admin1 } : {}), ...(country ? { country } : {}), ...(country_code ? { country_code } : {}),
+        basis, answer: localeAnswer(found) } });
+    } catch (error) {
+      return c.json({ kind: "error", message: (error instanceof DataError ? error : new DataError("unavailable")).message });
+    }
+  });
 
   app.post("/api/intent", bodyLimit({ maxSize: 6 * 1024 * 1024,
     onError: c => c.json({ ok: false, error: "图片指令请求过大。" }, 413),

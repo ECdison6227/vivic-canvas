@@ -75,7 +75,7 @@ test("a new command after a data question is independent; errors also reach Disp
   const display = await context.newPage();
   await display.goto(`/display?canvasId=${await activeCanvasId(page)}`);
   await sendCommand(page, "天气");
-  await expect(page.locator("[data-vivic-command-feedback]")).toContainText("请明确城市");
+  await expect(page.locator("[data-vivic-command-feedback]")).toContainText("请直接说城市名");
   await sendCommand(page, "加待办：TEST 完成测试");
   await expect(display.locator(".vivic-card")).toContainText("TEST 完成测试");
   await expect(page.locator("[data-vivic-data-suggestions]")).toHaveCount(0);
