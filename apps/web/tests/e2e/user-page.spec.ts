@@ -134,3 +134,38 @@ test("a palette choice changes the shared 流光以太 background on Display, us
   await expect(atmosphere(page)).toHaveAttribute("data-vivic-atmosphere", "ocean");
   await display.close();
 });
+
+test("saying 打开展示页 on the user page opens one Display window for the active canvas", async ({ page, context }) => {
+  await page.goto("/");
+  await expect(root(page)).toHaveAttribute("data-vivic-owner", "owner");
+  const feedback = page.locator("[data-vivic-command-feedback]");
+  const canvasId = await activeCanvasId(page);
+  const [display] = await Promise.all([context.waitForEvent("page"), sendCommand(page, "打开展示页")]);
+  await display.waitForLoadState("domcontentloaded");
+  expect(display.url()).toContain(`/display?canvasId=${encodeURIComponent(canvasId)}`);
+  await expect(feedback).toHaveText("已打开展示窗口，可拖到第二块屏幕全屏");
+  // Saying it again reuses the open window instead of stacking another tab.
+  await sendCommand(page, "打开副屏");
+  await expect(feedback).toHaveText("展示窗口已经打开");
+  expect(context.pages()).toHaveLength(2);
+  await display.close();
+});
+
+test("a blocked Display popup leaves a one-tap retry on the user page", async ({ page, context }) => {
+  // A voice result is not a click, so the browser may refuse the first window.open.
+  await page.addInitScript(() => {
+    const open = window.open.bind(window);
+    let blocked = true;
+    window.open = ((...args: Parameters<typeof window.open>) => { if (blocked) { blocked = false; return null; } return open(...args); }) as typeof window.open;
+  });
+  await page.goto("/");
+  await expect(root(page)).toHaveAttribute("data-vivic-owner", "owner");
+  await sendCommand(page, "打开展示窗口");
+  await expect(page.locator("[data-vivic-command-feedback]")).toHaveText("浏览器拦截了新窗口，点下方「打开展示页」即可打开。");
+  const retry = page.locator("[data-vivic-data-suggestions]").getByRole("button", { name: "打开展示页" });
+  const [display] = await Promise.all([context.waitForEvent("page"), retry.click()]);
+  await display.waitForLoadState("domcontentloaded");
+  expect(display.url()).toContain("/display?canvasId=");
+  await expect(retry).toHaveCount(0);
+  await display.close();
+});

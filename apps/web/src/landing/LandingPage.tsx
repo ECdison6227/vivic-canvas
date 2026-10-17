@@ -146,7 +146,7 @@ export function LandingPage() {
 
       <section className="lp-how-section" id="how">
         <SectionHead eyebrow="TWO WINDOWS · ONE CANVAS" title={<>一边说，<br />一边看。</>}>
-          用户页只负责输入和操作；展示窗口可以放到第二块屏幕或另一个浏览器窗口，只留下卡片和必要的字幕。
+          进入 Vivic 先到用户页：左上角是设置，下方打字或按住说话。说一句“打开展示页”，展示窗口就在新窗口打开，拖到第二块屏幕全屏，只留下卡片和必要的字幕。
         </SectionHead>
         <Reveal y={48}><HowItWorks /></Reveal>
       </section>
@@ -192,7 +192,7 @@ export function LandingPage() {
           <a className="lp-button lp-button-dark" href="#beta" onClick={focusBeta}>申请加入内测<ArrowRight size={16} aria-hidden /></a>
           <a className="lp-button lp-button-light local-link" href={APP_URL}>进入 VIVIC<ArrowUpRight size={16} aria-hidden /></a>
         </Reveal>
-        <p className="lp-footnote">{APP_IS_LOCAL ? "已是内测用户？在本机启动 VIVIC 后，直接打开你的画布。" : "已是内测用户？直接打开你的画布。"}</p>
+        <p className="lp-footnote">{APP_IS_LOCAL ? "已是内测用户？在本机启动 VIVIC 后，直接进入用户页。" : "已是内测用户？直接进入用户页。"}</p>
       </section>
     </main>
     <footer className="lp-footer">

@@ -37,6 +37,7 @@ export type CommandResult =
       prompt: string;
     }
   | { kind: "undo" }
+  | { kind: "openDisplay" }
   | { kind: "unknown"; message: string };
 
 // ---------------------------------------------------------------- zh numerals
@@ -112,6 +113,10 @@ export const clarifiedCardAction = (intent: CommandClarifyAction, card: CardReco
 const noteReference = /^(?:(?:(?:这|那)(?:一)?(?:张|个)?|刚才(?:那(?:张|个))?|最近|左边|右边|中间|中央|第(?:[一二两三四五六七八九十]|\d+)(?:张|个))(?:的)?)?(?:便笺|便签|笔记|note)(?:卡片|卡)?$/i;
 const implicitNoteReference = /^(?:(?:这|那)(?:张|个)(?:卡片|卡)?|它|刚才那个|最近那个|第(?:[一二两三四五六七八九十]|\d+)(?:张|个))$/;
 
+// The Display window by any of its spoken names: 展示页/展示窗口/副屏/大屏/第二块屏幕.
+const DISPLAY_WINDOW = "(?:展示屏?|副屏|大屏|显示屏|第二(?:块|个)?屏(?:幕)?)(?:页面?|窗口|界面|画面)?";
+const openDisplayCommand = new RegExp(`^(?:请|帮我|请帮我)?\\s*(?:(?:打开|开启|启动|调出|弹出)(?:一下)?\\s*(?:vivic\\s*)?(?:的)?${DISPLAY_WINDOW}|(?:把|将)${DISPLAY_WINDOW}(?:打开|开启|调出来)|(?:开始)?投屏(?:到${DISPLAY_WINDOW})?)[。！!]*$`, "i");
+
 // -------------------------------------------------------------------- parser
 export const parseCommand = (
   rawInput: string,
@@ -174,6 +179,9 @@ export const parseCommand = (
     && /然后|并且|同时|顺便|接着|不要|不用|别|[，,；;\n]|再(?:删|创建|聚焦|添加|提醒|显示|恢复|放大)|并(?:删|创建|聚焦|添加|提醒)|(?:待办|倒计时|便笺|便签|卡片).*(?:和|以及|与|或者).*(?:待办|倒计时|便笺|便签|卡片)/.test(input)) {
     return { kind: "unknown", message: "请将多个操作或否定要求拆开说明；本次未执行任何部分。" };
   }
+
+  // Opening the Display is a window action, not a canvas Action: the user page performs it.
+  if (openDisplayCommand.test(input)) return { kind: "openDisplay" };
 
   // canvas-level views
   if (/^(?:请|帮我|请帮我)?\s*(?:(?:显示|展示|看看|看|全部显示)(?:一下)?(?:所有|全部)?(?:的)?卡片|显示全部|全部显示|看全部|适应画布|fit)[。！!]*$/i.test(input)) {
@@ -355,6 +363,6 @@ export const fastLocalCommand = (text: string, ctx: CommandContext): CommandResu
   const result = parseCommand(text, ctx);
   if (result.kind === "unknown" && result.message.startsWith("没有找到") && /^(?:删除|删掉|删了|删|移除|去掉|高亮|选中|取消.+(?:提醒|倒计时))/.test(text)) return result;
   if (result.kind === "unknown" && /^(?:请)?(?:把|将)?(?:第[一二两三四五六七八九十\d]+张)?待办.*(?:完成|未完成)|^(?:暂停|继续|恢复).*(?:提醒|倒计时)/.test(text)) return result;
-  if (result.kind === "undo" || result.kind === "clarify") return result;
+  if (result.kind === "undo" || result.kind === "clarify" || result.kind === "openDisplay") return result;
   return result.kind === "envelope" && !result.actions.some(action => action.type === "card.create") ? result : null;
 };

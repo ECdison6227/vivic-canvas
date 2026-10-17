@@ -26,6 +26,12 @@ describe("exact local actions bypass the decision and LLM network", () => {
   it.each(["十分钟倒计时", "待办：测试", "上海天气", "帮我安排待办优先级"])("leaves extraction/data work %s to its owning adapter", text => {
     expect(fastLocalCommand(text, ctx)).toBeNull();
   });
+  it.each(["打开展示页", "打开展示页面。", "请打开副屏", "帮我打开副屏界面", "打开 Vivic 展示窗口", "打开大屏", "打开第二块屏幕", "把展示页打开", "投屏"])("opens the Display window for %s without the network", text => {
+    expect(fastLocalCommand(text, ctx)?.kind).toBe("openDisplay");
+  });
+  it.each(["展示全部卡片", "打开展示页然后显示全部", "不要打开展示页", "展示页是什么", "打开展示卡片"])("does not read %s as opening the Display", text => {
+    expect(parseCommand(text, ctx).kind).not.toBe("openDisplay");
+  });
 });
 
 it("deletes every card locally and restores the whole 60-card batch with one undo", () => {

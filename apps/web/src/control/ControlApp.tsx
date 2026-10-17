@@ -36,6 +36,7 @@ import { AtmosphereBackground } from "@/components/atmosphere/AtmosphereBackgrou
 import { paletteFor } from "@/components/atmosphere/palettes";
 import { useResolvedTheme } from "@/stage/useResolvedTheme";
 import { pathForView, viewForPath, type ControlView } from "./controlView";
+import { openDisplayWindow } from "./displayWindow";
 
 export const INTENT_TIMEOUT_MS = 100_000;
 
@@ -279,6 +280,20 @@ export const ControlApp = () => {
       }
       if (result.kind === "undo") {
         const text = h.undo() ? "已撤销上一次删除" : "没有可撤销的删除";
+        setFeedback(text);
+        void speakText(text, { requestId: newId("speech") });
+        return;
+      }
+      if (result.kind === "openDisplay") {
+        if (!activeCanvasId) { setFeedback("画布还在准备，请稍后再试。"); return; }
+        const opened = openDisplayWindow(activeCanvasId);
+        if (opened === "blocked") {
+          // A voice result is not a click; tapping the chip is, so the retry passes the popup blocker.
+          setFeedback("浏览器拦截了新窗口，点下方「打开展示页」即可打开。");
+          setSuggestions(["打开展示页"]);
+          return;
+        }
+        const text = opened === "opened" ? "已打开展示窗口，可拖到第二块屏幕全屏" : "展示窗口已经打开";
         setFeedback(text);
         void speakText(text, { requestId: newId("speech") });
         return;
@@ -564,8 +579,7 @@ const ControlShell = (props: ShellProps) => {
   const reduced = useReducedMotion() || preferences.reducedMotion;
 
   const openDisplay = () => {
-    const id = snap.activeCanvasId ?? "";
-    window.open(`/display?canvasId=${encodeURIComponent(id)}`, "_blank");
+    if (snap.activeCanvasId) openDisplayWindow(snap.activeCanvasId);
   };
   const readonlyNotice = readonly && (
     <div className="vivic-readonly-notice" data-vivic-readonly-notice>
@@ -645,7 +659,7 @@ const ControlShell = (props: ShellProps) => {
                 打开 Vivic 展示窗口
               </button>
               <p className="text-xs text-neutral-500">
-                把打开的窗口拖到第二屏，按 F11 或 ⌃⌘F 全屏；文字和语音输入在聊天页，本页负责设置。
+                把打开的窗口拖到第二屏，按 F11 或 ⌃⌘F 全屏；也可以在聊天页说「打开展示页」。
               </p>
             </div>
           </section>
