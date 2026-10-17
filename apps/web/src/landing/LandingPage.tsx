@@ -16,12 +16,34 @@ import { EASE, InkText, Reveal, Wordmark } from "./shared";
 const APP_URL: string = import.meta.env.VITE_LANDING_APP_URL || "/";
 const APP_IS_LOCAL = APP_URL !== "/";
 
+/**
+ * The hosted page (edsionc.top/vivic) is a showcase, built with
+ * VITE_LANDING_SHOWCASE=1: there is no way into the app, signups are only
+ * recorded by the server at VITE_LANDING_SIGNUP_URL, and the page ends with
+ * the community group QR codes (served beside the page under contact/).
+ */
+const SHOWCASE = import.meta.env.VITE_LANDING_SHOWCASE === "1";
+const SIGNUP_URL: string = import.meta.env.VITE_LANDING_SIGNUP_URL || "";
+
 const NAV = [
   { href: "#scenes", label: "卡片" },
   { href: "#how", label: "工作方式" },
   { href: "#trust", label: "可信" },
   { href: "#ambience", label: "氛围" },
+  ...(SHOWCASE ? [{ href: "#contact", label: "联系我们" }] : []),
 ];
+
+const CONTACTS = [
+  { id: "xiaohongshu", platform: "小红书群聊", group: "VIVIC demo(2)", hint: "打开小红书，扫一扫加入", src: "contact/xiaohongshu-group.png", brand: "#ff2442" },
+  { id: "wechat", platform: "微信群聊", group: "VIVIC demo", hint: "打开微信，扫一扫加入", src: "contact/wechat-group.png", brand: "#07c160" },
+] as const;
+
+/** 「进入 VIVIC」: a link to the app, or in the showcase a greyed-out control that cannot be followed. */
+function EnterLink({ className, icon = true }: { className: string; icon?: boolean }) {
+  const label = <>进入 VIVIC{icon && <ArrowUpRight size={16} aria-hidden />}</>;
+  if (!SHOWCASE) return <a className={className} href={APP_URL}>{label}</a>;
+  return <button type="button" className={`${className} lp-entry-off`} disabled title="内测期间暂未开放">{label}</button>;
+}
 
 /** Puts the cursor in the beta form at the top of the page. */
 const focusBeta = (event?: React.MouseEvent) => {
@@ -31,12 +53,20 @@ const focusBeta = (event?: React.MouseEvent) => {
   setTimeout(() => email?.focus({ preventScroll: true }), 450);
 };
 
+const BETA_STATUS = {
+  idle: "",
+  submitting: "正在提交…",
+  success: SHOWCASE ? "申请成功！内测开放时，我们会通过这个邮箱联系你。" : "申请成功，你已成为 VIVIC 内测用户，正在进入…",
+  error: "提交失败，请检查网络后重试。",
+} as const;
+
 /**
- * Demo signup: any well-formed email counts as a beta user. Nothing is sent
- * or stored; the page confirms and opens the user page at /.
+ * Demo signup: any well-formed email counts as a beta user; the page confirms
+ * and opens the user page at /. The showcase instead records the email on
+ * the server and stays put; credentials are omitted so no session cookie is kept.
  */
 function BetaForm() {
-  const [state, setState] = useState<"idle" | "success">("idle");
+  const [state, setState] = useState<keyof typeof BETA_STATUS>("idle");
   const formRef = useRef<HTMLFormElement>(null);
   useEffect(() => {
     // Coming back from the user page (bfcache) shows a fresh form again.
@@ -44,24 +74,59 @@ function BetaForm() {
     window.addEventListener("pageshow", reset);
     return () => window.removeEventListener("pageshow", reset);
   }, []);
-  const submit = (event: FormEvent<HTMLFormElement>) => {
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (state === "success" || !event.currentTarget.reportValidity()) return;
-    setState("success");
-    setTimeout(() => window.location.assign(APP_URL), 700);
+    if (state === "submitting" || state === "success" || !event.currentTarget.reportValidity()) return;
+    if (!SHOWCASE) {
+      setState("success");
+      setTimeout(() => window.location.assign(APP_URL), 700);
+      return;
+    }
+    const email = String(new FormData(event.currentTarget).get("email") ?? "").trim();
+    setState("submitting");
+    try {
+      const response = await fetch(SIGNUP_URL, { method: "POST", credentials: "omit",
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }) });
+      setState(response.ok ? "success" : "error");
+    } catch {
+      setState("error");
+    }
   };
-  const success = state === "success";
-  return <form ref={formRef} id="beta" className="lp-beta" onSubmit={submit} aria-busy={success || undefined} noValidate={false}>
+  const success = state === "success", locked = success || state === "submitting";
+  return <form ref={formRef} id="beta" className="lp-beta" onSubmit={submit} aria-busy={locked || undefined} noValidate={false}>
     <label className="sr-only" htmlFor="betaEmail">接收内测邀请的邮箱</label>
     <input id="betaEmail" className="lp-input" type="email" name="email" required autoComplete="email" placeholder="输入邮箱，申请内测"
-      readOnly={success} onInput={() => { if (!success) setState("idle"); }} />
-    <button id="betaSubmit" className="lp-button lp-button-dark" type="submit" disabled={success}>
-      {success ? "申请成功" : <>申请内测<ArrowRight size={16} aria-hidden /></>}
+      readOnly={locked} onInput={() => { if (!locked) setState("idle"); }} />
+    <button id="betaSubmit" className="lp-button lp-button-dark" type="submit" disabled={locked}>
+      {success ? "申请成功" : state === "submitting" ? "提交中…" : <>申请内测<ArrowRight size={16} aria-hidden /></>}
     </button>
-    <p id="betaStatus" className="lp-beta-status" data-state={success ? "success" : undefined} role="status">
-      {success ? "申请成功，你已成为 VIVIC 内测用户，正在进入…" : ""}
+    <p id="betaStatus" className="lp-beta-status" data-state={state === "idle" || state === "submitting" ? undefined : state} role="status">
+      {BETA_STATUS[state]}
     </p>
   </form>;
+}
+
+/** Community groups at the end of the showcase: one card per platform, QR on a white tile. */
+function Contact() {
+  return <section className="lp-contact" id="contact">
+    <SectionHead eyebrow="CONTACT" title="联系我们">
+      想聊聊 Vivic、提一点建议，或者第一时间看到新卡片？扫码加入内测交流群。
+    </SectionHead>
+    <div className="lp-contact-grid">
+      {CONTACTS.map((item, i) => <Reveal key={item.id} delay={0.08 * i} y={28}>
+        <article className="lp-contact-card" style={{ "--lp-brand": item.brand } as React.CSSProperties}>
+          <div className="lp-contact-head">
+            <span className="lp-contact-platform"><span className="lp-contact-dot" aria-hidden />{item.platform}</span>
+            <strong className="lp-contact-group">{item.group}</strong>
+          </div>
+          <div className="lp-contact-qr">
+            <img src={item.src} alt={`${item.platform}「${item.group}」二维码`} width={200} height={200} loading="lazy" decoding="async" />
+          </div>
+          <p className="lp-contact-hint">{item.hint}</p>
+        </article>
+      </Reveal>)}
+    </div>
+  </section>;
 }
 
 function Header() {
@@ -77,7 +142,7 @@ function Header() {
       <a href="#top" className="lp-header-brand" aria-label="回到顶部"><Wordmark /></a>
       <nav className="lp-header-nav" aria-label="页面导航">{NAV.map(item => <a key={item.href} href={item.href}>{item.label}</a>)}</nav>
       <div className="lp-header-actions">
-        <a className="lp-header-link" href={APP_URL}>进入 VIVIC</a>
+        <EnterLink className="lp-header-link" icon={false} />
         <a className="lp-button lp-button-pill" href="#beta" onClick={focusBeta}>申请内测</a>
       </div>
     </motion.header>}
@@ -100,8 +165,8 @@ function Hero() {
       </motion.p>
       <motion.div className="lp-hero-form" {...item(0.32)}>
         <BetaForm />
-        <div className="lp-or"><span>已经是内测用户</span></div>
-        <a className="lp-button lp-button-light" href={APP_URL}>进入 VIVIC<ArrowUpRight size={16} aria-hidden /></a>
+        <div className="lp-or"><span>{SHOWCASE ? "内测开放后可进入" : "已经是内测用户"}</span></div>
+        <EnterLink className="lp-button lp-button-light" />
       </motion.div>
       <motion.a className="lp-more" href="#scenes" {...item(0.45)}>了解更多<ArrowDown size={14} aria-hidden /></motion.a>
       <p className="lp-legal">提交即表示同意我们仅用此邮箱发送内测邀请与相关通知。</p>
@@ -190,10 +255,13 @@ export function LandingPage() {
         <Reveal as="p" className="lp-lede" delay={0.1}>从整理一份资料、开始一次专注，或者记下一个还没来得及展开的想法开始。</Reveal>
         <Reveal className="lp-closing-actions" delay={0.16}>
           <a className="lp-button lp-button-dark" href="#beta" onClick={focusBeta}>申请加入内测<ArrowRight size={16} aria-hidden /></a>
-          <a className="lp-button lp-button-light local-link" href={APP_URL}>进入 VIVIC<ArrowUpRight size={16} aria-hidden /></a>
+          <EnterLink className="lp-button lp-button-light local-link" />
         </Reveal>
-        <p className="lp-footnote">{APP_IS_LOCAL ? "已是内测用户？在本机启动 VIVIC 后，直接进入用户页。" : "已是内测用户？直接进入用户页。"}</p>
+        <p className="lp-footnote">{SHOWCASE ? "登记邮箱后，内测开放时我们会第一时间通知你。"
+          : APP_IS_LOCAL ? "已是内测用户？在本机启动 VIVIC 后，直接进入用户页。" : "已是内测用户？直接进入用户页。"}</p>
       </section>
+
+      {SHOWCASE && <Contact />}
     </main>
     <footer className="lp-footer">
       <Wordmark />

@@ -8,6 +8,8 @@
 
 单文件版本：`cd apps/web && VITE_LANDING_APP_URL=http://localhost:5180/ LANDING_SINGLE=1 vite build --config vite.landing.config.ts && node scripts/inline-landing.mjs`，产出 `dist-landing-single/vivic-landing.html`（约 3.5 MB，gzip 约 1.1 MB，可直接双击打开）。该文件已部署到 https://edsionc.top/vivic/（服务器 `/var/www/vivic/index.html`，nginx `00-edsionc.conf` 的 `BEGIN/END VIVIC LANDING` 段）；部署版没有同源 Vivic，故「进入 VIVIC」与报名成功都打开本机 `http://localhost:5180/`（本工作树的用户页）。不要指向 5175：那里跑的是 `D:\商赛\vivic\source` 的旧代码，`/` 会跳到 `/control` 设置页（用户 2026-10-17 反馈）。
 
+2026-10-17 用户改为：线上落地页只做展示、不接入产品。分支 `feature/landing-showcase` 用 `VITE_LANDING_SHOWCASE=1 VITE_LANDING_SIGNUP_URL=/vivic/api/beta/applications LANDING_SINGLE=1` 构建（Git Bash 会把 `/vivic/...` 改写成 Windows 路径，须在 PowerShell 里设变量）：三处「进入 VIVIC」置灰不可点；申请内测以 `credentials: omit` 提交到服务器已有网关，邮箱记入 `/var/lib/vivic/beta.sqlite3` 的 `beta_applications`，页面不跳转、不保留会话 Cookie；末尾「联系我们」显示小红书/微信群二维码，图片只放在服务器 `/var/www/vivic/contact/`（不入库，过期直接替换文件）。开发版 `/landing/` 与本地单文件不受影响。
+
 入口流程统一为：落地页 → 用户页 `/`（左上角设置 → `/control`）→ 在用户页说或输入「打开展示页 / 打开副屏 / 投屏」等，本地规则直接打开展示窗口（不走模型）。展示窗口是同名窗口 `vivic-display`，重复指令不会叠加标签页；语音结果不属于点击，浏览器拦截弹窗时状态行提示，并给出「打开展示页」一键重试。见 `src/control/displayWindow.ts`、`tests/e2e/user-page.spec.ts`。
 
 ## 2026-10-17 场景识别与 20 种动态卡片
