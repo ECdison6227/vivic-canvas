@@ -15,3 +15,5 @@ __pycache__/
 *.py[cod]
 .venv/
 *.tsbuildinfo
+dist-landing/
+dist-landing-single/

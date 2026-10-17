@@ -8,6 +8,14 @@ import { HowItWorks } from "./HowItWorks";
 import { AmbienceDemo, ChatDemo, HandsOnDemo, TimeDemo, TrustDemo } from "./FeatureDemos";
 import { EASE, InkText, Reveal, Wordmark } from "./shared";
 
+/**
+ * Where "进入 VIVIC" and a successful signup go. The dev server serves the
+ * user page at /; a standalone or hosted build has no app beside it, so it
+ * is built with VITE_LANDING_APP_URL pointing at the local Vivic.
+ */
+const APP_URL: string = import.meta.env.VITE_LANDING_APP_URL || "/";
+const APP_IS_LOCAL = APP_URL !== "/";
+
 const NAV = [
   { href: "#scenes", label: "卡片" },
   { href: "#how", label: "工作方式" },
@@ -40,7 +48,7 @@ function BetaForm() {
     event.preventDefault();
     if (state === "success" || !event.currentTarget.reportValidity()) return;
     setState("success");
-    setTimeout(() => window.location.assign("/"), 700);
+    setTimeout(() => window.location.assign(APP_URL), 700);
   };
   const success = state === "success";
   return <form ref={formRef} id="beta" className="lp-beta" onSubmit={submit} aria-busy={success || undefined} noValidate={false}>
@@ -69,7 +77,7 @@ function Header() {
       <a href="#top" className="lp-header-brand" aria-label="回到顶部"><Wordmark /></a>
       <nav className="lp-header-nav" aria-label="页面导航">{NAV.map(item => <a key={item.href} href={item.href}>{item.label}</a>)}</nav>
       <div className="lp-header-actions">
-        <a className="lp-header-link" href="/">进入 VIVIC</a>
+        <a className="lp-header-link" href={APP_URL}>进入 VIVIC</a>
         <a className="lp-button lp-button-pill" href="#beta" onClick={focusBeta}>申请内测</a>
       </div>
     </motion.header>}
@@ -93,7 +101,7 @@ function Hero() {
       <motion.div className="lp-hero-form" {...item(0.32)}>
         <BetaForm />
         <div className="lp-or"><span>已经是内测用户</span></div>
-        <a className="lp-button lp-button-light" href="/">进入 VIVIC<ArrowUpRight size={16} aria-hidden /></a>
+        <a className="lp-button lp-button-light" href={APP_URL}>进入 VIVIC<ArrowUpRight size={16} aria-hidden /></a>
       </motion.div>
       <motion.a className="lp-more" href="#scenes" {...item(0.45)}>了解更多<ArrowDown size={14} aria-hidden /></motion.a>
       <p className="lp-legal">提交即表示同意我们仅用此邮箱发送内测邀请与相关通知。</p>
@@ -182,9 +190,9 @@ export function LandingPage() {
         <Reveal as="p" className="lp-lede" delay={0.1}>从整理一份资料、开始一次专注，或者记下一个还没来得及展开的想法开始。</Reveal>
         <Reveal className="lp-closing-actions" delay={0.16}>
           <a className="lp-button lp-button-dark" href="#beta" onClick={focusBeta}>申请加入内测<ArrowRight size={16} aria-hidden /></a>
-          <a className="lp-button lp-button-light local-link" href="/">进入 VIVIC<ArrowUpRight size={16} aria-hidden /></a>
+          <a className="lp-button lp-button-light local-link" href={APP_URL}>进入 VIVIC<ArrowUpRight size={16} aria-hidden /></a>
         </Reveal>
-        <p className="lp-footnote">已是内测用户？直接打开你的画布。</p>
+        <p className="lp-footnote">{APP_IS_LOCAL ? "已是内测用户？在本机启动 VIVIC 后，直接打开你的画布。" : "已是内测用户？直接打开你的画布。"}</p>
       </section>
     </main>
     <footer className="lp-footer">
