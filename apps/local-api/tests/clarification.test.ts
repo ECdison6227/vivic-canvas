@@ -32,6 +32,11 @@ describe("data questions never fall through to the model", () => {
   it.each(["上海明天天气", "上海天气然后删除旧卡", "删除天气卡片"])("does not reduce unsupported or destructive %s to current weather", utterance => {
     expect(continueWeatherInput("上海,上海市", utterance)).toBeNull();
   });
+  it("answers an unresolved region question with the named city, and re-asks rather than locating on a refusal", () => {
+    expect(continueWeatherInput("北京", "今天天气如何")).toBe("北京天气");
+    expect(continueWeatherInput("北京今天天气", "天气怎么样")).toBe("北京今天天气");
+    for (const refusal of ["不要查", "删除卡片"]) expect(continueWeatherInput(refusal, "今天天气如何")).toBe("？天气");
+  });
   const location = { id: 1796236, name: "上海", latitude: 31.22, longitude: 121.46, country: "中国",
     country_code: "CN", admin1: "上海市", timezone: "Asia/Shanghai", feature_code: "PPLA" };
   const setup = () => {

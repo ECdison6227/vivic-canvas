@@ -33,18 +33,23 @@ export const WeatherCardView = ({ card }: { card: WeatherCard }) => {
     </>,
   });
   if (!card.sources.some(source => source.provider === "open-meteo/forecast")) return content;
+  // Place names come from GeoNames for a city lookup, from OpenStreetMap for a device geolocation fix.
+  const osm = card.sources.some(source => source.provider === "photon/reverse");
+  const geonames = card.sources.some(source => source.provider === "open-meteo/geocoding");
+  const placeCredit = osm ? "地名：OpenStreetMap（ODbL）；" : geonames ? "地名：GeoNames；" : "";
   return <HoverCard.Root openDelay={180}>
     <HoverCard.Trigger asChild>
       <a className="nodrag block" href="https://open-meteo.com/en/licence" target="_blank" rel="noopener noreferrer"
-        title="天气：Open-Meteo；地名：GeoNames；CC BY 4.0。已筛选当前数据并将天气代码映射为图标。"
-        aria-label={`${temperature}，${condition?.label ?? "天气"}。查看 Open-Meteo / GeoNames 数据来源与 CC BY 4.0 许可。`}
+        title={`天气：Open-Meteo；${placeCredit}CC BY 4.0。已筛选当前数据并将天气代码映射为图标。`}
+        aria-label={`${temperature}，${condition?.label ?? "天气"}。查看 Open-Meteo${osm ? " / OpenStreetMap" : geonames ? " / GeoNames" : ""} 数据来源与 CC BY 4.0 许可。`}
         data-vivic-weather-source>{content}</a>
     </HoverCard.Trigger>
     <HoverCard.Portal><HoverCard.Content side="bottom" align="start" sideOffset={8}
       className="z-50 max-w-72 rounded-lg border border-border bg-card p-3 text-xs leading-relaxed text-card-foreground shadow-md"
       data-vivic-weather-attribution>
       <p>天气数据：<a className="underline" href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">Open-Meteo</a></p>
-      <p>地名数据：<a className="underline" href="https://www.geonames.org/" target="_blank" rel="noopener noreferrer">GeoNames</a></p>
+      {osm && <p>地名数据：<a className="underline" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">© OpenStreetMap 贡献者</a>（ODbL），经 Photon 反查</p>}
+      {geonames && <p>地名数据：<a className="underline" href="https://www.geonames.org/" target="_blank" rel="noopener noreferrer">GeoNames</a></p>}
       <p><a className="underline" href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">CC BY 4.0</a> · 已筛选当前字段并将天气代码映射为图标。</p>
     </HoverCard.Content></HoverCard.Portal>
   </HoverCard.Root>;

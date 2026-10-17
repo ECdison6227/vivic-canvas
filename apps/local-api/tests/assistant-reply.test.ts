@@ -20,6 +20,16 @@ describe("assistant feedback without unnecessary canvas changes", () => {
     });
     expect(queried).toBe("上海天气"); expect(calls).toBe(1); expect(result.message).toBe("TEST verified weather adapter response");
   });
+  it("a model lookup without a city asks the adapter for the device's region", async () => {
+    const credentials = new CredentialStore();
+    credentials.set({ apiKey: "TEST-weather-here", defaultModel: "step-3.5-flash", models: ["step-3.5-flash"], checkedAt: new Date().toISOString() });
+    const seen: string[] = [];
+    await runIntent({ text: "外面冷不冷", canvasContext: emptyContext() }, {
+      credentials, stepfun: { baseUrl: "https://unit.test", fetchImpl: async () => chatOk({ lookup: { kind: "weather" } }) },
+      data: { handleDataIntent: async text => { seen.push(text); return text === "天气" ? { kind: "clarify", message: "TEST region" } : null; } },
+    });
+    expect(seen).toEqual(["外面冷不冷", "天气"]);
+  });
   it("does not turn a compound request into a partial model lookup", async () => {
     const credentials = new CredentialStore();
     credentials.set({ apiKey: "TEST-no-partial", defaultModel: "step-3.5-flash", models: ["step-3.5-flash"], checkedAt: new Date().toISOString() });

@@ -24,19 +24,26 @@ export async function bounded<T>(work: Promise<T>, signal: AbortSignal): Promise
 
 export const GEOCODING_ENDPOINT = "https://geocoding-api.open-meteo.com/v1/search";
 export const FORECAST_ENDPOINT = "https://api.open-meteo.com/v1/forecast";
+/** Keyless city-level network location; used only when a weather request names no city. */
+export const IP_REGION_ENDPOINT = "https://ipinfo.io/json";
+/** OSM reverse geocoding (keyless) that names the city of a device geolocation fix. */
+export const PHOTON_REVERSE_ENDPOINT = "https://photon.komoot.io/reverse";
+
+const PROVIDER_USER_AGENT = "Vivic/0.6 (local canvas weather card)";
 
 /** Fixed provider API URLs only. This is not an arbitrary web fetch capability. */
 export async function readProviderJson<T>(url: URL, schema: z.ZodType<T>, options: {
   signal: AbortSignal; maxBytes: number; fetchImpl: typeof fetch;
 }): Promise<T> {
-  if (![GEOCODING_ENDPOINT, FORECAST_ENDPOINT].includes(`${url.origin}${url.pathname}`)
+  if (![GEOCODING_ENDPOINT, FORECAST_ENDPOINT, IP_REGION_ENDPOINT, PHOTON_REVERSE_ENDPOINT].includes(`${url.origin}${url.pathname}`)
     || url.username || url.password || url.hash) throw new DataError("unavailable");
   const { signal } = options;
   if (signal.aborted) throw aborted(signal);
   let response: Response | undefined;
   try {
     const pending = options.fetchImpl(url.href, { method: "GET", redirect: "error", credentials: "omit", signal,
-      headers: { Accept: "application/json" } });
+      // OSM-based services reject anonymous clients; identify the app (no user data).
+      headers: { Accept: "application/json", "User-Agent": PROVIDER_USER_AGENT } });
     void pending.then(reply => { if (signal.aborted) void reply.body?.cancel().catch(() => {}); }, () => {});
     response = await bounded(pending, signal);
     if (response.status === 429) throw new DataError("rate-limited");

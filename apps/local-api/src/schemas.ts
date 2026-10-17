@@ -4,6 +4,7 @@ import { ActionEnvelopeSchema } from "@vivic/contracts";
 import { SPEECH_VOICE_IDS } from "./voices.js";
 import { ImageAttachmentsSchema } from "./images.js";
 import { TimeZoneSchema } from "@vivic/contracts";
+import { DevicePositionSchema } from "./data/deviceRegion.js";
 
 /** Compact canvas context the control page sends with each intent request. */
 export const CanvasContextSchema = z.strictObject({
@@ -33,7 +34,11 @@ export const IntentRequestSchema = z.strictObject({
   canvasContext: CanvasContextSchema,
   attachments: ImageAttachmentsSchema.optional(),
   continuation: z.strictObject({ utterance: z.string().min(1).max(500), question: z.string().min(1).max(180) }).optional(),
+  /** Sent by Control only for weather wording, rounded to ~1 km; never persisted by the API. */
+  deviceLocation: DevicePositionSchema.optional(),
 });
+
+export const WeatherHereRequestSchema = z.strictObject({ deviceLocation: DevicePositionSchema.optional() });
 
 export const ValidateKeyRequestSchema = z.strictObject({
   apiKey: z
@@ -54,10 +59,12 @@ export const SpeechRequestSchema = z.strictObject({
 });
 
 export const IntentResponseSchema = z.strictObject({
-  kind: z.enum(["envelope", "clarify", "unknown", "error"]),
+  kind: z.enum(["envelope", "clarify", "unknown", "error", "locale"]),
   envelope: ActionEnvelopeSchema.optional(),
   message: z.string().max(400).optional(),
   suggestions: z.array(z.string().min(1).max(100)).max(5).optional(),
+  locale: z.strictObject({ name: z.string().min(1).max(80), admin1: z.string().max(80).optional(),
+    country: z.string().max(80).optional(), basis: z.enum(["device", "network"]), answer: z.string().min(1).max(200) }).optional(),
   usedProvider: z.enum(["rules", "stepfun", "gpt", "rules-offline", "search", "decision"]).optional(),
 });
 

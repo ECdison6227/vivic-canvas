@@ -1,5 +1,7 @@
 import { notifyReminder } from "@/reminders/notifications";
-import { ActionEnvelopeSchema, TargetChoiceSchema, type ActionEnvelope } from "@/contracts";
+import { ActionEnvelopeSchema, CardRecordSchema, TargetChoiceSchema, type ActionEnvelope } from "@/contracts";
+import { isLiveWeatherCard, nextAliases } from "@/location/liveWeather";
+import type { WeatherHereFields } from "@/ai/api";
 import { newId } from "@/lib/id";
 import {
   emptyVivicState,
@@ -86,6 +88,8 @@ export interface ControlHost {
   moveCard: (cardId: string, x: number, y: number, canvasId?: string) => DispatchResult;
   setPreferences: (patch: Partial<DisplayPreferences>) => DispatchResult;
   arrangeCanvas: () => DispatchResult;
+  /** Swap verified "where I am" weather into an existing live card; layout, pin and subcards stay. */
+  refreshWeatherCard: (cardId: string, fields: WeatherHereFields) => DispatchResult;
   setActivity: (requestId: string, activity: VivicState["activity"]) => void;
   setTargetChoice: (choice: VivicState["targetChoice"]) => void;
   undo: () => boolean;
@@ -419,6 +423,30 @@ export const createControlHost = (deps: ControlHostDeps): ControlHost => {
     if (!meta) return { ok: false, error: "missing-canvas" };
     const current = store.getState();
     const next = { ...current, cards: relayout(current.cards), focus: null, lastFitRequestId: newId("arrange") };
+    store.loadState(next);
+    const record = toCanvasRecord(canvasId, meta.title, meta.version + 1, next);
+    records.set(canvasId, record); emit();
+    void queueWrite(async () => {
+      if (!canPersist()) return;
+      await deps.db.putCanvas(record); persistedVersions.set(canvasId, record.version);
+      if (writable() && records.get(canvasId)?.version === record.version) postSnapshot(canvasId);
+    });
+    return { ok: true, deduplicated: false };
+  };
+
+  const refreshWeatherCard: ControlHost["refreshWeatherCard"] = (cardId, fields) => {
+    if (!writable() || !activeCanvasId) return { ok: false, error: "readonly-not-owner" };
+    const canvasId = activeCanvasId, meta = records.get(canvasId);
+    if (!meta) return { ok: false, error: "missing-canvas" };
+    const current = store.getState();
+    const entry = current.cards.find(c => c.record.id === cardId && !c.exitingRequestId);
+    if (!entry || !isLiveWeatherCard(entry.record)) return { ok: false, error: "not-live-weather" };
+    const parsed = CardRecordSchema.safeParse({ ...entry.record, displayProps: fields.displayProps,
+      sourceData: fields.sourceData, sources: fields.sources,
+      metadata: { ...entry.record.metadata, aliases: nextAliases(entry.record, fields.aliases), updatedAt: new Date().toISOString() } });
+    // The replacement must itself be a live weather card: a refresh can never turn it into anything else.
+    if (!parsed.success || !isLiveWeatherCard(parsed.data)) return { ok: false, error: "invalid-card" };
+    const next = { ...current, cards: current.cards.map(c => c === entry ? { ...c, record: parsed.data } : c) };
     store.loadState(next);
     const record = toCanvasRecord(canvasId, meta.title, meta.version + 1, next);
     records.set(canvasId, record); emit();
@@ -938,6 +966,7 @@ export const createControlHost = (deps: ControlHostDeps): ControlHost => {
     moveCard: (cardId, x, y, canvasId) => localInteraction(cardId, { kind: "card.move", x, y }, canvasId),
     setPreferences,
     arrangeCanvas,
+    refreshWeatherCard,
     setActivity,
     setTargetChoice,
     checkReminders,

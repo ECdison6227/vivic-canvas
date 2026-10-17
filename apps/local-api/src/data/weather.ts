@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { EvidenceRef } from "@vivic/contracts";
 import { DataError, FORECAST_ENDPOINT, GEOCODING_ENDPOINT, readProviderJson } from "./transport.js";
+import { distanceKm, reversePlace, type DevicePosition, type DeviceRegion, type PositionPlace } from "./deviceRegion.js";
 
 const safeName = z.string().trim().min(1).max(100).refine(value => !/[\p{Cc}\p{Cf}<>]/u.test(value));
 const LocationSchema = z.object({
@@ -10,6 +11,8 @@ const LocationSchema = z.object({
   feature_code: z.string().min(1).max(10),
 });
 const GeocodingSchema = z.object({ results: z.array(LocationSchema).max(10).optional(), error: z.literal(false).optional() });
+// A region search spans countries, and one foreign row missing a field must not void the page.
+const RowsSchema = z.object({ results: z.array(z.unknown()).max(10).optional(), error: z.literal(false).optional() });
 const ForecastSchema = z.object({
   latitude: z.number().min(-90).max(90), longitude: z.number().min(-180).max(180),
   utc_offset_seconds: z.literal(0),
@@ -18,9 +21,11 @@ const ForecastSchema = z.object({
     temperature_2m: z.number().min(-100).max(65), weather_code: z.number().int(), is_day: z.union([z.literal(0), z.literal(1)]) }),
 });
 export type WeatherLocation = z.infer<typeof LocationSchema>;
+/** A device geolocation fix (already rounded to ~1 km) with its city-level name. */
+export type PositionLocation = PositionPlace & { latitude: number; longitude: number; accuracyM: number; capturedAt: string };
 export type ConditionIcon = "sun" | "cloud" | "rain" | "snow" | "fog" | "storm" | "night";
 export interface WeatherEvidence {
-  kind: "weather"; tempC: number; conditionIcon: ConditionIcon; location: WeatherLocation;
+  kind: "weather"; tempC: number; conditionIcon: ConditionIcon; location: WeatherLocation | PositionLocation;
   observedAt: string; fetchedAt: string; weatherCode: number; isDay: boolean; intervalSeconds: number;
   modelGrid: { latitude: number; longitude: number }; sources: EvidenceRef[];
 }
@@ -74,7 +79,53 @@ export async function lookupWeather(city: string, options: {
   }
   // A full result page can hide further matches; require a narrower search.
   if (geo.results?.length === 10) return { kind: "clarify", candidates, message: "地点匹配过多，请补充省州或国家。" };
-  const location = candidates[0]!;
+  return currentWeatherAt(candidates[0]!, geoNamesSource(geoUrl, geoFetchedAt), options);
+}
+const geoNamesSource = (url: URL, fetchedAt: string): EvidenceRef =>
+  ({ title: "Open-Meteo geocoding · GeoNames", url: url.href, fetchedAt, provider: "open-meteo/geocoding", readFullPage: false });
+
+/**
+ * Weather exactly at the device's (rounded) position. The name is only a
+ * label: if reverse geocoding fails the weather is still real, shown as 当前位置.
+ */
+export async function lookupWeatherAt(position: DevicePosition, options: {
+  signal: AbortSignal; maxBytes: number; fetchImpl: typeof fetch;
+}): Promise<WeatherResult> {
+  let place: PositionPlace | null = null, placeSource: EvidenceRef | null = null;
+  try {
+    const reverse = await reversePlace(position, options, "default");
+    place = reverse.place;
+    if (place) placeSource = { title: "Photon reverse geocoding · OpenStreetMap", url: reverse.url.href,
+      fetchedAt: new Date().toISOString(), provider: "photon/reverse", readFullPage: false };
+  } catch (error) {
+    if (options.signal.aborted) throw error;
+  }
+  const location: PositionLocation = { ...(place ?? { name: "当前位置" }), latitude: position.latitude,
+    longitude: position.longitude, accuracyM: Math.round(position.accuracyM), capturedAt: position.capturedAt };
+  return currentWeatherAt(location, placeSource, options);
+}
+
+/** Nearest verified GeoNames place to the network estimate; the estimate itself is never used as coordinates. */
+const NEAR_REGION_KM = 60;
+export async function lookupWeatherNear(region: DeviceRegion, options: {
+  signal: AbortSignal; maxBytes: number; fetchImpl: typeof fetch;
+}): Promise<WeatherResult> {
+  const geoUrl = new URL(GEOCODING_ENDPOINT);
+  geoUrl.search = new URLSearchParams({ name: region.city, count: "10", language: "zh", format: "json" }).toString();
+  const geo = await readProviderJson(geoUrl, RowsSchema, options);
+  const geoFetchedAt = new Date().toISOString();
+  const nearest = (geo.results ?? []).flatMap(row => { const parsed = LocationSchema.safeParse(row); return parsed.success ? [parsed.data] : []; })
+    .filter(row => row.country_code === region.country && /^(?:PPL[A-Z0-9]*|ADM[1-4])$/.test(row.feature_code))
+    .map(row => ({ row, km: distanceKm(row, region) })).filter(({ km }) => km <= NEAR_REGION_KM)
+    .sort((a, b) => a.km - b.km)[0];
+  if (!nearest) return { kind: "clarify", candidates: [], message: deviceRegionPrompt };
+  return currentWeatherAt(nearest.row, geoNamesSource(geoUrl, geoFetchedAt), options);
+}
+export const deviceRegionPrompt = "暂时无法确定所在城市，请直接说城市名，例如「上海天气」。";
+
+async function currentWeatherAt(location: WeatherLocation | PositionLocation, placeSource: EvidenceRef | null, options: {
+  signal: AbortSignal; maxBytes: number; fetchImpl: typeof fetch;
+}): Promise<WeatherResult> {
   const forecastUrl = new URL(FORECAST_ENDPOINT);
   forecastUrl.search = new URLSearchParams({ latitude: String(location.latitude), longitude: String(location.longitude),
     current: "temperature_2m,weather_code,is_day", temperature_unit: "celsius", timezone: "GMT",
@@ -88,7 +139,7 @@ export async function lookupWeather(city: string, options: {
     conditionIcon: conditionIcon(forecast.current.weather_code, forecast.current.is_day === 1), observedAt, fetchedAt,
     weatherCode: forecast.current.weather_code, isDay: forecast.current.is_day === 1, intervalSeconds: forecast.current.interval,
     modelGrid: { latitude: forecast.latitude, longitude: forecast.longitude }, sources: [
-      { title: "Open-Meteo geocoding · GeoNames", url: geoUrl.href, fetchedAt: geoFetchedAt, provider: "open-meteo/geocoding", readFullPage: false },
+      ...(placeSource ? [placeSource] : []),
       { title: "Open-Meteo current weather (model data)", url: forecastUrl.href, fetchedAt, provider: "open-meteo/forecast", readFullPage: false },
     ] };
 }

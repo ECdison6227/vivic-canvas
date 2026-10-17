@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { buildCanvasContext, postIntent } from "@/ai/api";
+import { buildCanvasContext, fetchWeatherHere, postIntent } from "@/ai/api";
+import { fixForRequest, freshFix, looksLikeWeather, resumeLocation, subscribeLocation } from "@/location/deviceLocation";
+import { startLiveWeather } from "@/location/liveWeather";
+import { LocationSettings } from "./LocationSettings";
 import { cancelSpeech, speakText, subscribeSpeech, getSpeechSnapshot, speakShortFeedback, cancelShortFeedback } from "@/ai/speech";
 import { speechDisplayFrame, type SpeechRange } from "@/ai/speechTelemetry";
 import { LocalDecisionSettings } from "./LocalDecisionSettings";
@@ -31,7 +34,7 @@ import { armReminderSound } from "@/reminders/sound";
 
 export const INTENT_TIMEOUT_MS = 100_000;
 
-/** A non-action result must still reach Display after the thinking lease ends. */
+/** A non-action result must still reach Display after the thinking lease ends, and is spoken. */
 const publishFeedback = (host: ControlHost, text: string) => {
   const { activeCanvasId, ownerMode } = host.getSnapshot();
   if (!activeCanvasId || ownerMode !== "owner") return;
@@ -73,6 +76,17 @@ export const ControlApp = () => {
     const unlock = () => { if (host?.getSnapshot().ownerMode === "owner") armReminderSound(); };
     window.addEventListener("pointerdown", unlock); window.addEventListener("keydown", unlock);
     return () => { window.removeEventListener("pointerdown", unlock); window.removeEventListener("keydown", unlock); };
+  }, [host]);
+  // "Where I am" weather cards follow the device while this owner page is open.
+  useEffect(() => {
+    if (!host) return;
+    void resumeLocation();
+    return startLiveWeather({
+      cards: () => host.getSnapshot().ownerMode === "owner"
+        ? canvasStore.getState().cards.filter(entry => !entry.exitingRequestId).map(entry => entry.record) : [],
+      fix: freshFix, subscribeFix: subscribeLocation, fetchHere: fix => fetchWeatherHere(fix),
+      refresh: (cardId, fields) => host.refreshWeatherCard(cardId, fields),
+    });
   }, [host]);
   const announcing = useRef(false);
   const previousQuestion = useRef<{ canvasId: string; utterance: string; question: string; at: number } | null>(null);
@@ -408,12 +422,18 @@ export const ControlApp = () => {
       // rules — an explicit offline mode, surfaced in the mode pill.
       void (async () => {
         try {
+          // Weather and "where am I" wording carries the rounded live fix; the first ask shows
+          // the browser's location prompt. A follow-up answer inherits the original question's wording.
+          const deviceLocation = !attachments?.length && looksLikeWeather(continuation ? `${continuation.utterance} ${trimmed}` : trimmed)
+            ? await fixForRequest() : null;
+          if (!isCurrent()) return;
           const result = await postIntent(
             trimmed,
             buildCanvasContext(canvasStore.getState(), activeCanvasId),
             controller.signal,
             attachments,
             continuation,
+            deviceLocation,
           );
           if (!isCurrent()) return;
           cancelShortFeedback(requestId);
@@ -434,7 +454,14 @@ export const ControlApp = () => {
               state: canvasStore.getState(),
               canvasId: activeCanvasId,
             });
-            if (local.kind !== "unknown") {
+            if (result.kind === "locale" && result.locale) {
+              // A place answer, not a card: shown and spoken like other feedback.
+              const answer = result.locale.answer;
+              setFeedback(answer);
+              publishFeedback(host, answer);
+              void speakText(answer, { requestId: newId("speech") });
+              setSuggestions([]);
+            } else if (local.kind !== "unknown") {
               applyResult(host, local);
             } else {
               const message = result.message ?? local.message;
@@ -602,6 +629,7 @@ const ControlShell = (props: ShellProps) => {
           readonly={readonly}
         />
         <CanvasSettings host={props.host} disabled={readonly || !snap.ready} />
+        <LocationSettings disabled={readonly} />
         <CardSubcardsSection key={`${snap.activeCanvasId}:${snap.ownerMode}:${snap.ownerId}:${snap.ready}`} host={props.host} />
         <LocalDecisionSettings disabled={readonly || !snap.ready} />
 
