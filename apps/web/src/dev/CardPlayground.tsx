@@ -7,7 +7,7 @@ import { buildEdgeFixtures, buildSceneFixtures } from "@/cards/scene/fixtures";
 import { storePhotos } from "@/cards/scene/photos";
 import { SubcardThemeContext } from "@/cards/SubcardEditorContext";
 import "@/cards/scene/sceneCards.css";
-import "@/control/userCardDock.css";
+import "@/control/userCardLayer.css";
 
 /** One test utterance per scene — type it into the real Control input to exercise the AI path. */
 const SAMPLE_INPUT: Record<SceneId, string> = {
