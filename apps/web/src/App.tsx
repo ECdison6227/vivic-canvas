@@ -8,6 +8,7 @@ import { DisplayApp } from "@/display/DisplayApp";
  *   /control     -> settings (same owner window as `/`, switched in place)
  *   /display     -> read-only stage; ?canvasId= pins a canvas
  *   /playground  -> dev builds only: Card Playground with sample data
+ *   /landing/    -> static beta landing (landing/index.html, not React); its signup opens /
  *   (unknown)    -> /
  */
 const rawPath = window.location.pathname.replace(/\/+$/, "") || "/";
@@ -16,7 +17,10 @@ const isPlayground = import.meta.env.DEV && rawPath === "/playground";
 // Production builds drop the playground chunk entirely.
 const CardPlayground = import.meta.env.DEV ? lazy(() => import("@/dev/CardPlayground").then(module => ({ default: module.CardPlayground }))) : null;
 
-if (rawPath !== "/display" && rawPath !== "/control" && rawPath !== "/" && !isPlayground) {
+if (window.location.pathname === "/landing") {
+  // The landing is its own HTML entry; only the trailing-slash URL resolves to it.
+  window.location.replace(`/landing/${window.location.search}${window.location.hash}`);
+} else if (rawPath !== "/display" && rawPath !== "/control" && rawPath !== "/" && !isPlayground) {
   window.location.replace(`/${window.location.search}`);
 }
 

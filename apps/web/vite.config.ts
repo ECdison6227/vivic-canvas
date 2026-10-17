@@ -32,6 +32,15 @@ export default defineConfig({
       "@": path.resolve(__dirname, "src"),
     },
   },
+  build: {
+    rolldownOptions: {
+      // Second static page: the beta landing at /landing/ (plain HTML, no React).
+      input: {
+        main: path.resolve(__dirname, "index.html"),
+        landing: path.resolve(__dirname, "landing/index.html"),
+      },
+    },
+  },
   server: {
     host: "127.0.0.1",
     port: 5175,

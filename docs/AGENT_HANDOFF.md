@@ -2,6 +2,10 @@
 
 交接日期：2026-10-15。工作目录 `/Users/cjr/Projects/vivic`，macOS Apple M1 / 8 GiB。用户准备切换 Agent，当前任务是交付和人工测试，**不是要求重新开始项目或再次完整重做 PoC**。
 
+## 2026-10-17 内测落地页 `/landing/`
+
+用户提供的落地页原样接入为 Vite 第二个 HTML 入口 `apps/web/landing/index.html`（不经 React，构建产出 `dist/landing/index.html`；`/landing` 自动补斜杠）。为演示，「申请内测」只做浏览器邮箱格式校验：任一合法邮箱即提示已成为内测用户并跳转用户页 `/`，不发请求、不保存邮箱（原 `/api/waitlist` 调用已移除）；结尾「进入 VIVIC」同页打开 `/`。用户页本身不设门槛。检查见 `tests/e2e/landing.spec.ts`。
+
 ## 2026-10-17 场景识别与 20 种动态卡片
 
 用户要求实现场景识别与卡片渲染：模型只返回 `{"cards":[{scene_id, data}]}`，服务端核对证据（不编造数字/日期/链接/作者/图片）并按契约校验后生成卡片；20 个场景与 20 种卡片一一对应（`packages/contracts/src/scenes.ts`），复用并升级 CountdownCard（日期模式，不进提醒调度）、TodoCard、ChartCard，其余 17 种为新类型。卡片只在展示页出现并保留到用户要求删除；需要时拖到用户使用页任意位置操作（用户使用页不保留对话，只有输入框），再拖回展示页松手处。展示页待机不再黑屏，始终与用户使用页同一背景。开发版 `/playground` 可查看全部卡片。分支 `feature/scene-cards-v2`（基于 feature/user-page），详见 [场景卡片](scene-cards-20261017.md)。
