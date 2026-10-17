@@ -1,5 +1,5 @@
 import { cloneVoice, CloneVoiceRequestSchema } from "./voiceClone.js";
-import { timingSafeEqual } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { bodyLimit } from "hono/body-limit";
@@ -14,7 +14,7 @@ import {
   SpeechRequestSchema,
   ValidateKeyRequestSchema,
 } from "./schemas.js";
-import { validateConnection, chatJson, PLAN_CHAT_MODELS } from "./stepfun.js";
+import { validateConnection, chatJson, probeAnswered, PLAN_CHAT_MODELS } from "./stepfun.js";
 import { providerRecoveryHint } from "./providerError.js";
 import { SPEECH_MODEL, synthesizeSpeech } from "./speech.js";
 import { DEFAULT_SPEECH_VOICE, SPEECH_VOICES, SPEECH_VOICES_SOURCE } from "./voices.js";
@@ -27,6 +27,7 @@ import { createDataClient, DataError, localeAnswer, weatherCardFields, type Data
 import { validateImageAttachment, imageInputErrorMessage, type ImageDecoder } from "./images.js";
 import { decodeImage } from "./imageDecoder.js";
 import { DecisionManager } from "./decision/manager.js";
+import type { PreferenceStore } from "./preferences.js";
 
 /**
  * Vivic local decision API. Loopback only, bearer-guarded, zod on every
@@ -43,6 +44,8 @@ export interface AppDeps {
   data?: DataClient;
   imageDecoder?: ImageDecoder;
   decision?: DecisionManager;
+  /** Remembers the chosen connection across restarts; absent in tests. */
+  preferences?: PreferenceStore;
 }
 
 const tokenOk = (presented: string, expected: string): boolean => {
@@ -63,8 +66,24 @@ export const createApp = (deps: AppDeps) => {
   const gpt = deps.gpt ?? new GptProvider({ fetchImpl: deps.fetchImpl });
   const data = deps.data ?? createDataClient({ fetchImpl: deps.fetchImpl });
   const decision = deps.decision ?? new DecisionManager();
-  let activeProvider: "stepfun" | "gpt" = "stepfun";
+  const { preferences } = deps;
+  const saved = preferences?.read() ?? {};
+  let activeProvider: "stepfun" | "gpt" = saved.activeProvider ?? "stepfun";
   let providerRevision = 0;
+  // Lets the page tell "the backend restarted and dropped the in-memory key"
+  // apart from a key that stopped working.
+  const instance = randomUUID();
+  const rememberGpt = () => {
+    const status = gpt.status();
+    if (status.connected && status.source) preferences?.update({ gptSource: status.source, gptModel: status.defaultModel });
+  };
+  // A restart must not drop a GPT login the user never disconnected. Requests
+  // arriving meanwhile wait for this instead of reporting "not connected".
+  let restoringGpt: Promise<void> | undefined = saved.gptSource ? (async () => {
+    const source = saved.gptSource!;
+    const ok = await gpt.connect(source, saved.gptModel) || (saved.gptModel ? await gpt.connect(source) : false);
+    if (ok) { providerRevision++; rememberGpt(); }
+  })().catch(() => undefined).finally(() => { restoringGpt = undefined; }) : undefined;
   const searchProxy = config.searchProxy ? cachedProxy(() => resolveSearchProxy(config.searchProxy, process.env)) : undefined;
   const search = deps.search ?? (config.searchEnabled ? createSearchClient({ credentials, fetchImpl: deps.fetchImpl,
     config: { publicDnsFallback: config.publicDnsFallback === true },
@@ -164,8 +183,11 @@ export const createApp = (deps: AppDeps) => {
   app.get("/api/providers/status", (c) => {
     c.header("Cache-Control", "no-store");
     const status = credentials.status();
+    rememberGpt();
+    if (activeProvider === "gpt") gpt.keepWarm();
     return c.json({
-      activeProvider,
+      activeProvider, instance,
+      ...(restoringGpt ? { restoring: "gpt" } : {}),
       providers: [status, gpt.status()],
       degradations: (activeProvider === "stepfun" ? status.connected : gpt.status().connected)
         ? []
@@ -183,6 +205,7 @@ export const createApp = (deps: AppDeps) => {
     const body = z.strictObject({ provider: z.enum(["stepfun", "gpt"]) }).safeParse(await readJson(c));
     if (!body.success) return c.json({ ok: false, error: "仅支持 StepFun Coding Plan 或 GPT。" }, 400);
     if (activeProvider !== body.data.provider) { activeProvider = body.data.provider; providerRevision++; }
+    preferences?.update({ activeProvider });
     return c.json({ ok: true, activeProvider });
   });
   app.post("/api/providers/model", async c => {
@@ -191,7 +214,7 @@ export const createApp = (deps: AppDeps) => {
     if (body.data.provider === "gpt") {
       const source = gpt.status().source;
       if (!source) return c.json({ ok: false, error: "请先连接 GPT。" }, 503);
-      const ok = await gpt.connect(source, body.data.model); providerRevision++;
+      const ok = await gpt.connect(source, body.data.model); providerRevision++; rememberGpt();
       return c.json({ ok, ...gpt.status() });
     }
     const credential = credentials.getSecret();
@@ -199,14 +222,14 @@ export const createApp = (deps: AppDeps) => {
     const candidate = { ...credential, defaultModel: body.data.model };
     const probe = await chatJson(candidate, [{ role: "system", content: '只输出JSON {"ok":true}' }, { role: "user", content: "测试连接" }], { ...stepfun, timeoutMs: config.connectionTimeoutMs ?? 12000 }, { maxTokens: 256 });
     if (credentials.getSecret() !== credential) return c.json({ ok: false, error: "连接已变更，请重新选择。" }, 409);
-    if (!probe.ok) return c.json({ ok: false, error: probe.error });
+    if (!probe.ok && !probeAnswered(probe)) return c.json({ ok: false, error: probe.error });
     credentials.set({ ...candidate, checkedAt: new Date().toISOString() }); providerRevision++;
     return c.json({ ok: true, ...credentials.status() });
   });
   app.post("/api/gpt/connect", async c => {
     const body = z.strictObject({ source: z.enum(["pi", "vivic"]).default("pi") }).safeParse(await readJson(c));
     if (!body.success) return c.json({ ok: false, error: "登录来源无效。" }, 400);
-    const ok = await gpt.connect(body.data.source); providerRevision++;
+    const ok = await gpt.connect(body.data.source); providerRevision++; rememberGpt();
     return c.json({ ok, ...gpt.status() });
   });
   app.post("/api/gpt/login/start", async c => {
@@ -222,7 +245,11 @@ export const createApp = (deps: AppDeps) => {
     return c.json({ ok: gpt.provideLoginInput(body.data.value) });
   });
   app.post("/api/gpt/login/cancel", c => { gpt.cancelLogin(); return c.json({ ok: true }); });
-  app.post("/api/gpt/disconnect", async c => { providerRevision++; await gpt.disconnect(); return c.json({ ok: true }); });
+  app.post("/api/gpt/disconnect", async c => {
+    providerRevision++; await gpt.disconnect();
+    preferences?.update({ gptSource: undefined, gptModel: undefined });
+    return c.json({ ok: true });
+  });
 
   const clonedVoices = new WeakMap<object, Set<string>>();
   app.get("/api/speech/cloned-voices", c => {
@@ -350,6 +377,7 @@ export const createApp = (deps: AppDeps) => {
         400,
       );
     }
+    if (restoringGpt && activeProvider === "gpt") await restoringGpt;
     const version = providerRevision;
     const gptVersion = gpt.generation();
     const imageCredential = credentials.getSecret();

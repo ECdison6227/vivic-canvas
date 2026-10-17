@@ -38,6 +38,7 @@ export default defineConfig({
       timeout: 30_000,
       env: {
         PORT: String(E2E_API_PORT),
+        VIVIC_PREFERENCES: "off",
         STEPFUN_BASE_URL: `http://127.0.0.1:${E2E_STUB_PORT}/v1`,
         VIVIC_ALLOWED_ORIGINS: `http://localhost:${E2E_WEB_PORT},http://127.0.0.1:${E2E_WEB_PORT}`,
       },

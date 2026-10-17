@@ -19,20 +19,20 @@ describe("independent request budgets", () => {
     expect(config.allowedOrigins).not.toContain("http://localhost:5176");
     expect(isolatedConfig({ VIVIC_ALLOWED_ORIGINS: "http://localhost:5174" }).allowedOrigins).toEqual(["http://localhost:5174"]);
   });
-  it("defaults to inference 45s, connection 12s and speech 15s", () => {
-    expect(isolatedConfig()).toMatchObject({ requestTimeoutMs: 45_000,
-      connectionTimeoutMs: 12_000, speechTimeoutMs: 15_000 });
+  it("defaults to inference 60s, connection 30s and speech 15s", () => {
+    expect(isolatedConfig()).toMatchObject({ requestTimeoutMs: 60_000,
+      connectionTimeoutMs: 30_000, speechTimeoutMs: 15_000 });
   });
   it("overrides each budget independently", () => {
     expect(isolatedConfig({ VIVIC_REQUEST_TIMEOUT_MS: "28000" })).toMatchObject({
-      requestTimeoutMs: 28_000, connectionTimeoutMs: 12_000, speechTimeoutMs: 15_000 });
+      requestTimeoutMs: 28_000, connectionTimeoutMs: 30_000, speechTimeoutMs: 15_000 });
     expect(isolatedConfig({ VIVIC_CONNECTION_TIMEOUT_MS: "3000", VIVIC_SPEECH_TIMEOUT_MS: "5000" })).toMatchObject({
-      requestTimeoutMs: 45_000, connectionTimeoutMs: 3000, speechTimeoutMs: 5000 });
+      requestTimeoutMs: 60_000, connectionTimeoutMs: 3000, speechTimeoutMs: 5000 });
   });
   it.each(["NaN", "Infinity", "0", "-1", "", "0.5"])("rejects invalid override %j", (value) => {
     expect(isolatedConfig({ VIVIC_REQUEST_TIMEOUT_MS: value, VIVIC_CONNECTION_TIMEOUT_MS: value,
-      VIVIC_SPEECH_TIMEOUT_MS: value })).toMatchObject({ requestTimeoutMs: 45_000,
-      connectionTimeoutMs: 12_000, speechTimeoutMs: 15_000 });
+      VIVIC_SPEECH_TIMEOUT_MS: value })).toMatchObject({ requestTimeoutMs: 60_000,
+      connectionTimeoutMs: 30_000, speechTimeoutMs: 15_000 });
   });
   it("caps overrides at the 90s turn limit", () => {
     expect(isolatedConfig({ VIVIC_REQUEST_TIMEOUT_MS: "900000" }).requestTimeoutMs).toBe(90_000);

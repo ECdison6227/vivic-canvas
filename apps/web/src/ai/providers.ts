@@ -3,7 +3,8 @@ export interface LoginStatus { phase: "idle" | "waiting" | "verifying" | "connec
 export function notifyProviderChange() { window.dispatchEvent(new Event("vivic:provider-change")); }
 async function post(path: string, body = {}) {
   notifyProviderChange();
-  const response = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(25_000) });
+  // The backend's GPT check may spend up to 60 s on slow proxy tunnels.
+  const response = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(75_000) });
   const data = await response.json();
   if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : "连接请求失败。");
   return data as { ok: boolean; error?: string; lastError?: string; login?: LoginStatus };

@@ -15,6 +15,18 @@ import { Agent, Dispatcher, ProxyAgent, interceptors, setGlobalDispatcher } from
 const OPENAI_DOMAINS = ["openai.com", "chatgpt.com"];
 const SYSTEM_PROXY_TTL_MS = 30_000;
 /**
+ * Measured on the user's proxy (2026-10-17): TLS through a fresh tunnel takes
+ * 3.5–9.5 s, so undici's default 10 s handshake limit failed about half of the
+ * cold requests, and its 4 s idle limit threw every tunnel away between turns.
+ * A warm tunnel answers in ~0.4 s, so keep it for minutes; one the proxy or
+ * OpenAI closes while idle is simply dropped from the pool and rebuilt.
+ */
+const TUNNEL_OPTIONS = {
+  requestTls: { timeout: 30_000 },
+  keepAliveTimeout: 5 * 60_000,
+  keepAliveMaxTimeout: 10 * 60_000,
+};
+/**
  * Desktop proxy apps often stall the first tunnel while picking a node. Only
  * connect-phase failures are retried: the request never reached OpenAI, so
  * even a single-use OAuth authorization code is safe to resend.
@@ -151,11 +163,15 @@ export const cachedProxy = (resolve: () => ResolvedProxy | undefined, ttlMs = SY
   };
 };
 
+/** A tunnel pool with the timeouts and connect-phase retry described above. */
+export const tunnelAgent = (url: string): Dispatcher =>
+  new ProxyAgent({ uri: url, ...TUNNEL_OPTIONS }).compose(interceptors.retry(CONNECT_RETRY));
+
 const proxyAgents = new Map<string, Dispatcher>();
-/** One tunnel pool per proxy URL, with the connect-phase retry described above. */
+/** One tunnel pool per proxy URL. */
 export const proxyDispatcher = (url: string): Dispatcher => {
   let agent = proxyAgents.get(url);
-  if (!agent) { agent = new ProxyAgent(url).compose(interceptors.retry(CONNECT_RETRY)); proxyAgents.set(url, agent); }
+  if (!agent) { agent = tunnelAgent(url); proxyAgents.set(url, agent); }
   return agent;
 };
 
@@ -190,7 +206,7 @@ export class OpenAIEgressDispatcher extends Dispatcher {
     const proxy = host && isOpenAIHost(host) ? this.current() : undefined;
     if (!proxy) return this.#direct;
     let agent = this.#agents.get(proxy.url);
-    if (!agent) { agent = new ProxyAgent(proxy.url).compose(interceptors.retry(CONNECT_RETRY)); this.#agents.set(proxy.url, agent); }
+    if (!agent) { agent = tunnelAgent(proxy.url); this.#agents.set(proxy.url, agent); }
     return agent;
   }
 

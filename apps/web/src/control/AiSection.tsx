@@ -37,6 +37,8 @@ export const AiSection = ({ onBackendChange, disabled = false }: AiSectionProps)
   const [keyInput, setKeyInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
+  const [restartNote, setRestartNote] = useState<string | null>(null);
+  const seen = useRef<{ instance?: string; stepfunConnected: boolean }>({ stepfunConnected: false });
   const speech = useSyncExternalStore(subscribeSpeech, getSpeechSnapshot);
   const voiceConfig = useSyncExternalStore(subscribeVoiceConfiguration, getVoiceConfiguration);
   const [browserVoices, setBrowserVoices] = useState<Array<{ value: string; label: string }>>([]);
@@ -67,6 +69,15 @@ export const AiSection = ({ onBackendChange, disabled = false }: AiSectionProps)
       if (getVoiceConfiguration().tts === "stepfun" && !data.providers.some((provider) => provider.name === "stepfun" && provider.connected)) {
         setSpeechEnabled(false);
       }
+      // The key lives only in backend memory, so a restart clears it. Say so
+      // rather than leaving an unexplained "未连接".
+      const stepfunConnected = data.providers.some(provider => provider.name === "stepfun" && provider.connected);
+      const previous = seen.current;
+      if (stepfunConnected) setRestartNote(null);
+      else if (previous.stepfunConnected && previous.instance && data.instance && previous.instance !== data.instance) {
+        setRestartNote("本地服务刚刚重启，StepFun Key 只保存在后端内存中，已随重启清除。请重新输入 Key 连接。");
+      }
+      seen.current = { instance: data.instance, stepfunConnected };
       setBackend({ status: "online", data });
       onBackendChange?.(true);
       return data;
@@ -142,6 +153,9 @@ export const AiSection = ({ onBackendChange, disabled = false }: AiSectionProps)
         cls: "bg-neutral-200 text-neutral-700",
       };
     }
+    if (backend.data.restoring === "gpt" && !active?.connected) {
+      return { text: "正在恢复 GPT 连接…", cls: "bg-neutral-100 text-neutral-600" };
+    }
     if (active?.connected) {
       return {
         text: `已连接 · ${active.defaultModel ?? activeProvider}`,
@@ -202,7 +216,9 @@ export const AiSection = ({ onBackendChange, disabled = false }: AiSectionProps)
       </div>
 
       <p className="mt-3 text-xs text-neutral-500" aria-live="polite" data-vivic-ai-note>
-        {lastError || stepfun?.lastError
+        {restartNote && !lastError
+          ? restartNote
+          : lastError || stepfun?.lastError
           ? `连接失败：${lastError ?? stepfun?.lastError}`
           : backend.status === "offline"
             ? "本地决策服务未启动（pnpm dev 会同时拉起）；指令将走内置本地规则。"

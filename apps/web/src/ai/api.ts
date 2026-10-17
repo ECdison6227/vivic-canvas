@@ -26,6 +26,10 @@ export interface ProviderStatus {
 
 export interface ProvidersStatusResponse {
   activeProvider?: "stepfun" | "gpt";
+  /** Changes whenever the local backend restarts. */
+  instance?: string;
+  /** Set while a remembered GPT login is being restored after a restart. */
+  restoring?: "gpt";
   providers: ProviderStatus[];
   degradations: Array<{ code: string; message: string }>;
 }

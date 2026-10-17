@@ -253,20 +253,43 @@ describe("request cancellation, retries and wall-clock deadlines", () => {
     expect(result.message).toContain("连接已变更");
     expect(result.envelope).toBeUndefined();
   });
-  it.each([401, 403, 429, 500, 502])("never retries provider HTTP %i", async (status) => {
+  it.each([[401, 1], [403, 1], [400, 1], [429, 2], [500, 2], [502, 2], [503, 2]])("provider HTTP %i is sent %i time(s): only transient statuses are retried once", async (status, times) => {
     const { deps, call } = setup(() => Response.json({ error: { message: `key ${KEY}`, code: "denied" } }, { status, headers: { "x-trace-id": "safe-trace" } }));
     const result = await runIntent({ text: "处理画布", canvasContext: emptyContext() }, deps);
     expect(result.kind).toBe("error");
-    expect(call).toHaveBeenCalledTimes(1);
+    expect(call).toHaveBeenCalledTimes(times);
     expect(JSON.stringify(result)).not.toContain(KEY);
     expect(result.message).toContain("safe-trace");
   });
-  it("never retries transport errors", async () => {
+  it("retries a transport error exactly once", async () => {
     const { deps, call } = setup(() => { throw new Error(`Authorization: Bearer ${KEY}`); });
     const result = await runIntent({ text: "处理画布", canvasContext: emptyContext() }, deps);
     expect(result.kind).toBe("error");
-    expect(call).toHaveBeenCalledTimes(1);
+    expect(call).toHaveBeenCalledTimes(2);
     expect(JSON.stringify(result)).not.toContain(KEY);
+  });
+  it("a dropped connection that recovers on the retry still plans", async () => {
+    let count = 0;
+    const { deps, call } = setup(() => { if (++count === 1) throw new TypeError("fetch failed"); return chatOk({ actions: [{ type: "canvas.fit" }] }); });
+    expect((await runIntent({ text: "处理画布", canvasContext: emptyContext() }, deps)).kind).toBe("envelope");
+    expect(call).toHaveBeenCalledTimes(2);
+  });
+  it("honours a short Retry-After before the single retry", async () => {
+    vi.useFakeTimers();
+    let count = 0;
+    const { deps, call } = setup(() => ++count === 1
+      ? Response.json({ error: { message: "busy" } }, { status: 429, headers: { "retry-after": "2" } })
+      : chatOk({ actions: [{ type: "canvas.fit" }] }));
+    const pending = runIntent({ text: "处理画布", canvasContext: emptyContext() }, deps);
+    await vi.advanceTimersByTimeAsync(1999);
+    expect(call).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect((await pending).kind).toBe("envelope");
+    expect(call).toHaveBeenCalledTimes(2);
+  });
+  it("accepts JSON wrapped in a code fence", async () => {
+    const { deps } = setup(() => Response.json({ choices: [{ message: { content: "```json\n{\"actions\":[{\"type\":\"canvas.fit\"}]}\n```" } }] }));
+    expect((await runIntent({ text: "处理画布", canvasContext: emptyContext() }, deps)).kind).toBe("envelope");
   });
   it("invalid JSON can be repaired once", async () => {
     let count = 0;
@@ -276,13 +299,13 @@ describe("request cancellation, retries and wall-clock deadlines", () => {
     expect((await runIntent({ text: "处理画布", canvasContext: emptyContext() }, deps)).kind).toBe("envelope");
     expect(call).toHaveBeenCalledTimes(2);
   });
-  it("uses 45s inference by default and never retries a timeout", async () => {
+  it("uses 60s inference by default and never retries a timeout", async () => {
     vi.useFakeTimers();
     let upstream: AbortSignal | undefined;
     const { deps, call } = setup(init => { upstream = init?.signal ?? undefined; return new Promise(() => {}); });
     let settled = false;
     const pending = runIntent({ text: "处理画布", canvasContext: emptyContext() }, deps).then(r => { settled = true; return r; });
-    await vi.advanceTimersByTimeAsync(44_999);
+    await vi.advanceTimersByTimeAsync(59_999);
     expect(settled).toBe(false);
     await vi.advanceTimersByTimeAsync(1);
     expect((await pending).message).toContain("超时");
@@ -296,7 +319,7 @@ describe("request cancellation, retries and wall-clock deadlines", () => {
     const { deps, call } = setup(init => {
       upstream = init?.signal ?? undefined;
       const response = chatOk({ actions: [{ type: "canvas.fit" }] });
-      vi.spyOn(response, "json").mockImplementation(() => new Promise(() => {}));
+      vi.spyOn(response, "text").mockImplementation(() => new Promise(() => {}));
       return response;
     });
     const pending = runIntent({ text: "处理画布", canvasContext: emptyContext() }, { ...deps, stepfun: { ...deps.stepfun, timeoutMs: 70 } });
@@ -337,17 +360,17 @@ describe("request cancellation, retries and wall-clock deadlines", () => {
     expect((await pending).kind).toBe("error");
     expect(call).toHaveBeenCalledTimes(1);
   });
-  it("connection metadata and probe share one 12s budget", async () => {
+  it("connection metadata and probe share one 30s budget", async () => {
     vi.useFakeTimers();
     const calls: string[] = [];
     let probeSignal: AbortSignal | undefined;
     const pending = validateConnection(KEY, { baseUrl: "https://unit.test/v1", fetchImpl: fetchStub({
-      "/models": () => new Promise(resolve => setTimeout(() => resolve(modelsOk(["step-3.5-flash"])), 8000)),
+      "/models": () => new Promise(resolve => setTimeout(() => resolve(modelsOk(["step-3.5-flash"])), 20_000)),
       "/chat/completions": init => { probeSignal = init?.signal ?? undefined; return new Promise(() => {}); },
     }, url => calls.push(url)) });
-    await vi.advanceTimersByTimeAsync(8000);
+    await vi.advanceTimersByTimeAsync(20_000);
     expect(calls).toHaveLength(2);
-    await vi.advanceTimersByTimeAsync(4000);
+    await vi.advanceTimersByTimeAsync(10_000);
     expect(await pending).toMatchObject({ ok: false, code: "timeout" });
     expect(probeSignal?.aborted).toBe(true);
     expect(vi.getTimerCount()).toBe(0);

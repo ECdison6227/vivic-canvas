@@ -6,6 +6,7 @@ import { GptProvider } from "../src/gpt/provider.js";
 import { GPT_MODELS, GPT_RESPONSES } from "../src/gpt/transport.js";
 import { IntentResponseSchema } from "../src/schemas.js";
 import { authed, emptyContext, testConfig } from "./helpers.js";
+import type { PreferenceStore, ProviderPreferences } from "../src/preferences.js";
 
 // Every route runs through the real Hono middleware, GPT provider, Pi SDK,
 // intent pipeline and search adapter. No real login, socket, disk auth or TTS
@@ -310,5 +311,68 @@ describe("GPT app routes through real Pi completions", () => {
     expect(result).toMatchObject({ ok: false });
     expect(result).not.toHaveProperty("results");
     await f.gpt.disconnect();
+  });
+});
+
+describe("connection choice survives a backend restart", () => {
+  const memoryPreferences = (initial: ProviderPreferences = {}): PreferenceStore & { value: ProviderPreferences } => {
+    const store = { value: { ...initial },
+      read: () => store.value,
+      update: (change: Partial<Record<keyof ProviderPreferences, string | undefined>>) => {
+        store.value = Object.fromEntries(Object.entries({ ...store.value, ...change }).filter(([, v]) => v !== undefined)) as ProviderPreferences;
+      } };
+    return store;
+  };
+  const boot = async (preferences: PreferenceStore, respond: () => Response | Promise<Response> = () => piSse({ ok: true })) => {
+    const piStorage = new InMemoryCredentialStore();
+    await piStorage.modify("openai", async () => ({ type: "oauth", access: ACCESS, refresh: REFRESH, expires: Date.UTC(2100, 0, 1) }));
+    const fetchImpl = vi.fn<typeof fetch>(async input => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url === GPT_MODELS) return Response.json({ models: [{ slug: MODEL, visibility: "list" }, { slug: "gpt-test-http-other", visibility: "list" }] });
+      if (url === GPT_RESPONSES) return respond();
+      throw new Error(`TEST forbids endpoint: ${url}`);
+    });
+    const gpt = new GptProvider({ ownStorage: new InMemoryCredentialStore(), piStorage, fetchImpl });
+    const app = createApp({ config: testConfig({ searchEnabled: false }), credentials: new CredentialStore(), gpt, fetchImpl, preferences });
+    const post = (path: string, body: unknown = {}) => app.request(path, { method: "POST", headers: authed, body: JSON.stringify(body) });
+    const status = async () => (await app.request("/api/providers/status", { headers: authed })).json() as Promise<Record<string, unknown> & { providers: Array<{ name: string; connected: boolean; defaultModel?: string }> }>;
+    return { app, gpt, post, status, fetchImpl };
+  };
+
+  it("remembers the selected provider, GPT source and model, and forgets them on disconnect", async () => {
+    const preferences = memoryPreferences();
+    const f = await boot(preferences);
+    await f.post("/api/gpt/connect", { source: "pi" });
+    await f.post("/api/providers/select", { provider: "gpt" });
+    await f.post("/api/providers/model", { provider: "gpt", model: "gpt-test-http-other" });
+    expect(preferences.value).toEqual({ activeProvider: "gpt", gptSource: "pi", gptModel: "gpt-test-http-other" });
+    expect(JSON.stringify(preferences.value)).not.toMatch(/TEST-http-gpt-(access|refresh)/);
+    await f.post("/api/gpt/disconnect");
+    expect(preferences.value).toEqual({ activeProvider: "gpt" });
+  });
+
+  it("restores the remembered GPT login on start, and an early intent waits for it", async () => {
+    const f = await boot(memoryPreferences({ activeProvider: "gpt", gptSource: "pi", gptModel: "gpt-test-http-other" }));
+    expect(await f.status()).toMatchObject({ activeProvider: "gpt", restoring: "gpt" });
+    const response = await f.post("/api/intent", { text: "帮我梳理这段项目思路", canvasContext: emptyContext() });
+    expect(await response.json()).toMatchObject({ usedProvider: "gpt" });
+    const status = await f.status();
+    expect(status.restoring).toBeUndefined();
+    expect(status.providers.find(p => p.name === "gpt")).toMatchObject({ connected: true, defaultModel: "gpt-test-http-other" });
+  });
+
+  it("falls back to the default model when the remembered one is gone", async () => {
+    const preferences = memoryPreferences({ gptSource: "pi", gptModel: "gpt-test-retired" });
+    const f = await boot(preferences);
+    await vi.waitFor(async () => expect((await f.status()).restoring).toBeUndefined());
+    expect((await f.status()).providers.find(p => p.name === "gpt")).toMatchObject({ connected: true });
+    expect(preferences.value.gptModel).not.toBe("gpt-test-retired");
+  });
+
+  it("each backend instance reports its own id", async () => {
+    const a = await boot(memoryPreferences()), b = await boot(memoryPreferences());
+    const [first, again, other] = [await a.status(), await a.status(), await b.status()];
+    expect(first.instance).toBe(again.instance);
+    expect(first.instance).not.toBe(other.instance);
   });
 });

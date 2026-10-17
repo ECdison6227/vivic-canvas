@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
+import { setTimeout as delay } from "node:timers/promises";
 import { z } from "zod";
 import { createModels, type CredentialStore, type AuthPrompt, type AuthEvent, type Model, type Api, type OAuthAuth } from "@earendil-works/pi-ai";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
@@ -18,6 +19,15 @@ export type GptSource = "pi" | "vivic";
 const routes: Route[] = ["openai", "openai-codex"];
 const OAuth = z.object({ type: z.literal("oauth"), access: z.string().min(1), refresh: z.string().min(1), expires: z.number().finite() }).passthrough();
 const id = z.string().regex(/^[a-zA-Z0-9_.-]{1,128}$/);
+// A cold proxied OpenAI request costs up to ~10 s of tunnel setup, and the
+// connection check makes three in a row (token refresh, catalog, probe).
+export const GPT_CONNECT_TIMEOUT_MS = 60_000;
+export const GPT_REQUEST_TIMEOUT_MS = 60_000;
+const GPT_RETRY_DELAY_MS = 800;
+const GPT_RETRY_MIN_REMAINING_MS = 15_000;
+const RETRYABLE_STATUS = new Set([408, 409, 425, 429, 500, 502, 503, 504]);
+// The proxy drops an idle tunnel after 90–150 s (measured 2026-10-17).
+export const GPT_KEEP_WARM_MS = 60_000;
 const PREFERRED = ["gpt-6-luna", "gpt-5.6-luna", "gpt-5.5", "gpt-5.4", "gpt-5.3-codex", "gpt-6-sol", "gpt-6.1-sol"];
 
 /** Only OAuth for the two Pi GPT routes. No command/API-key config resolution. */
@@ -34,10 +44,20 @@ function oauthStorage(storage: CredentialStore): CredentialStore {
     async delete(provider, options) { allowed(provider); return storage.delete(provider, options); },
   };
 }
+/**
+ * Pi bounds a token refresh by a fixed 15 s and passes only that timeout in.
+ * Through a slow proxy the cold tunnel alone takes ~10 s, so refreshes timed
+ * out roughly hourly — and a refresh abandoned after OpenAI rotated the token
+ * can lose the only valid refresh token. Same refresh, longer bound.
+ */
+export const GPT_REFRESH_TIMEOUT_MS = 60_000;
+const patientRefresh = (oauth: OAuthAuth): OAuthAuth => ({
+  ...oauth, refresh: credential => oauth.refresh(credential, AbortSignal.timeout(GPT_REFRESH_TIMEOUT_MS)),
+});
 function runtime(storage: CredentialStore, oauthLogin?: OAuthAuth["login"]) {
   const models = createModels({ credentials: oauthStorage(storage), authContext: { env: async () => undefined, fileExists: async () => false } });
   for (const provider of [openaiProvider(), openaiCodexProvider()]) {
-    const oauth = provider.auth.oauth;
+    const oauth = provider.auth.oauth && patientRefresh(provider.auth.oauth);
     models.setProvider({ ...provider, auth: { oauth: oauth && oauthLogin && provider.id === "openai" ? { ...oauth, login: oauthLogin } : oauth } });
   }
   return models;
@@ -53,6 +73,10 @@ const errorCode = (error: unknown) => {
     if (typeof code === "string" && /^[A-Z][A-Z0-9_]{2,40}$/.test(code)) return code;
   }
 };
+const hasTimeout = (error: unknown) => {
+  for (let value = error, depth = 0; value instanceof Error && depth < 4; value = value.cause, depth++) if (value.name === "TimeoutError") return true;
+  return false;
+};
 const UNSUPPORTED_REGION = "unsupported_country_region_territory";
 /**
  * Fixed text for OpenAI token-endpoint failures. Upstream messages can embed
@@ -63,6 +87,7 @@ function tokenEndpointFailure(error: unknown, action: string): string | undefine
   const status = /token request failed \((\d{3})\)/.exec(text)?.[1];
   if (status && text.includes(UNSUPPORTED_REGION)) return `${action}失败（HTTP ${status}：${UNSUPPORTED_REGION}）。OpenAI 拒绝了 Vivic 后端当前的网络出口地区。后端会通过系统代理访问 OpenAI，请确认代理已开启且节点所在地区受支持（也可用 VIVIC_OPENAI_PROXY 指定代理）。`;
   if (status) return `${action}失败（HTTP ${status}）。请稍后重新登录。`;
+  if (hasTimeout(error)) return `${action}超时：经代理连接 OpenAI 授权服务器太慢。已保存的授权没有失效，请稍后重试，无需重新登录。`;
   const code = errorCode(error);
   if (code || /fetch failed/i.test(text)) return `${action}失败：Vivic 后端无法连接 OpenAI 授权服务器${code ? `（${code}）` : ""}。浏览器能完成授权不代表本机后端可以访问 auth.openai.com，请检查后端网络。`;
 }
@@ -108,6 +133,7 @@ export class GptProvider {
   #loginAbort?: AbortController;
   #input?: { resolve: (value: string) => void; reject: () => void; };
   #requests = new Set<AbortController>();
+  #lastTraffic = 0;
   constructor(deps: GptDeps = {}) { this.#deps = deps; }
   status(): GptStatus {
     const c = this.#connection;
@@ -118,6 +144,21 @@ export class GptProvider {
   loginStatus() { return { ...this.#login }; }
   generation() { return this.#version; }
   isCurrent(version: number) { return version === this.#version && Boolean(this.#connection); }
+  /**
+   * While the Control page is open, keep the tunnel to the inference host
+   * open so the next request skips the ~10 s cold proxy handshake. The HEAD
+   * carries no credentials and its reply is discarded. The same tick lets Pi
+   * renew a token that is about to expire (a no-op otherwise), so a request
+   * rarely has to wait for the hourly refresh.
+   */
+  keepWarm(now = Date.now()) {
+    const c = this.#connection;
+    if (!c || now - this.#lastTraffic < GPT_KEEP_WARM_MS) return;
+    this.#lastTraffic = now;
+    void c.runtime.getAuth(c.route, { signal: AbortSignal.timeout(GPT_REFRESH_TIMEOUT_MS + 10_000) }).catch(() => undefined);
+    void gptFetch(this.#deps.fetchImpl)(c.route === "openai" ? GPT_MODELS : CODEX_RESPONSES, { method: "HEAD", signal: AbortSignal.timeout(30_000) })
+      .then(response => response.body?.cancel(), () => undefined);
+  }
   async #storage(source: GptSource): Promise<CredentialStore> {
     if (source === "vivic") return this.#deps.ownStorage ?? (await loadStorage()).AuthStorage.create(join(this.#deps.authDir ?? join(homedir(), ".vivic"), "auth.json"));
     if (this.#deps.piStorage) return this.#deps.piStorage;
@@ -140,7 +181,8 @@ export class GptProvider {
     this.#invalidate(); this.#error = undefined;
     const version = this.#version;
     const controller = new AbortController(); this.#requests.add(controller);
-    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(20_000)]);
+    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(GPT_CONNECT_TIMEOUT_MS)]);
+    const deadline = Date.now() + GPT_CONNECT_TIMEOUT_MS;
     let phase = source === "pi" ? "读取 Pi 登录" : "读取本机 GPT 授权";
     let httpStatus: number | undefined;
     let detail: string | undefined;
@@ -204,22 +246,35 @@ export class GptProvider {
       if (!model) throw new Error("Requested model unavailable");
       const connection: Connection = { runtime: models, storage, route, source, model, models: available };
       phase = "验证 GPT 推理"; httpStatus = undefined;
-      const probe = await this.#complete(connection, [{ role: "system", content: '只输出JSON {"ok":true}。' }, { role: "user", content: "测试连接" }], signal);
+      const probe = await this.#completeWithRetry(connection, [{ role: "system", content: '只输出JSON {"ok":true}。' }, { role: "user", content: "测试连接" }], signal, deadline);
       if (!probe.ok) { httpStatus = probe.status; detail = probe.error; throw new Error("GPT inference unavailable"); }
       if ((probe.value as { ok?: boolean })?.ok !== true) throw new Error("GPT inference unavailable");
       signal.throwIfAborted();
       if (version !== this.#version) return false;
-      this.#connection = connection; this.#checkedAt = new Date().toISOString();
+      this.#connection = connection; this.#checkedAt = new Date().toISOString(); this.#lastTraffic = Date.now();
       return true;
     } catch {
       if (version === this.#version) this.#error = `${phase}失败${httpStatus ? `（HTTP ${httpStatus}）` : ""}。${detail ?? `请检查${source === "pi" ? " Pi 登录、" : ""}账号模型权限与套餐额度；也可重新登录。`}`;
       return false;
     } finally { this.#requests.delete(controller); }
   }
+  /**
+   * A dropped tunnel, a stream cut short or a 429/5xx leaves no usable reply,
+   * so one more attempt inside the same deadline costs nothing the user would
+   * miss. Invalid JSON and other refusals are never retried here.
+   */
+  async #completeWithRetry(connection: Connection, messages: ChatMessage[], signal: AbortSignal, deadline: number): Promise<StepfunResult<unknown>> {
+    const first = await this.#complete(connection, messages, signal);
+    if (first.ok || first.code !== "network" || signal.aborted || Date.now() > deadline - GPT_RETRY_MIN_REMAINING_MS) return first;
+    try { await delay(GPT_RETRY_DELAY_MS, undefined, { signal }); } catch { return first; }
+    return this.#complete(connection, messages, signal);
+  }
   async #complete(connection: Connection, messages: ChatMessage[], signal: AbortSignal): Promise<StepfunResult<unknown>> {
+    let completed = false;
+    let httpStatus: number | undefined;
+    let text: string;
     try {
-      let completed = false;
-      let httpStatus: number | undefined;
+      this.#lastTraffic = Date.now();
       const result = await connection.runtime.complete(connection.model, { messages: messages.map(message => message.role === "user" ? {
         role: "user" as const, timestamp: Date.now(), content: message.images?.length
           ? [{ type: "text" as const, text: message.content }, ...message.images.map(image => ({ type: "image" as const, data: image.data, mimeType: image.mime }))]
@@ -239,19 +294,26 @@ export class GptProvider {
         ...(connection.route === "openai-codex" ? { transport: "sse" as const } : {}),
       });
       signal.throwIfAborted();
-      if (!completed || result.stopReason !== "stop") return { ok: false, code: "provider", status: httpStatus, error: "GPT 未完整完成推理，请检查登录或额度后重试" };
-      const text = result.content.filter(part => part.type === "text").map(part => part.text).join("");
-      return { ok: true, value: JSON.parse(text) as unknown };
+      if (!completed || result.stopReason !== "stop") {
+        // No response at all, a retryable status, or a 200 stream that broke off.
+        const transient = httpStatus === undefined || RETRYABLE_STATUS.has(httpStatus) || (httpStatus === 200 && result.stopReason === "error");
+        return { ok: false, code: transient ? "network" : "provider", status: httpStatus,
+          error: transient && !RETRYABLE_STATUS.has(httpStatus ?? 0) ? "GPT 网络连接中断，未得到完整结果" : "GPT 未完整完成推理，请检查登录或额度后重试" };
+      }
+      text = result.content.filter(part => part.type === "text").map(part => part.text).join("");
     } catch {
-      return { ok: false, code: signal.aborted ? "cancelled" : "invalid-response", error: signal.aborted ? "GPT 请求已取消或超时" : "GPT 未返回可验证的 JSON 结果" };
+      return signal.aborted ? { ok: false, code: "cancelled", error: "GPT 请求已取消或超时" }
+        : { ok: false, code: "network", status: httpStatus, error: "GPT 网络连接中断，未得到完整结果" };
     }
+    try { return { ok: true, value: JSON.parse(text) as unknown }; }
+    catch { return { ok: false, code: "invalid-response", error: "GPT 未返回可验证的 JSON 结果" }; }
   }
   async generate(messages: ChatMessage[], parent?: AbortSignal): Promise<StepfunResult<unknown>> {
     const c = this.#connection; if (!c) return { ok: false, code: "provider", error: "GPT 未连接" };
     const version = this.#version; const controller = new AbortController(); this.#requests.add(controller);
-    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(45_000), ...(parent ? [parent] : [])]);
+    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(GPT_REQUEST_TIMEOUT_MS), ...(parent ? [parent] : [])]);
     try {
-      const result = await this.#complete(c, messages, signal);
+      const result = await this.#completeWithRetry(c, messages, signal, Date.now() + GPT_REQUEST_TIMEOUT_MS);
       return this.isCurrent(version) ? result : { ok: false, code: "cancelled", error: "GPT 连接已变更，旧结果已丢弃" };
     } finally { this.#requests.delete(controller); }
   }
