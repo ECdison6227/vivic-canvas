@@ -1,0 +1,42 @@
+/* Card gallery: the landing's cards laid out as a reference sheet. */
+.lp-gallery { padding: clamp(20px, 4vw, 56px) clamp(16px, 4vw, 56px) 64px; }
+.lp-gallery.dark { --lp-bg: #0c1224; --lp-ink: #eef0f7; --lp-ink-2: #c9cdda; --lp-muted: #9097aa; --lp-line: rgb(255 255 255 / 0.1); }
+.lp-gallery.dark .lp-display-card { background: color-mix(in oklab, var(--card) 82%, transparent); border-color: rgb(255 255 255 / 0.1); }
+.lp-gallery:not(.dark) .lp-display-card, .lp-gallery:not(.dark) .vivic-user-card { background: rgb(255 255 255 / 0.96); }
+
+.lp-gallery-head { display: grid; grid-template-columns: 1fr auto; gap: 18px 32px; align-items: end; max-width: 1320px; margin: 0 auto 30px; }
+.lp-gallery-head h1 { margin: 10px 0 8px; font-family: var(--lp-serif); font-size: clamp(30px, 4vw, 46px); font-weight: 600; letter-spacing: 0.02em; }
+.lp-gallery-head p { margin: 0; max-width: 640px; color: var(--lp-muted); font-size: 15px; line-height: 1.7; }
+.lp-gallery-controls { display: flex; flex-wrap: wrap; gap: 10px; }
+.lp-gallery-controls [role="radiogroup"] { display: flex; padding: 3px; border-radius: 999px; background: var(--lp-line); }
+.lp-gallery-controls button { padding: 7px 14px; border: 0; border-radius: 999px; background: transparent; color: var(--lp-ink-2); font: inherit; font-size: 13px; cursor: pointer; }
+.lp-gallery-controls button[aria-checked="true"] { background: var(--lp-bg); color: var(--lp-ink); box-shadow: 0 1px 3px rgb(0 0 0 / 0.12); }
+.lp-gallery-nav { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px; padding-top: 18px; border-top: 1px solid var(--lp-line); }
+.lp-gallery-nav a { display: inline-flex; gap: 6px; align-items: center; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--lp-line); color: var(--lp-ink-2); font-size: 13px; text-decoration: none; }
+.lp-gallery-nav a:hover { color: var(--lp-ink); border-color: var(--lp-muted); }
+.lp-gallery-nav span { color: var(--lp-faint); font-variant-numeric: tabular-nums; }
+
+.lp-gallery-group { max-width: 1320px; margin: 0 auto; padding-top: 34px; scroll-margin-top: 12px; }
+.lp-gallery-group h2 { margin: 0; font-size: 20px; font-weight: 600; }
+.lp-gallery-note { margin: 6px 0 0; color: var(--lp-muted); font-size: 13.5px; }
+.lp-gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 470px), 1fr)); gap: 18px; margin-top: 18px; }
+
+.lp-gallery-item { display: flex; flex-direction: column; overflow: hidden; border-radius: 22px; border: 1px solid var(--lp-line); background: color-mix(in oklab, var(--lp-bg) 70%, var(--lp-ink) 3%); }
+.lp-gallery-stage { display: grid; place-items: center; min-height: 260px; padding: 28px 22px; overflow: auto; }
+.lp-gallery-meta { display: flex; flex-direction: column; gap: 8px; margin-top: auto; padding: 16px 20px 18px; border-top: 1px solid var(--lp-line); }
+.lp-gallery-meta h3 { display: flex; align-items: center; gap: 7px; margin: 0; font-size: 15px; font-weight: 600; }
+.lp-gallery-kicker { margin-left: auto; padding: 2px 8px; border-radius: 999px; background: var(--lp-line); color: var(--lp-muted); font-size: 11.5px; font-weight: 500; }
+.lp-gallery-prompt { margin: 0; color: var(--lp-ink-2); font-size: 13.5px; line-height: 1.6; }
+.lp-gallery-meta dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 2px 0 0; font-size: 12.5px; }
+.lp-gallery-meta dt { color: var(--lp-faint); }
+.lp-gallery-meta dd { margin: 0; color: var(--lp-ink-2); min-width: 0; overflow-wrap: anywhere; }
+.lp-gallery code { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 0.95em; }
+.lp-gallery-spots { display: flex; flex-wrap: wrap; gap: 5px; }
+.lp-gallery-spots span { padding: 1px 7px; border-radius: 6px; background: var(--lp-line); }
+
+.lp-gallery-foot { max-width: 1320px; margin: 44px auto 0; padding-top: 18px; border-top: 1px solid var(--lp-line); color: var(--lp-muted); font-size: 12.5px; }
+
+@media (max-width: 720px) {
+  .lp-gallery-head { grid-template-columns: 1fr; }
+  .lp-gallery-stage { min-height: 200px; padding: 20px 12px; }
+}

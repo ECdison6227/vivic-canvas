@@ -1,13 +1,16 @@
 // Folds the standalone landing build (vite.landing.config.ts) into one HTML file.
 // Usage: LANDING_SINGLE=1 vite build --config vite.landing.config.ts && node scripts/inline-landing.mjs [output file]
 // (default output dist-landing-single/vivic-landing.html)
+// With LANDING_PAGE=card-gallery on both commands it folds the card gallery
+// (default output dist-card-gallery-single/vivic-card-gallery.html).
 import fs from "node:fs";
 import path from "node:path";
 
 const root = path.resolve(import.meta.dirname, "..");
-const buildDir = path.join(root, "dist-landing-single");
-const htmlFile = path.join(buildDir, "landing", "index.html");
-const output = path.resolve(process.argv[2] ?? path.join(buildDir, "vivic-landing.html"));
+const page = process.env.LANDING_PAGE === "card-gallery" ? "card-gallery" : "landing";
+const buildDir = path.join(root, `dist-${page}-single`);
+const htmlFile = path.join(buildDir, page, "index.html");
+const output = path.resolve(process.argv[2] ?? path.join(buildDir, `vivic-${page}.html`));
 
 let html = fs.readFileSync(htmlFile, "utf8");
 const read = ref => fs.readFileSync(path.resolve(path.dirname(htmlFile), ref.split("?")[0]), "utf8");

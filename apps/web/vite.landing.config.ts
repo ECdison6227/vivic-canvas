@@ -10,20 +10,23 @@ import { defineConfig } from "vite";
  *   LANDING_SINGLE=1   dist-landing-single/: one JS chunk, one stylesheet, assets inlined,
  *                      for scripts/inline-landing.mjs to fold into a single HTML file
  * Set VITE_LANDING_APP_URL when the build has no Vivic app beside it.
+ * LANDING_PAGE=card-gallery builds the landing's card gallery instead, into
+ * dist-card-gallery(-single)/.
  */
 const single = process.env.LANDING_SINGLE === "1";
+const page = process.env.LANDING_PAGE === "card-gallery" ? "card-gallery" : "landing";
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: { alias: { "@": path.resolve(import.meta.dirname, "src") } },
   base: "./",
   build: {
-    outDir: single ? "dist-landing-single" : "dist-landing",
+    outDir: `dist-${page}${single ? "-single" : ""}`,
     emptyOutDir: true,
     chunkSizeWarningLimit: 4000,
     ...(single ? { assetsInlineLimit: 100_000_000, cssCodeSplit: false, modulePreload: false } : {}),
     rolldownOptions: {
-      input: { landing: path.resolve(import.meta.dirname, "landing/index.html") },
+      input: { [page]: path.resolve(import.meta.dirname, `${page}/index.html`) },
       ...(single ? { output: { inlineDynamicImports: true } } : {}),
     },
   },

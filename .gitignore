@@ -17,3 +17,5 @@ __pycache__/
 *.tsbuildinfo
 dist-landing/
 dist-landing-single/
+dist-card-gallery/
+dist-card-gallery-single/
