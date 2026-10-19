@@ -1,3 +1,5 @@
+> 历史归档：原路径 `docs/next-iteration.md`。记录当时的需求与验证，不作为当前操作指令。当前入口：[README_FIRST](../../../README_FIRST.md)。
+
 # 2026-10-15 测试反馈修复
 
 分支 `agent/next-iteration`。用户最终确认的复现输入是「上海天气」「给我创建一个表格」：展示端思考结束后没有卡片或解释。不是待办问题，未改写待办模块。
@@ -29,6 +31,6 @@ WebKit 首次测试在准备 Blob 缓存样本时出现 `UnknownError: Error pre
 - Firefox/WebKit 数据输入各 3/3；两者最后清除专项各 1/1。来自分次执行，不能写成一次同源码全套跨浏览器验收。WebKit 前述样本准备失败保留。
 - 自动化静音、TTS 默认关闭、无物理麦克风；浏览器只用独立 context 和 5174/8788。真实空 context 接口检查未写入用户画布。
 
-可移植记录：[verification/next-iteration.json](verification/next-iteration.json)。更新后请刷新 Control/Display。API watch 重载后的 StepFun/GPT 连接均已断开，用户可在 Control 重连，Pi 安全存储未注销；本轮没有新 OAuth 登录验收。
+可移植记录：[verification/next-iteration.json](../../verification/next-iteration.json)。更新后请刷新 Control/Display。API watch 重载后的 StepFun/GPT 连接均已断开，用户可在 Control 重连，Pi 安全存储未注销；本轮没有新 OAuth 登录验收。
 
 后续所有剩余计划的实现、验证和外部边界集中记录在 [剩余计划交付](remaining-plan.md)。

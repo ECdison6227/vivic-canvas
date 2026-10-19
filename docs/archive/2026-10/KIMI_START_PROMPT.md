@@ -1,3 +1,5 @@
+> 历史归档：原路径 `Vivic_Kimi_Handoff_v0.6/KIMI_START_PROMPT.md`。记录当时的需求与验证，不作为当前操作指令。当前入口：[README_FIRST](../../../README_FIRST.md)。
+
 # 交给 Kimi K3 的启动指令（可直接复制）
 
 你现在是 Vivic 的主开发 Agent。请首先读取本项目目录中的：

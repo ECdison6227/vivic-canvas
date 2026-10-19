@@ -1,32 +1,16 @@
-# React + TypeScript + Vite
+# Vivic Web
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+React/Vite 前端，包含用户页 `/`、设置页 `/control`、展示 `/display`、本地演示 `/landing/` 和开发卡片预览。
 
-Currently, two official plugins are available:
+从仓库根目录按 [贡献指南](../../CONTRIBUTING.md) 安装与启动。独立命令：
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```sh
+pnpm dev:web
+pnpm --filter @vivic/web test
+pnpm --filter @vivic/web typecheck
+pnpm build
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+前端调用同源 `/api`，由 Vite 服务端代理到本机 API；凭据不能进入前端 bundle、浏览器 storage 或 Card。状态、布局、持久化和双窗同步在现有宿主中处理。
+
+组件遵循根 [AGENTS.md](../../AGENTS.md)，功能说明见 [文档目录](../../docs/README.md)。伙伴任务的允许文件以 [任务单](../../docs/TEAM_TASKS.md) 为准，不因熟悉前端而自行修改其他模块。
