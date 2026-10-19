@@ -1,3 +1,5 @@
+> 历史归档：原路径 `docs/USER_TEST_RESULTS_20261016.md`。记录当时的需求与验证，不作为当前操作指令。当前入口：[README_FIRST](../../../README_FIRST.md)。
+
 # 本轮实际输入与逐项结果（2026-10-16）
 
 Agent 直接执行，真实 StepFun `step-3.5-flash`、已有 GPT `gpt-6-luna`；独立 TEST context，不操作本人画布。下面是实际执行结果，不是要求你重新手测的任务。
@@ -6,7 +8,7 @@ Agent 直接执行，真实 StepFun `step-3.5-flash`、已有 GPT `gpt-6-luna`�
 - 真实 API 合法动作检查：25/25 通过。
 - 已有 GPT 授权真实流程：5/5 通过。
 
-A1/A2 另外检查了 DOM 中卡片接近屏幕中心，未仅凭 focus 状态断言。API 用例只检查返回内容，实际到时、退场、双窗与刷新由浏览器用例完成。完整自动化和边界见 [修复报告](user-feedback-20261016.md) 与 [验证摘要](verification/user-feedback-20261016.json)。
+A1/A2 另外检查了 DOM 中卡片接近屏幕中心，未仅凭 focus 状态断言。API 用例只检查返回内容，实际到时、退场、双窗与刷新由浏览器用例完成。完整自动化和边界见 [修复报告](user-feedback-20261016.md) 与 [验证摘要](../../verification/user-feedback-20261016.json)。
 
 ## 真实 StepFun 浏览器流程
 

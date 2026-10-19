@@ -1,3 +1,5 @@
+> 历史归档：原路径 `docs/project-audit-20261016.md`。记录当时的需求与验证，不作为当前操作指令。当前入口：[README_FIRST](../../../README_FIRST.md)。
+
 # Vivic 全项目 brief 核对 · 2026-10-16
 
 本文冻结的是修复前 `dfefebd` 审计事实；随后已进行一期收尾，见 [当前修复及验证](finalization-20261016.md)。不要把下面记录的生产入口、契约漂移或旧断言直接当作当前仍未修复，也不要改写原审计证据。
@@ -16,7 +18,7 @@
 
 ## 本轮实际检查
 
-原始输出保存在本机忽略目录 `evidence/project-audit-20261016/`；可移植摘要见 [verification/project-audit-20261016.json](verification/project-audit-20261016.json)。
+原始输出保存在本机忽略目录 `evidence/project-audit-20261016/`；可移植摘要见 [verification/project-audit-20261016.json](../../verification/project-audit-20261016.json)。
 
 | 检查 | 结果 |
 | --- | --- |

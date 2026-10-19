@@ -1,0 +1,8 @@
+# Generated contracts are compared byte-for-byte with the LF generator output.
+# Keep Windows checkouts identical even when core.autocrlf is enabled.
+Vivic_Kimi_Handoff_v0.6/contracts/*.schema.json text eol=lf
+
+# Keep collaboration documents consistent across Windows and Unix checkouts.
+*.md text eol=lf
+.editorconfig text eol=lf
+.github/CODEOWNERS text eol=lf

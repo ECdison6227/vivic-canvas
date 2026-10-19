@@ -1,14 +1,18 @@
+> 历史归档：原路径 `README_DEVELOPMENT.md`。记录当时的需求与验证，不作为当前操作指令。当前入口：[README_FIRST](../../../README_FIRST.md)。
+
 # Vivic v0.6 — 双页面信息画布
 
-当前入口：**[http://localhost:5175/control](http://localhost:5175/control)**。5173 当前由其他项目占用；Vivic 固定使用 5175，端口冲突时明确报错，不自动换端口。详见 [入口修正](docs/entry-port-20261016.md)。
+> 2026-10-19：当前开发入口是 [贡献指南](../../../CONTRIBUTING.md) 和 [本地开发路线](../../LOCAL_ROADMAP.md)。下文保留早期运行记录；最新产品有用户页 `/`、设置 `/control`、展示 `/display` 和 20 种场景，具体实现以源码与最新交接为准。当前先完成本地功能，再讨论部署和账号。
+
+当前入口：**[http://localhost:5175/control](http://localhost:5175/control)**。5173 当前由其他项目占用；Vivic 固定使用 5175，端口冲突时明确报错，不自动换端口。详见 [入口修正](entry-port-20261016.md)。
 
 自然语言驱动的极简信息画布，Web First 个人版 MVP。当前已实现 **StepFun Coding Plan / GPT 两种 LLM、独立语音、七类卡片、真实天气/搜索、数值图表/转换、当次图片、拖动/固定、事项提醒、子卡片、长文详情与中文/拼音找卡**。用户参与的新 GPT 授权已于 2026-10-16 完成；本人语音/设备与本轮完整手测仍待逐项验收。
 
-现在先看 [一期收尾与本轮检查](docs/finalization-20261016.md)，从 [完整测试清单第 0 组](docs/FINAL_ACCEPTANCE_CHECKLIST.md) 开始。128 项人工操作和 9 项技术检查分组进行，先修反馈，再逐条讨论 [二期候选](docs/PHASE2_CANDIDATES.md)，不同时加入部署/多用户/手机/新卡片功能。
+现在先看 [一期收尾与本轮检查](finalization-20261016.md)，从 [完整测试清单第 0 组](../../FINAL_ACCEPTANCE_CHECKLIST.md) 开始。128 项人工操作和 9 项技术检查分组进行，先修反馈，再逐条讨论 [二期候选](PHASE2_CANDIDATES.md)，不同时加入部署/多用户/手机/新卡片功能。
 
-一个 Web 应用两条路由：`/control` 是唯一写入端，`/display` 是只读舞台。两窗口通过 BroadcastChannel snapshot/patch 同步，多画布使用 IndexedDB 保存。Display 可将拖动意图交给 Control owner 校验、落盘并确认，不自行写存储。规格见 `Vivic_Kimi_Handoff_v0.6/`；详细范围见 [实施现状](docs/implementation-status.md)。
+一个 Web 应用两条路由：`/control` 是唯一写入端，`/display` 是只读舞台。两窗口通过 BroadcastChannel snapshot/patch 同步，多画布使用 IndexedDB 保存。Display 可将拖动意图交给 Control owner 校验、落盘并确认，不自行写存储。规格见 `Vivic_Kimi_Handoff_v0.6/`；详细范围见 [实施现状](../../implementation-status.md)。
 
-交付入口：[完整测试清单](docs/FINAL_ACCEPTANCE_CHECKLIST.md) · [完成/未完与验收事实](docs/DELIVERY.md) · [下一位 Agent 交接](docs/AGENT_HANDOFF.md) · [Git 分支约定](docs/GIT_WORKFLOW.md)。新 Agent 先读根目录 `README_FIRST.md`。
+交付入口：[完整测试清单](../../FINAL_ACCEPTANCE_CHECKLIST.md) · [完成/未完与验收事实](DELIVERY.md) · [下一位 Agent 交接](../../AGENT_HANDOFF.md) · [Git 分支约定](../../GIT_WORKFLOW.md)。新 Agent 先读根目录 `README_FIRST.md`。
 
 ## 启动
 
@@ -30,7 +34,7 @@ pnpm dev          # web :5175；local-api 127.0.0.1:8787
 - **ASR 与 TTS 分别选择，与 LLM 解耦**：ASR 可选 StepFun、本地 Sherpaw 或关闭；TTS 可选 StepFun、浏览器本地音色或关闭。GPT 未连接语音时仍可完整使用文字/卡片，不把 OAuth 当作语音 API 授权。
 - StepFun Plan ASR/PTT、8 种 TTS 音色已有历史真实接口证据。浏览器 TTS 使用声明 `localService` 的音色，不属于 Sherpaw TTS，也未证明任意设备断网可用。
 
-**最新测试静音、TTS 关闭。** 既往单次发声测试只属于对应历史记录，不构成持续发声授权或当前听感验收。详见 [模型与语音架构](docs/provider-voice-architecture.md)、[Plan 语音](docs/stepfun-plan-tts.md)。
+**最新测试静音、TTS 关闭。** 既往单次发声测试只属于对应历史记录，不构成持续发声授权或当前听感验收。详见 [模型与语音架构](../../provider-voice-architecture.md)、[Plan 语音](../../stepfun-plan-tts.md)。
 
 ## 本地语音与前台单句入口
 
@@ -38,7 +42,7 @@ Sherpaw **0.3.0** 的 ASR/KWS/VAD 和模型设置已接入。用户按需下载�
 
 PTT 松开后转写，默认先放入输入框检查。VAD/KWS 每次点击只处理前台单句，最长等待 300 秒、单段最长 60 秒，结束后需重新开启；失焦、隐藏、取消、切画布或失去 owner 时停止。不承诺锁屏、后台或关闭 Control 后持续唤醒。
 
-[本地语音原证据](evidence/phase3-local-speech/REPORT.md)记录 17/17 独立生产浏览器项目：合成 WAV 的真实 X-ASR、VAD→ASR、虚拟 AudioWorklet 重采样等。默认「你好维维」随后有三种合成音色链路和静音会话记录，见 [剩余计划交付](docs/remaining-plan.md)；**本人麦克风、真实噪声中的唤醒召回/误触发和听感仍未验收**。浏览器本地 TTS 不能用模拟事件冒充实际发声。接口和下载见 [local-speech](docs/local-speech.md)。
+[本地语音原证据](../../../evidence/phase3-local-speech/REPORT.md)记录 17/17 独立生产浏览器项目：合成 WAV 的真实 X-ASR、VAD→ASR、虚拟 AudioWorklet 重采样等。默认「你好维维」随后有三种合成音色链路和静音会话记录，见 [剩余计划交付](remaining-plan.md)；**本人麦克风、真实噪声中的唤醒召回/误触发和听感仍未验收**。浏览器本地 TTS 不能用模拟事件冒充实际发声。接口和下载见 [local-speech](../../local-speech.md)。
 
 ## 七类卡片、数据与图片
 
@@ -50,25 +54,25 @@ Countdown、Todo、Note、SearchResult、Weather、Table、Chart 七类卡片均
 - 数值：`用表格记录：苹果3，香蕉5`、`把这组数据画成折线图：周一3，周二5，周三4`。只接收明确数值，标记 `user-input`，sources 为空。现有表格可按唯一目标/明确焦点转柱状图、折线图或饼图，保留可恢复来源；歧义、负数饼图、缺失数据和混合删除均澄清，不让 LLM 补数。
 - 图片：Control 支持单张 PNG/JPEG/WebP 文件、区域粘贴或拖入；浏览器重绘后只随当次显式请求发送。后端 Sharp **0.35.5** 完整解码，模型无视觉能力时拒绝。图片不进入 Display 同步、持久化、导出或后续上下文。真实浏览器用自生成 TEST 图片识别 `17 + 26 = 43`，不代表所有用户图片均已验收。
 
-对应说明：[数据源与转换](docs/data-providers.md)、[七卡 renderer](docs/data-cards.md)、[图片与解码](docs/image-input.md)。
+对应说明：[数据源与转换](../../data-providers.md)、[七卡 renderer](../../data-cards.md)、[图片与解码](../../image-input.md)。
 
 ## 画布交互
 
 Control 可管理画布、主题、减少动效、Pin/取消 Pin、导出导入和撤销。Display 不增加工具栏；拖动只发送受限 `card.move`，owner 检查画布/epoch/版本/layout 基线、限流、去重并落盘，再同步确认。Pinned 卡不可拖动；未 Pin 卡仍可能参与后续自动布局。Fit 只改镜头。Auto 日夜主题支持自定义本地开始/结束时间（默认 07:00–19:00，可跨夜），背景与卡片同步按分钟切换；手动浅/深色优先。便笺可说「展开这张便笺」「收起便笺」，多张时先选择目标，原文保留。
 
-已有 10/30/60 卡创建、刷新和拖动的浏览器记录。历史真实 7 卡场景修复后，刷新前后的 `overlaps` 均为空数组；该结论限于已测场景，不概括为任意卡片组合均无重叠。当前版本检查见一期收尾，原交互细节见 [canvas-interaction](docs/canvas-interaction.md)。
+已有 10/30/60 卡创建、刷新和拖动的浏览器记录。历史真实 7 卡场景修复后，刷新前后的 `overlaps` 均为空数组；该结论限于已测场景，不概括为任意卡片组合均无重叠。当前版本检查见一期收尾，原交互细节见 [canvas-interaction](../../canvas-interaction.md)。
 
 ## 历史基线证据与剩余边界
 
 | 记录 | 实际证明的范围 |
 | --- | --- |
-| [GPT live](evidence/phase3-gpt/live.json) | 既有 Pi OAuth 真实推理、多事项提醒结果及订阅搜索；动作仅检查、未派发，无图片/声音/物理麦克风 |
-| [真实浏览器 live](evidence/phase3-live-browser/live.json) | 5/5 通过：GPT 视觉 TEST 算式、天气、用户表格、表格转柱状图、GPT 搜索；刷新保留 7 卡，刷新前后 overlaps 均为 []，pageErrors 为空；音频与物理麦克风关闭 |
-| [Chromium 全套](evidence/phase3-final/chromium.json) | 58/58 通过，约 4.5 分钟；与真实账号/公网流程和长期 soak 分别记录 |
-| [本地语音归档](evidence/phase3-local-speech/REPORT.md) | 固定模型文件、真实 WASM、合成音频、取消/缓存完整性及设置 UI；不是现场人声或本地 TTS 发声验收 |
-| [稳定性最终审计](evidence/phase3-stability/final-resource-audit.json) | 旧快照约 30 分钟 23/24 检查通过、主题检查失败；另一次完整运行中断；新快照 14/14 专项通过、soak 约 61 秒，不能称新版 30 分钟全通过 |
+| [GPT live](../../../evidence/phase3-gpt/live.json) | 既有 Pi OAuth 真实推理、多事项提醒结果及订阅搜索；动作仅检查、未派发，无图片/声音/物理麦克风 |
+| [真实浏览器 live](../../../evidence/phase3-live-browser/live.json) | 5/5 通过：GPT 视觉 TEST 算式、天气、用户表格、表格转柱状图、GPT 搜索；刷新保留 7 卡，刷新前后 overlaps 均为 []，pageErrors 为空；音频与物理麦克风关闭 |
+| [Chromium 全套](../../../evidence/phase3-final/chromium.json) | 58/58 通过，约 4.5 分钟；与真实账号/公网流程和长期 soak 分别记录 |
+| [本地语音归档](../../../evidence/phase3-local-speech/REPORT.md) | 固定模型文件、真实 WASM、合成音频、取消/缓存完整性及设置 UI；不是现场人声或本地 TTS 发声验收 |
+| [稳定性最终审计](../../../evidence/phase3-stability/final-resource-audit.json) | 旧快照约 30 分钟 23/24 检查通过、主题检查失败；另一次完整运行中断；新快照 14/14 专项通过、soak 约 61 秒，不能称新版 30 分钟全通过 |
 
-Laya 原组合 NO_GO，Winnow 未在本机接入；Kev 是默认关闭的中文实验，不是最终可靠选型，见 [本地决策](docs/local-decision.md)。新 OAuth 已完成；本人麦克风、真实环境唤醒/听感、系统输入法、物理 Safari/外接屏仍待验收。新版本的完整回归与实时长测以 [一期收尾](docs/finalization-20261016.md) 为准，不复用上表旧快照结论。
+Laya 原组合 NO_GO，Winnow 未在本机接入；Kev 是默认关闭的中文实验，不是最终可靠选型，见 [本地决策](../../local-decision.md)。新 OAuth 已完成；本人麦克风、真实环境唤醒/听感、系统输入法、物理 Safari/外接屏仍待验收。新版本的完整回归与实时长测以 [一期收尾](finalization-20261016.md) 为准，不复用上表旧快照结论。
 
 ## 检查命令
 

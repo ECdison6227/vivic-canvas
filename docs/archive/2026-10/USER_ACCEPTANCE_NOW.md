@@ -1,8 +1,10 @@
+> 历史归档：原路径 `docs/USER_ACCEPTANCE_NOW.md`。记录当时的需求与验证，不作为当前操作指令。当前入口：[README_FIRST](../../../README_FIRST.md)。
+
 # 本轮复测与现场确认
 
 最新安排：用户反馈多项基础流程失败，要求由 Agent 直接测试。现以 [实际使用修复与结果](user-feedback-20261016.md)、[逐句输入记录](USER_TEST_RESULTS_20261016.md) 为准。下面逐组人工步骤保留供查阅，不再要求用户先重新完成第 0 组才能继续修复。
 
-2026-10-16：一期收尾修复已实施，入口为 **[http://localhost:5175/control](http://localhost:5175/control)**，当前按 [完整测试清单](FINAL_ACCEPTANCE_CHECKLIST.md) 从头测试。5173 是其他项目，原因见 [入口修正](entry-port-20261016.md)。旧的“手测后再新 GPT 登录、再做三项体验”顺序已经完成，不再重复。
+2026-10-16：一期收尾修复已实施，入口为 **[http://localhost:5175/control](http://localhost:5175/control)**，当前按 [完整测试清单](../../FINAL_ACCEPTANCE_CHECKLIST.md) 从头测试。5173 是其他项目，原因见 [入口修正](entry-port-20261016.md)。旧的“手测后再新 GPT 登录、再做三项体验”顺序已经完成，不再重复。
 
 首次使用或需要补做现场项目时，可参考清单第 0 组建立独立 TEST 环境；这不是本轮继续修复的前置要求。本人有结果时记录编号、输入与实际表现，遇到问题直接反馈。
 
