@@ -1,8 +1,10 @@
+> 历史归档：原路径 `docs/experience-iteration-brief.md`。记录当时的需求与验证，不作为当前操作指令。当前入口：[README_FIRST](../../../README_FIRST.md)。
+
 # 三项体验优化 brief（已实施）
 
 2026-10-16：本 case 已按以下范围实施，结果与边界见 [交付说明](experience-20261016.md)。以下保留原 brief，不能再据「下一 case / 未实施」重复开发。
 
-以下是实施前的 brief 留档，范围已完成，不能据其中的“下一 case”措辞重复开发。2026-10-16 已完成手测反馈、新 GPT 授权、子卡片/编号交互及本文件三项体验；当前顺序为 [一期收尾](finalization-20261016.md) 后按 [完整清单](FINAL_ACCEPTANCE_CHECKLIST.md) 从头验收，再逐项讨论二期。
+以下是实施前的 brief 留档，范围已完成，不能据其中的“下一 case”措辞重复开发。2026-10-16 已完成手测反馈、新 GPT 授权、子卡片/编号交互及本文件三项体验；当前顺序为 [一期收尾](finalization-20261016.md) 后按 [完整清单](../../FINAL_ACCEPTANCE_CHECKLIST.md) 从头验收，再逐项讨论二期。
 
 ## 已完成，直接复用
 

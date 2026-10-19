@@ -8,6 +8,8 @@
 
 Voice & text → cards → your canvas.
 
+[参与开发](CONTRIBUTING.md) · [本地功能路线](docs/LOCAL_ROADMAP.md)
+
 [**访问官网**](https://edsionc.top/vivic/) · [界面预览](#界面预览) · [快速开始](#快速开始) · [加入交流](#加入交流)
 
 </div>
@@ -105,7 +107,7 @@ pnpm dev
 
 首次使用时，在设置页连接 StepFun Coding Plan 或 GPT / Pi OAuth，再回到用户页发送消息。语音可以单独配置，也可以保持关闭、直接使用文字。
 
-日常开发端口固定为 `5175 / 8787`，自动化测试使用 `5174 / 8788`。`pnpm dev:web` 与 `pnpm dev:api` 可分别启动前后端。当前本地运行方式与官网部署分别管理，部署细节以 [交接文档](docs/AGENT_HANDOFF.md) 为准。
+日常开发端口固定为 `5175 / 8787`，自动化测试使用 `5174 / 8788`。`pnpm dev:web` 与 `pnpm dev:api` 可分别启动前后端。安装与协作见 [贡献指南](CONTRIBUTING.md)，当前优先完善本地版。
 
 ## 项目结构
 
@@ -116,10 +118,11 @@ apps/
 packages/
   contracts/                 共享的 Action / Card / State 契约
 scripts/                     开发、校验与验证工具
-docs/                        功能说明、验收摘要与开发交接
+docs/                        当前入口、功能说明、验收摘要
+  archive/                   旧交接与旧阶段报告，不作为当前任务
   images/                    README 官网截图与二维码
 Vivic_Kimi_Handoff_v0.6/      产品规格、架构与组件约定
-README_DEVELOPMENT.md         保留的原始开发说明与历史验收记录
+CONTRIBUTING.md              安装、GitHub Desktop 与贡献流程
 ```
 
 主要技术：**TypeScript、React、Vite、Hono、Zod、React Flow、Motion、Radix / shadcn、Assistant UI、Recharts**。画布使用 IndexedDB 保存，Control / Display 通过 BroadcastChannel 同步。模型与语音适配在本机后端处理。
@@ -136,7 +139,9 @@ pnpm build             # Web 构建
 | 文档 | 内容 |
 | --- | --- |
 | [从这里继续](README_FIRST.md) | 当前版本入口与阅读顺序 |
-| [开发说明](README_DEVELOPMENT.md) | 原始 README、详细功能边界与历史验收记录 |
+| [贡献指南](CONTRIBUTING.md) | 安装、启动、分支和 PR |
+| [团队任务](docs/TEAM_TASKS.md) | 按核心依赖分工，明确接口、代码范围与验收 |
+| [文档目录](docs/README.md) | 按模块查阅与历史归档入口 |
 | [Agent 交接](docs/AGENT_HANDOFF.md) | 最新进展、运行方式与后续约束 |
 | [场景卡片](docs/scene-cards-20261017.md) | 20 种场景、结构化数据与卡片交互 |
 | [用户页与统一背景](docs/user-page-20261017.md) | 用户页、设置页与配色 |

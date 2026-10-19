@@ -19,7 +19,7 @@
 
 一期收尾新增开发测试依赖 `ajv@8.20.0`、`ajv-formats@3.0.1`，安装包元数据均为 MIT，仅用于 JSON Schema/运行时契约回归，不新增产品运行组件。JSON Schema 由既有 Zod 的 `toJSONSchema` 生成，未接入另一套卡片渲染器。
 
-`cmdk@1.1.1`（https://github.com/pacocoursey/cmdk）和 `pinyin-match@1.2.10`（https://github.com/xmflswood/pinyin-match）均来自 npm 精确版本，包内 MIT 许可全文保留在 [第三方许可](docs/third-party/experience/)。shadcn radix-nova Command registry 源码（2026-10-16）接入现有 Radix Dialog、Lucide 和主题，MIT 全文同目录保留。原始 registry 与所用发行文件 SHA256、适配范围见 [本次说明](docs/experience-20261016.md)。未复用 HARK 私有实现或字体。
+`cmdk@1.1.1`（https://github.com/pacocoursey/cmdk）和 `pinyin-match@1.2.10`（https://github.com/xmflswood/pinyin-match）均来自 npm 精确版本，包内 MIT 许可全文保留在 [第三方许可](docs/third-party/experience/)。shadcn radix-nova Command registry 源码（2026-10-16）接入现有 Radix Dialog、Lucide 和主题，MIT 全文同目录保留。原始 registry 与所用发行文件 SHA256、适配范围见 [本次说明](docs/archive/2026-10/experience-20261016.md)。未复用 HARK 私有实现或字体。
 
 ## UI 基础与支撑依赖
 
