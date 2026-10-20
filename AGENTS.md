@@ -7,6 +7,8 @@
 - 伙伴/贡献者 Agent 按已分配任务的文件清单、接口契约和验收标准工作；允许实现任务内的新功能、卡片、Landing 和相应测试，不因角色被限制为只写报告。
 - 核心请求链路、认证、共享契约、owner/同步/持久化及依赖/CI 的跨模块修改由维护者统筹，任务确实需要时先明确接口与集成范围。超出任务的修复另记，不能顺手扩展；不得删除必要测试、降低断言或跳过检查来掩盖失败。
 - 伙伴默认从 fork 提 PR，维护者核对范围并决定合入；不因伙伴未交付而阻断主线。CODEOWNERS 与文档不等于线上写权限/分支规则已生效。
+- 2026-10-20 已按会议核对分工：程佳锐做核心/卡片接入和集成，xlz 做旅游卡片/MCP 独立试跑及 UI 原型，马泽瑜做决策模型和本地启动器。以 [当前工单](docs/team/README.md) 为准，不按旧“前端/后端”猜测让马泽瑜改飞猪适配。AI 开发与提交 PR 的执行边界见 [WORKFLOW](docs/team/WORKFLOW.md)。
+- 新卡片任务先按 [卡片开发契约](docs/CARD_DEVELOPMENT.md) 固定模型数据、Schema、事实来源、渲染与编辑接口；配套 [开发 Skill](.agents/skills/vivic-card-development/SKILL.md)。首个系列为 [飞猪旅游系列卡片](docs/tasks/fliggy-travel-cards.md)。不把开发 Skill 当运行时插件，不因外部 MCP 数据接入而跳过校验。
 
 - 这是 Web 信息画布，Control/Display 双视图；Display 保持极简。2026-10-16 用户反馈更新：纯计时器只有数字；带事项的提醒显示事项与时间，未固定提醒合并呈现，到时后退出画布、记录留在 Control。2026-10-17 起 Control 分为用户页 `/`（只有设置按钮、头像、对话和文字/语音输入）与设置页 `/control`，二者是同一个 owner 窗口，见 [用户页](docs/user-page-20261017.md)。
 - 保留已批准的 SmoothUI Orb、Assistant UI styled registry、React Flow、Motion、Radix/shadcn、Lucide、Recharts；不要自行重画替代。背景按用户 2026-10-17 提供的 HTML 改为「流光以太」（`components/atmosphere/`），三页共用；用户只能换 6 深 + 6 浅配色，不开放动画形式选择。
