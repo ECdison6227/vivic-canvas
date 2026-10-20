@@ -1,13 +1,17 @@
 # 当前交接
 
-更新：2026-10-19。当前先整理协作基线，再由用户一步一步完成 GitHub 操作和任务分配。
+更新：2026-10-20。仓库整理已通过 PR #1 合入 `main`（`c20a217`）；GitHub Desktop 已安装并完成本机同步，`main-protection` 已在公开规则页确认 Active。当前为“飞猪旅游系列卡片”整理开发契约、Skill 与交接任务，尚未实现旅游卡片或实际 MCP 接入。
+
+最新：用户提供 10/19 会议 PDF/Excel，并授权只读飞书分工资料。已核对两场原始文字记录，形成 [实名分工与8项工单](team/README.md)、[AI 开工/提交PR提示词](team/WORKFLOW.md)、[两位伙伴所需资料](team/REFERENCES.md)。实际为 xlz 旅游/卡片/UI、马泽瑜决策/启动器、程佳锐核心/接入；此前推测的 CORE/FE/BE 草案已被替代。完整源材料留 `.cache`，不上传原始会议或私有研究内容。尚未创建线上 Issue、Project、assignee 或发送消息。
+
+用户已提供两位账号：xlz=`franzkotkowski330-collab`，马泽瑜/mzy=`Shenbeijc`。账号已写入个人说明、工单与分工数据；线上分配仍未执行。下一教学步骤先提交/发布当前文档分支并 PR 合入，然后创建首轮 PLAT-01、TRAVEL-01、DEC-01 Issue，填写真实链接后再认领开工。
 
 ## 用户的最新安排
 
 - 共三人：维护者、偏前端伙伴、偏后端伙伴。两位伙伴使用 AI 编程，需要明确限制。
 - 用户已纠正此前分工：维护者重点优化核心流程，也可开发新功能，统筹接口、产品范围与合并。
 - 两位伙伴可以开发 Landing、新卡片和新功能，按与核心的依赖程度选择任务；限制写在任务的代码范围、接口与验收条件里，不限制为只交测试报告。此前 FE-001/BE-001 报告草案已撤回，尚未正式分配任务。
-- 采用 fork → 任务分支 → PR → 维护者验收；首轮不授予主仓库写权限。当前仅准备本地文档和配置，线上权限、Issue、看板尚未设置。
+- 采用 fork → 任务分支 → PR → 维护者验收；首轮不授予主仓库写权限。主分支规则已启用，成员权限、具体 Issue 和看板尚未设置。
 - 本地版验收后再讨论部署、账号与收费。主线不等待伙伴任务，只有复现出的确切阻断问题才进入修复安排。
 - 用户随后补充：决策模型优先作为标准能力接入，API/本地均可，用户明确关闭时才选择纯 LLM 路径；现有默认关闭的 Kev 实验不等于完成此目标。JevHarness 已列入 [评估候选](research/jev-harness-assessment.md)，只做初步资料核查，不改变当前 GitHub 操作流程。
 
@@ -20,13 +24,19 @@
 
 ## 工作区和验证
 
-仓库 `ECdison6227/vivic-canvas`，集成分支 `main`。整理分支 `chore/local-development-workflow`；实际状态以 `git status --short --branch` 为准。本轮整理后等待用户在 GitHub Desktop 检查和提交，不代替用户完成教学步骤。
+仓库 `ECdison6227/vivic-canvas`，集成分支 `main`。本轮卡片文档分支 `docs/card-development-contract` 从干净的 `test`（与 `c20a217` 相同）创建；实际状态以 `git status --short --branch` 为准。按用户的逐步教学流程，不自动提交、推送、合并。
 
-用户当前尚未安装 GitHub Desktop，下一步先从官网安装 Windows 64 位版并打开，随后再添加现有本机仓库、审阅/提交整理结果、推送 PR 和逐项分配任务。
+新增入口：[卡片开发契约](CARD_DEVELOPMENT.md)、[项目 Skill](../.agents/skills/vivic-card-development/SKILL.md)、[飞猪任务](tasks/fliggy-travel-cards.md)。开发规则使用现有目标进度卡作可运行样例；飞猪能力只核对了官方文档/仓库，实际工具 Schema、鉴权和响应仍须实测。
+
+用户进一步明确卡片要支持具体参数/用户编辑、确定视觉、深浅色适配、复用现有组件，并以 Agent 按 Skill 制作后可导入为长期目标。已补 [单卡设计表](cards/CARD_SPEC_TEMPLATE.md)、契约 6.1/6.2 与 [扩展设计](CARD_EXTENSION_DESIGN.md)。当前没有通用自动参数表单、插件包安装或外部 renderer 宿主；设计候选不作为已实现 API。
+
+已确认：在设置导入卡片包，先解析校验，再进 Vivic Test Space 弹窗预览和试跑，最后确认安装。[产品流程](CARD_TEST_SPACE.md) 不变；[首轮任务入口](tasks/card-platform-first-sprint.md) 已指向会议校正后的工单。平台协议/宿主由程佳锐牵头，旅游卡片由 xlz 先独立开发再接线。当前文档分支仍待用户按步骤提交和合入。
+
+本轮 Skill 格式、真实解析样例、文档 JSON 与契约一致性通过；API 定向 93 + Web 定向 67 项通过，见 [卡片开发验证](verification/card-development-20261020.md)。尚未提交推送，不把规范交付等同于旅游卡片已开发。
 
 本机已有 Node 24.21.0，依赖按 pnpm 12.11.2 锁定安装。若终端没有 pnpm 命令，见贡献指南中的局部 Corepack 入口。旧 `scripts/dev.mjs` 的跨平台启动仍需真实检查，单独启动命令可用于定位问题。
 
-协作准备阶段已有 Windows 验证：web 520 + API 1,070 项通过，另 3 项跳过；契约、类型和构建通过。`.gitattributes` 固定生成契约为 LF，修复 Windows CRLF 一致性误报。详见 [验证记录](verification/local-development-20261019.md)。这些结果不代表真实模型、音频设备、浏览器或远端 CI 已验证。
+协作准备阶段已有 Windows 验证：web 520 + API 1,070 项通过，另 3 项跳过；契约、类型和构建通过。`.gitattributes` 固定生成契约为 LF，修复 Windows CRLF 一致性误报。详见 [验证记录](verification/local-development-20261019.md)。PR #1 的 Linux/Windows CI 此后均已通过；真实模型、音频和用户设备的验证边界仍保留。
 
 ## 保留的边界
 

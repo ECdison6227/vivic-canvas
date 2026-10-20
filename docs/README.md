@@ -11,6 +11,15 @@
 | [当前交接](AGENT_HANDOFF.md) | 当前任务与运行边界 |
 | [Git 约定](GIT_WORKFLOW.md) | 主仓库、fork、PR 与合入 |
 | [团队任务边界](TEAM_TASKS.md) | 按核心依赖分工、接口和代码范围 |
+| [会议后的正式分工草案](team/README.md) | 程佳锐/xlz/马泽瑜的8项可建立 Issue 的工单 |
+| [AI 开工与提交 PR 规则](team/WORKFLOW.md) | 给队员/Agent 的提示词、执行边界和验收流程 |
+| [参考资料交接](team/REFERENCES.md) | 每个人需要的代码、Skill、Hark 资料与缺失项 |
+| [卡片开发契约](CARD_DEVELOPMENT.md) | 模型数据、Schema、事实来源、renderer、编辑与保存规则 |
+| [单卡设计表](cards/CARD_SPEC_TEMPLATE.md) | 每张卡的参数、编辑权限、视觉、主题与验收模板 |
+| [自定义卡片扩展设计](CARD_EXTENSION_DESIGN.md) | 从内置类型到 Agent 制作、用户导入的待实现路线 |
+| [Vivic Test Space](CARD_TEST_SPACE.md) | 设置导入、校验、弹窗预览试跑、安装流程与隔离要求 |
+| [首轮 GitHub 任务](tasks/card-platform-first-sprint.md) | CORE-01 / FE-01 / FE-02 / BE-01 的范围和验收草稿 |
+| [飞猪旅游系列卡片](tasks/fliggy-travel-cards.md) | 首项系列卡片任务、MCP 能力核对及前后端分工 |
 | [实施现状](implementation-status.md) | 已有功能与未验证项 |
 | [本地功能路线](LOCAL_ROADMAP.md) | 新功能顺序与可分配范围 |
 | [本轮整理记录](REPOSITORY_CLEANUP.md) | 保留、删除、归档的理由 |
