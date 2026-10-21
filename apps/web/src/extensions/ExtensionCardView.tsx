@@ -6,6 +6,7 @@ import { useCardEditor } from "@/cards/scene/cardContext";
 import type { CardViewProps } from "@/cards/scene/types";
 import { extensionDefinitions } from "./definitionStore";
 import { SchemaForm } from "./SchemaForm";
+import "./extensions.css";
 
 const display = (value: unknown): string => value === undefined || value === null ? "—" : typeof value === "object" ? JSON.stringify(value) : String(value);
 const httpsUrl = (value: unknown) => {
@@ -18,7 +19,7 @@ function Block({ block, root, allowNetwork }: { block: UiBlock; root: unknown; a
   switch (block.component) {
     case "Header": return <h4 className="text-lg font-semibold break-words">{text}</h4>;
     case "Metric": return <div><p className="vivic-scene-muted text-xs">{label}</p><strong className="text-3xl tabular-nums break-words">{text}</strong></div>;
-    case "KeyValue": return <div className="flex justify-between gap-3 text-sm"><span className="vivic-scene-muted">{label}</span><span className="min-w-0 break-words text-right">{text}</span></div>;
+    case "KeyValue": return <div className="flex justify-between gap-3 text-sm"><span className="vivic-scene-muted max-w-[40%] shrink-0 truncate" title={label}>{label}</span><span className="min-w-0 break-words text-right">{text}</span></div>;
     case "Badge": return <span className="vivic-scene-badge">{label ? `${label} · ` : ""}{text}</span>;
     case "List": return Array.isArray(value) && value.length ? <ul className="space-y-2 text-sm list-disc pl-4">{value.map((v, i) => <li key={i} className="break-words">{display(v)}</li>)}</ul> : <SceneEmpty>暂无内容</SceneEmpty>;
     case "Image": {
@@ -29,7 +30,7 @@ function Block({ block, root, allowNetwork }: { block: UiBlock; root: unknown; a
     case "Link": { const url = httpsUrl(value); return url && allowNetwork ? <a className="vivic-scene-action break-all" href={url} target="_blank" rel="noopener noreferrer">{label ?? url}</a> : <span className="vivic-scene-muted text-xs">{label ?? "链接"}{allowNetwork ? "不可用" : " · DEMO 链接未打开"}</span>; }
     case "Progress": {
       const progress = typeof value === "number" ? Math.min(100, Math.max(0, value)) : 0;
-      return <div className="space-y-1"><p className="text-xs">{label} {progress}%</p><progress className="w-full accent-[var(--vivic-accent)]" max={100} value={progress} aria-label={label ?? "进度"} /></div>;
+      return <div className="space-y-1"><p className="text-xs">{label} {progress}%</p><progress className="vivic-extension-progress w-full" style={{ accentColor: "var(--vivic-accent, #7c68df)" }} max={100} value={progress} aria-label={label ?? "进度"} /></div>;
     }
     case "Table": return Array.isArray(value) && value.length ? <div className="overflow-x-auto"><table className="w-full text-xs"><thead><tr>{block.columns?.map(c => <th className="p-2 text-left" key={c.field}>{c.label}</th>)}</tr></thead><tbody>{value.map((row, i) => <tr key={i}>{block.columns?.map(c => <td className="p-2 break-words border-t border-[var(--border)]" key={c.field}>{display(typeof row === "object" && row !== null && Object.hasOwn(row, c.field) ? (row as Record<string, unknown>)[c.field] : undefined)}</td>)}</tr>)}</tbody></table></div> : <SceneEmpty>暂无数据</SceneEmpty>;
   }

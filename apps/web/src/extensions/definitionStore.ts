@@ -20,14 +20,15 @@ async function reload() {
   const db = await openVivicDB();
   try {
     const rows = await db.loadCardDefinitions(), next: InstalledDefinition[] = [];
+    let nextError: string | null = null;
     for (const row of rows) {
       try {
         const definition = await revalidateDefinition(row.definition);
         if (definitionKey(definitionRef(definition)) !== row.key) throw new Error("定义 key 与内容身份不匹配");
         next.push({ definition, enabled: row.enabled === true });
-      } catch { error = "有卡片定义损坏或不兼容；原始定义仍保留，已有实例显示占位。请重新导入。"; }
+      } catch { nextError = "有卡片定义损坏或不兼容；原始定义仍保留，已有实例显示占位。请重新导入。"; }
     }
-    if (epoch === loadEpoch) { entries = next; emit(); }
+    if (epoch === loadEpoch) { entries = next; error = nextError; emit(); }
   } finally { db.close(); }
 }
 const persist = async (record: StoredCardDefinition, active = () => true) => {
@@ -65,18 +66,24 @@ export const extensionDefinitions = {
     if (!active()) {
       if (previous && startedResetEpoch === resetEpoch) await persist({ key, ...previous });
       else { const db = await openVivicDB(); try { await db.deleteCardDefinition(key); } finally { db.close(); } }
+      loadEpoch++;
       throw new Error("安装会话已取消，定义未安装");
     }
+    // A refresh may have read old rows and still be hashing them. Its snapshot must
+    // never replace a mutation that has now committed and is published synchronously.
+    loadEpoch++;
     entries = [...entries.filter(old => definitionKey(definitionRef(old.definition)) !== key), row]; error = null; emit(); channel?.postMessage("reload");
   },
   async setEnabled(ref: ExtensionProps["def"], enabled: boolean) {
     await this.ready(); const definition = this.get(ref, true); if (!definition) throw new Error("找不到定义");
     const key = definitionKey(ref); await persist({ key, definition, enabled });
+    loadEpoch++;
     entries = entries.map(row => definitionKey(definitionRef(row.definition)) === key ? { ...row, enabled } : row); emit(); channel?.postMessage("reload");
   },
   async uninstall(ref: ExtensionProps["def"]) {
     await this.ready(); const key = definitionKey(ref), db = await openVivicDB();
     try { await db.deleteCardDefinition(key); } finally { db.close(); }
+    loadEpoch++;
     entries = entries.filter(row => definitionKey(definitionRef(row.definition)) !== key); emit(); channel?.postMessage("reload");
   },
 };

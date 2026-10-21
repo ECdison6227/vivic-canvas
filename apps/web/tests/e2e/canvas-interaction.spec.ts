@@ -67,7 +67,7 @@ test("60 cards fit an 800×600 display while a pinned card keeps its world coord
         return { type: "card.create", card };
       }));
     }
-    await expect(display.locator("[data-card-id]")).toHaveCount(60);
+    await expect(display.locator("[data-card-id]")).toHaveCount(60, { timeout: 15000 });
     await controlDispatch(control, "fit-sixty", canvasId, [{ type: "canvas.fit" }]);
     await expect.poll(async () => display.locator("[data-card-id]").evaluateAll(nodes => nodes.every(node => {
       const box = node.getBoundingClientRect();

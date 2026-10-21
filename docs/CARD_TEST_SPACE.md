@@ -35,4 +35,6 @@ Escape/关闭按钮退出，焦点回到导入入口。声音和麦克风沿用�
 
 packages/card-runtime 提供 `parsePackageFiles`、`readPackageZip`、`revalidateDefinition`、`validateInstance`，CLI 为 `pnpm card:check <dir|zip>`。Web definitionStore 提供 exact-ref 查找、安装、禁用、卸载和同步加载；ExtensionCardView 负责受控组件呈现及缺包占位。
 
+使用 `pnpm card:pack <目录> <输出.vivicard>` 制作可移植 ZIP，再用 `pnpm card:check <输出.vivicard>` 复核。打包器先校验原目录，统一使用 `/` 目录分隔符，打包后重新校验内容哈希；输出文件已存在时拒绝覆盖。Windows PowerShell 旧版 `Compress-Archive` 可能写出反斜线目录名，不满足此协议，推荐直接使用本命令。
+
 自动化覆盖：合法/非法 Schema、示例、UI 绑定、路径、ZIP 大小/CRC、重复 JSON 字段、内容 hash、隔离/取消/迟到试跑、安装幂等、重启、禁用/卸载/重装、坏定义保留。`apps/web/tests/e2e/card-packages.spec.ts` 从系统临时目录生成一个真正的外部包，验证 12 配色、两种模式、焦点返回与实例恢复，并输出预览截图。视觉和真实外部服务能力须分别报告，不能把自动化样例通过称作 live 通过。

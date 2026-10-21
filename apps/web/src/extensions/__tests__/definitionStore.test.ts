@@ -79,4 +79,29 @@ describe("installed declarative definitions", () => {
       const db = await openVivicDB(); expect(await db.loadCardDefinitions()).toHaveLength(0); db.close();
     } finally { spy.mockRestore(); }
   });
+  it.each(["install", "disable", "uninstall"] as const)("a slow hash-validating reload cannot undo a completed %s", async action => {
+    const definition = await parsePackageFiles(input);
+    const second = await parsePackageFiles({ ...input, "manifest.json": JSON.stringify({ ...JSON.parse(input["manifest.json"]), id: "example.second" }) });
+    await extensionDefinitions.install(definition, definition.hash);
+    let release = () => {}, notifyEntered = () => {}, holdNext = true;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const entered = new Promise<void>(resolve => { notifyEntered = resolve; });
+    const original = crypto.subtle.digest.bind(crypto.subtle);
+    const spy = vi.spyOn(crypto.subtle, "digest").mockImplementation(async (algorithm, data) => {
+      if (holdNext) { holdNext = false; notifyEntered(); await gate; }
+      return original(algorithm, data);
+    });
+    const stale = extensionDefinitions.refresh();
+    try {
+      // The refresh has already read the old IDB rows and now waits on their real content hash.
+      await entered;
+      if (action === "install") await extensionDefinitions.install(second, second.hash);
+      else if (action === "disable") await extensionDefinitions.setEnabled(definitionRef(definition), false);
+      else await extensionDefinitions.uninstall(definitionRef(definition));
+      release(); await stale;
+      if (action === "install") expect(extensionDefinitions.get(definitionRef(second))).toBeDefined();
+      else if (action === "disable") expect(extensionDefinitions.list().find(row => row.definition.manifest.id === definition.manifest.id)?.enabled).toBe(false);
+      else expect(extensionDefinitions.list()).toHaveLength(0);
+    } finally { release(); await stale; spy.mockRestore(); }
+  });
 });
