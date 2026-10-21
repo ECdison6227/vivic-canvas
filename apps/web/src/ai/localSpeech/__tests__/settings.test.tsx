@@ -12,20 +12,23 @@ const fakeManager = () => {
     { phase: "absent", loaded: 0, total: getSpeechModel(id).bytes, error: null },
   ])) as ModelsSnapshot["models"], busy: false };
   return { getSnapshot: () => snapshot, subscribe: () => () => {}, refresh: vi.fn(async () => {}),
+    prepareDefaultModels: vi.fn(async (_options: { signal?: AbortSignal }) => {}),
     prepareModel: vi.fn(async () => {}), cancelDownload: vi.fn(), clearModelCache: vi.fn(async () => {}) };
 };
 afterEach(() => { document.body.innerHTML = ""; vi.unstubAllGlobals(); });
-describe("optional local speech settings", () => {
-  it("only inspects cache on mount; download requires a user action", async () => {
+describe("local speech settings", () => {
+  it("prepares models on mount while retaining explicit retry controls", async () => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     const container = document.createElement("div"); document.body.append(container);
     const root = createRoot(container), manager = fakeManager();
     await act(async () => root.render(<LocalSpeechSettings manager={manager as unknown as LocalSpeechModelManager} />));
-    expect(manager.refresh).toHaveBeenCalledTimes(1); expect(manager.prepareModel).not.toHaveBeenCalled();
+    expect(manager.prepareDefaultModels).toHaveBeenCalledTimes(1); expect(manager.prepareModel).not.toHaveBeenCalled();
+    expect(container.textContent).toContain("vivic"); expect(container.textContent).toContain("默认不监听");
     expect(container.textContent).toContain("169.23 MB"); expect(container.textContent).toContain("13.08 MB");
     await act(async () => (container.querySelector('[data-local-speech-model="asr-zh"] button') as HTMLButtonElement).click());
     expect(manager.prepareModel).toHaveBeenCalledWith("asr-zh");
     await act(async () => root.unmount());
+    expect(manager.prepareDefaultModels.mock.calls[0]![0].signal?.aborted).toBe(true);
   });
   it("disables downloads for a read-only host and stops sessions before clearing", async () => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
@@ -33,6 +36,7 @@ describe("optional local speech settings", () => {
     const root = createRoot(container), manager = fakeManager(), before = vi.fn(async () => {});
     await act(async () => root.render(<LocalSpeechSettings disabled manager={manager as unknown as LocalSpeechModelManager} onBeforeClear={before} />));
     expect(Array.from(container.querySelectorAll("button")).every(button => button.disabled)).toBe(true);
+    expect(manager.refresh).toHaveBeenCalledTimes(1); expect(manager.prepareDefaultModels).not.toHaveBeenCalled();
     await act(async () => root.render(<LocalSpeechSettings manager={manager as unknown as LocalSpeechModelManager} onBeforeClear={before} />));
     const clear = Array.from(container.querySelectorAll("button")).find(button => button.textContent?.includes("清理模型缓存"))!;
     await act(async () => clear.click());

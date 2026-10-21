@@ -63,13 +63,18 @@ export function stopLocation() {
   set({ status: supported() ? "off" : "unsupported", fix: null });
 }
 
-/** Resume a watch the user enabled earlier, without prompting on page load. */
+/** Request location on opening Vivic, while respecting an explicit off choice. */
 export async function resumeLocation() {
-  if (!supported() || readPreference() !== "on" || watchId !== null) return;
+  if (!supported() || locationDeclined() || watchId !== null) return;
   try {
     const permission = await navigator.permissions?.query({ name: "geolocation" });
-    if (permission && permission.state !== "granted") return;
-  } catch { return; }
+    if (locationDeclined() || watchId !== null) return;
+    if (permission?.state === "denied") {
+      set({ status: "denied", fix: null, error: "浏览器未允许定位。可在地址栏左侧的站点权限里允许“位置”。" });
+      return;
+    }
+  } catch { /* A browser without Permissions API can still request geolocation. */ }
+  if (locationDeclined() || watchId !== null) return;
   startLocation();
 }
 

@@ -44,7 +44,7 @@ try {
   const text = await page.locator("main").innerText();
   const captureAttempts = await page.evaluate(() => window.__speechCaptureAttempts);
   const modelRows = await page.locator("[data-local-speech-model]").count();
-  if (errors.length || captureAttempts || modelRows !== 3 || !text.includes("你好维维")) throw new Error(JSON.stringify({ errors, captureAttempts, modelRows, text }));
+  if (errors.length || captureAttempts || modelRows !== 3 || !text.includes("vivic")) throw new Error(JSON.stringify({ errors, captureAttempts, modelRows, text }));
   if (requests.some(url => /public\/models.*raw/.test(url))) throw new Error("public raw import regression");
   await page.screenshot({ path: path.join(owned, "settings-and-wake.png"), fullPage: true });
   const report = { ok: true, port, errors, captureAttempts, modelRows, requests, screenshot: ".cache/sherpaw-poc/settings-and-wake.png" };

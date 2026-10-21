@@ -52,9 +52,9 @@ export const DisplayPreferencesSchema = z.strictObject({
   lightPalette: z.enum(LIGHT_PALETTE_IDS).optional(),
 });
 export type DisplayPreferences = z.infer<typeof DisplayPreferencesSchema>;
-// 2026-10-17: the default background is the dark 午夜蓝紫 palette, so the default theme is dark.
+// New installs and resets follow the local daylight schedule by default.
 export const DEFAULT_DISPLAY_PREFERENCES: DisplayPreferences = {
-  theme: "dark", reducedMotion: false, subtitles: true,
+  theme: "auto", reducedMotion: false, subtitles: true,
 };
 
 const msgBase = {

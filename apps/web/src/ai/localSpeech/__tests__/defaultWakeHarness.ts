@@ -1,4 +1,4 @@
-import { createLocalSpeechSession, DEFAULT_WAKE_KEYWORDS, localSpeechModels, SPEECH_MODELS, transcribeLocalPcm } from "../index";
+import { createLocalSpeechSession, DEFAULT_WAKE_KEYWORDS, DEFAULT_WAKE_PHRASE, localSpeechModels, SPEECH_MODELS, transcribeLocalPcm } from "../index";
 import type { LocalSpeechEvent } from "../types";
 async function wav(name: string) {
   const bytes = await (await fetch(`/__wake-fixture/${name}.wav`)).arrayBuffer();
@@ -32,7 +32,7 @@ window.runDefaultWakePoc = async (silenceSeconds: number) => {
         const segment = events.find(e => e.type === "segment");
         if (events.filter(e => e.type === "wake").length !== 1 || segment?.type !== "segment") throw new Error(JSON.stringify(events.filter(e => e.type !== "segment")));
         const text = await transcribeLocalPcm(segment.samples, { sampleRate: 16000 });
-        if (!/提醒/.test(text) || !/喝水/.test(text) || /你好|维维/.test(text)) throw new Error(`Invalid command segment: ${text}`);
+        if (!/提醒/.test(text) || !/喝水/.test(text) || text.toLowerCase().includes(DEFAULT_WAKE_PHRASE)) throw new Error(`Invalid command segment: ${text}`);
         return { text, wakeEvents: events.filter(e => e.type === "wake"), frames: segment.samples.length };
       } finally { session.dispose(); }
     });
