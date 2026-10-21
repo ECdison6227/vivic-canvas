@@ -41,6 +41,16 @@ export function buildDemoCards(now: number = Date.now()) {
   const birthday = addDays(today, 25);
 
   const cards = {
+    travel: {
+      prompt: "下周去杭州住两晚，预算500（旅游DEMO，无需连接模型）",
+      card: { ...scene("travel_offers", "travel", now), type: "TravelOffersCard",
+        displayProps: { query: { kind: "hotel", destination: "杭州", dateText: "下周", nights: 2, budget: 500 },
+          items: [{ id: "demo-stay", kind: "hotel", title: "杭州 · 演示住宿", subtitle: "虚构样例，不代表真实酒店、价格或可预订库存。",
+            price: { amount: 328, currency: "CNY" }, tags: ["模拟数据", "不可预订"] }],
+          fetchedAt: iso(now), mode: "demo", status: "ok", selectedIds: [], notes: "" },
+        sourceData: { provider: "vivic-demo", tool: "travel.search", requestId: "landing-travel-demo" },
+        sources: [{ kind: "service", title: "Vivic 旅游演示数据", provider: "vivic-demo", fetchedAt: iso(now), readFullPage: false }] },
+    },
     countdown: {
       prompt: "距离我生日还有 25 天，帮我做个倒计时",
       card: { ...scene("countdown", "countdown", now), type: "CountdownCard", displayProps: {},
@@ -217,9 +227,9 @@ export function buildDemoCards(now: number = Date.now()) {
 
 export type DemoCardKey = keyof ReturnType<typeof buildDemoCards>;
 
-/** Order of the curved scene ring: the twenty scene cards plus the classic cards. */
+/** Order of the curved scene ring: all twenty-one scene cards plus the classic cards. */
 export const RING_ORDER: DemoCardKey[] = [
   "countdown", "week", "compare", "goal", "story", "todo", "chart", "timeline", "link", "habit",
   "cover", "month", "book", "quote", "notice", "paper", "gallery", "roadmap", "news", "feed",
-  "weather", "timer", "search", "table",
+  "travel", "weather", "timer", "search", "table",
 ];

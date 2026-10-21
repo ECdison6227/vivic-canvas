@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { CardRecordSchema, SCENE_CARD_TYPE, SCENE_IDS, SCENES, sceneOfCard, type CardRecord, type CardType } from "@/contracts";
 import { VivicCard } from "../VivicCard";
 import { CARD_VIEWS } from "../registry";
@@ -17,8 +17,19 @@ import { createCanvasStore } from "@/state/canvasStore";
 class TestResizeObserver { observe() {} unobserve() {} disconnect() {} }
 let host: HTMLDivElement;
 let root: Root;
-const render = async (node: ReactNode) => { await act(async () => root.render(node)); };
+const render = async (node: ReactNode) => {
+  await act(async () => {
+    root.render(node);
+    // Keep actual lazy-module resolution within React's test transaction.
+    await Promise.all([import("../ChartCardView"), import("../scene/views/TravelOffersCardView"), import("@/extensions/ExtensionCardView")]);
+  });
+  expect(host.textContent).not.toContain("正在加载卡片…");
+};
 const control = (node: ReactNode, actions: CardActions) => <CardModeContext.Provider value="control"><CardActionsContext.Provider value={actions}>{node}</CardActionsContext.Provider></CardModeContext.Provider>;
+
+beforeAll(async () => {
+  await Promise.all([import("../ChartCardView"), import("../scene/views/TravelOffersCardView"), import("@/extensions/ExtensionCardView")]);
+});
 
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
@@ -35,9 +46,13 @@ afterEach(async () => {
 });
 
 describe("scene card registry", () => {
-  it("has exactly one renderer for each of the 20 scene card types", () => {
-    for (const scene of SCENES) expect(typeof CARD_VIEWS[scene.cardType as CardType]).toBe("function");
-    expect(Object.keys(CARD_VIEWS)).toHaveLength(24);
+  it("has exactly one renderer for each of the 21 scene card types and the extension host", () => {
+    for (const scene of SCENES) {
+      const view = CARD_VIEWS[scene.cardType as CardType];
+      expect(typeof view === "function" || (typeof view === "object" && view !== null
+        && Reflect.get(view, "$$typeof") === Symbol.for("react.lazy"))).toBe(true);
+    }
+    expect(Object.keys(CARD_VIEWS)).toHaveLength(26);
   });
   it("ships schema-valid sample data whose scene round-trips through the registry", () => {
     const fixtures = buildSceneFixtures();

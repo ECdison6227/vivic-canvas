@@ -1,11 +1,13 @@
 import { randomUUID, timingSafeEqual } from "node:crypto";
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
+import { streamSSE } from "hono/streaming";
 import { cors } from "hono/cors";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import type { LocalApiConfig } from "./config.js";
 import { CredentialStore } from "./credentials.js";
-import { runIntent } from "./intent/pipeline.js";
+import { runIntent, type PipelineDeps } from "./intent/pipeline.js";
+import { safeDiagnostic, type DiagnosticSink } from "./diagnostics.js";
 import {
   IntentRequestSchema,
   WeatherHereRequestSchema,
@@ -28,6 +30,8 @@ import { decodeImage } from "./imageDecoder.js";
 import { DecisionManager } from "./decision/manager.js";
 import { DecisionRouter, HttpDecisionProvider, decisionTimeout, type DecisionProvider } from "./decision/provider.js";
 import type { PreferenceStore } from "./preferences.js";
+import { TravelQuerySchema } from "@vivic/contracts";
+import { buildTravelCard, demoTravelProvider, queryTravel, type TravelProvider } from "./providers/travel.js";
 
 /**
  * Vivic local decision API. Loopback only, bearer-guarded, zod on every
@@ -46,6 +50,8 @@ export interface AppDeps {
   decision?: DecisionManager;
   /** Optional independent DEC-01 API/local provider. */
   decisionProvider?: DecisionProvider;
+  onDiagnostic?: DiagnosticSink;
+  travel?: TravelProvider;
   /** Remembers the chosen connection across restarts; absent in tests. */
   preferences?: PreferenceStore;
 }
@@ -62,13 +68,17 @@ const firstIssue = (error: z.ZodError): string =>
     .map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`)
     .join("; ");
 
+type AppContext = Context<{ Variables: { requestId: string } }>;
+
 export const createApp = (deps: AppDeps) => {
   const { config } = deps;
   const credentials = deps.credentials ?? new CredentialStore();
   const gpt = deps.gpt ?? new GptProvider({ fetchImpl: deps.fetchImpl });
   const data = deps.data ?? createDataClient({ fetchImpl: deps.fetchImpl });
+  let decisionConfigurationError: string | undefined;
   const configuredProvider = deps.decisionProvider ?? (() => {
     if (deps.decision || !config.decisionProviderUrl) return undefined;
+    try {
     const primary = new HttpDecisionProvider(config.decisionProviderUrl, {
       name: config.decisionProviderKind ?? "api", timeoutMs: config.decisionProviderTimeoutMs,
       fetchImpl: deps.fetchImpl, protocol: config.decisionProviderProtocol, model: config.decisionProviderModel,
@@ -78,6 +88,14 @@ export const createApp = (deps: AppDeps) => {
       name: "local", timeoutMs: config.decisionProviderTimeoutMs, fetchImpl: deps.fetchImpl,
     }) : undefined;
     return new DecisionRouter(primary, fallback);
+    } catch {
+      // Operator configuration must not take down the text/rules/LLM path.
+      // Never echo the configured URL, token, or upstream exception.
+      decisionConfigurationError = "决策服务配置无效，已回退到原有指令流程。请检查地址、协议、服务类型和模型名称后重启。";
+      console.warn(JSON.stringify({ event: "decision.configuration_invalid" }));
+      safeDiagnostic(deps.onDiagnostic, { event: "decision.configuration_invalid" });
+      return undefined;
+    }
   })();
   const decision = deps.decision ?? new DecisionManager(undefined, configuredProvider, {
     enabled: config.decisionProviderEnabled !== false,
@@ -115,8 +133,21 @@ export const createApp = (deps: AppDeps) => {
     timeoutMs: config.requestTimeoutMs,
   };
 
-  const app = new Hono();
-  app.onError((_error, c) => c.json({ ok: false, error: "本地服务暂时无法完成请求。" }, 500));
+  const app = new Hono<{ Variables: { requestId: string } }>();
+  app.use("*", async (c, next) => {
+    const requestId = randomUUID(), started = performance.now();
+    c.set("requestId", requestId);
+    c.header("X-Request-Id", requestId);
+    await next();
+    safeDiagnostic(deps.onDiagnostic, { event: "request.complete", requestId,
+      method: c.req.method, route: c.req.routePath, status: c.res.status,
+      elapsedMs: Math.round(performance.now() - started) });
+  });
+  app.onError((_error, c) => {
+    safeDiagnostic(deps.onDiagnostic, { event: "request.error", requestId: c.get("requestId"),
+      method: c.req.method, route: c.req.routePath, status: 500 });
+    return c.json({ ok: false, error: "本地服务暂时无法完成请求。" }, 500);
+  });
 
   // unauthenticated liveness probe (process manager / playwright webServer)
   app.get("/healthz", (c) => c.json({ ok: true, service: "vivic-local-api" }));
@@ -136,7 +167,7 @@ export const createApp = (deps: AppDeps) => {
   app.use("/api/*", async (c, next) => {
     if (c.req.method === "POST") {
       const len = Number(c.req.header("content-length") ?? 0);
-      const limit = c.req.path === "/api/transcribe" ? ASR_BODY_LIMIT_BYTES : c.req.path === "/api/intent" ? 6 * 1024 * 1024 : config.bodyLimitBytes;
+      const limit = c.req.path === "/api/transcribe" ? ASR_BODY_LIMIT_BYTES : /^\/api\/intent(?:\/stream)?$/.test(c.req.path) ? 6 * 1024 * 1024 : config.bodyLimitBytes;
       if (len > limit) {
         return c.json({ ok: false, error: "请求体过大" }, 413);
       }
@@ -318,11 +349,22 @@ export const createApp = (deps: AppDeps) => {
     return c.body(result.audio, 200);
   });
 
-  app.get("/api/decision/status", c => c.json(decision.status()));
-  app.post("/api/decision/prepare", c => c.json(decision.prepare()));
-  app.post("/api/decision/stop", c => c.json(decision.stop()));
-  app.post("/api/decision/clear", c => c.json(decision.clear()));
-  app.post("/api/decision/enable", c => c.json(decision.enable()));
+  const decisionStatus = (status = decision.status()) => decisionConfigurationError
+    ? { ...status, configurationError: decisionConfigurationError, error: status.error ?? decisionConfigurationError }
+    : status;
+  app.get("/api/decision/status", c => c.json(decisionStatus()));
+  app.post("/api/decision/prepare", c => c.json(decisionStatus(decision.prepare())));
+  app.post("/api/decision/stop", c => c.json(decisionStatus(decision.stop())));
+  app.post("/api/decision/clear", c => c.json(decisionStatus(decision.clear())));
+  app.post("/api/decision/enable", c => c.json(decisionStatus(decision.enable())));
+
+  app.post("/api/travel/refresh", async c => {
+    const parsed = z.strictObject({ query: TravelQuerySchema }).safeParse(await readJson(c));
+    if (!parsed.success) return c.json({ kind: "error", message: "旅游查询参数不正确。" }, 400);
+    const lookup = await queryTravel(deps.travel ?? demoTravelProvider, parsed.data.query, c.req.raw.signal);
+    if (!lookup.ok) return c.json({ kind: "error", message: lookup.message });
+    return c.json({ kind: "travel", card: buildTravelCard(lookup.result) });
+  });
 
   // Live refresh of a "where I am" weather card. Returns verified card fields
   // only; Control replaces the card body locally, so no Action is involved.
@@ -354,9 +396,7 @@ export const createApp = (deps: AppDeps) => {
     }
   });
 
-  app.post("/api/intent", bodyLimit({ maxSize: 6 * 1024 * 1024,
-    onError: c => c.json({ ok: false, error: "图片指令请求过大。" }, 413),
-  }), async (c) => {
+  const handleIntent = async (c: AppContext) => {
     let raw: unknown;
     try {
       raw = await c.req.json();
@@ -386,17 +426,56 @@ export const createApp = (deps: AppDeps) => {
         return c.json({ kind: "error", message: "模型连接已变更，图片请求已取消。" });
       }
     }
-    const result = await runIntent(parsed.data, { credentials, stepfun, search, data, decision,
+    const requestId = c.get("requestId");
+    const observeStage: NonNullable<PipelineDeps["onStage"]> = event => safeDiagnostic(deps.onDiagnostic, {
+      event: "intent.stage", requestId, stage: event.stage, state: event.status,
+      ...(event.elapsedMs !== undefined ? { elapsedMs: Math.round(event.elapsedMs) } : {}),
+    });
+    const execute = (signal: AbortSignal, onStage = observeStage) => runIntent(parsed.data, { credentials, stepfun, search, data, decision, onStage, travel: deps.travel,
       isSessionCurrent: () => version === providerRevision,
       ...(activeProvider === "gpt" ? { planner: { provider: "gpt" as const, connected: gpt.status().connected,
         generate: (messages, signal) => gpt.generate(messages, signal), isCurrent: () => gpt.isCurrent(gptVersion) } } : {}),
-    }, c.req.raw.signal);
+    }, signal);
+    if (c.req.path.endsWith("/stream") || c.req.header("accept")?.includes("text/event-stream")) {
+      c.header("X-Accel-Buffering", "no");
+      return streamSSE(c, async stream => {
+        const controller = new AbortController();
+        stream.onAbort(() => controller.abort());
+        const signal = AbortSignal.any([c.req.raw.signal, controller.signal]);
+        let delivery = Promise.resolve();
+        try {
+          await stream.writeSSE({ event: "accepted", data: JSON.stringify({ requestId }) });
+          const result = await execute(signal, event => {
+            observeStage(event);
+            if (signal.aborted || stream.closed) return;
+            delivery = delivery.then(async () => {
+              if (!signal.aborted && !stream.closed) await stream.writeSSE({ event: "progress", data: JSON.stringify({ requestId, ...event }) });
+            }).catch(() => controller.abort());
+          });
+          const wire = IntentResponseSchema.safeParse(result);
+          await delivery;
+          if (!signal.aborted && !stream.closed) await stream.writeSSE({ event: "result", data: JSON.stringify(wire.success
+            ? wire.data : { kind: "error", message: "内部结果未能通过响应校验。" }) });
+        } catch {
+          safeDiagnostic(deps.onDiagnostic, { event: "request.error", requestId, route: "/api/intent/stream", status: 500 });
+          if (!signal.aborted && !stream.closed) {
+            try { await stream.writeSSE({ event: "result", data: JSON.stringify({ kind: "error", message: "本地服务暂时无法完成请求。" }) }); } catch { /* Reader already disconnected. */ }
+          }
+        } finally { controller.abort(); }
+      });
+    }
+    const result = await execute(c.req.raw.signal);
     const wire = IntentResponseSchema.safeParse(result);
     if (!wire.success) {
       return c.json({ ok: false, error: "内部结果未能通过响应校验" }, 500);
     }
     return c.json(wire.data);
+  };
+  const intentLimit = bodyLimit({ maxSize: 6 * 1024 * 1024,
+    onError: c => c.json({ ok: false, error: "图片指令请求过大。" }, 413),
   });
+  app.post("/api/intent", intentLimit, handleIntent);
+  app.post("/api/intent/stream", intentLimit, handleIntent);
 
   app.route("/api", createAsrRoutes({ config, credentials, fetchImpl: deps.fetchImpl }));
   if (search) app.route("/api", createSearchRoutes({ client: search }));

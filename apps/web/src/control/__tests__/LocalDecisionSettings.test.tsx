@@ -41,11 +41,12 @@ describe("LocalDecisionSettings", () => {
     });
     vi.stubGlobal("fetch", fetch);
     await render();
-    expect(container.querySelector("h2")?.textContent).toBe("受控决策服务（可选）");
+    expect(container.querySelector("h2")?.textContent).toBe("决策路由");
     expect(container.querySelector("[data-vivic-decision-prepare]")).toBeNull();
     expect(container.querySelector("[data-vivic-decision-clear]")).toBeNull();
     expect(container.textContent).not.toContain("Apple Silicon");
-    expect(container.textContent).toContain("不确定时转交原有流程");
+    expect(container.textContent).toContain("不确定或服务失败时交给原有流程");
+    expect(container.textContent).toContain("暂停请求 30 秒");
     const enable = container.querySelector<HTMLButtonElement>("[data-vivic-decision-enable]")!;
     const stop = container.querySelector<HTMLButtonElement>("[data-vivic-decision-stop]")!;
     expect(enable.textContent).toBe("启用决策服务");
@@ -83,7 +84,7 @@ describe("LocalDecisionSettings", () => {
     });
     vi.stubGlobal("fetch", fetch);
     await render();
-    expect(container.querySelector("h2")?.textContent).toBe("本地快速决策（可选）");
+    expect(container.querySelector("h2")?.textContent).toBe("决策路由");
     expect(container.querySelector("[data-vivic-decision-prepare]")).not.toBeNull();
     expect(container.querySelector("[data-vivic-decision-clear]")).not.toBeNull();
     expect(container.querySelector("[data-vivic-decision-status]")?.textContent).toBe("Kev-0.8B · 已准备，未启用");

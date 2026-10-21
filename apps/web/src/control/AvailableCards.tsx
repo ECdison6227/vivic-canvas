@@ -3,8 +3,10 @@ import type { ProviderStatus } from "@/ai/api";
 import { ArrowUpRight, Store } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 
-type Kind = "local" | "model" | "data" | "network";
+type Kind = "local" | "model" | "data" | "network" | "demo";
 const special: Partial<Record<CardType, { kind: Kind; description: string }>> = {
+  TravelOffersCard: { kind: "demo", description: "无需模型体验旅游查询；结果均为模拟数据" },
+  ExtensionCard: { kind: "model", description: "导入并启用声明式卡片包后，按卡名创建" },
   CountdownCard: { kind: "local", description: "计时器和事项提醒" },
   TodoCard: { kind: "local", description: "记录与勾选待办任务" },
   NoteCard: { kind: "local", description: "保存文字和笔记" },
@@ -18,7 +20,7 @@ const catalog = (Object.keys(CARD_TYPE_LABELS) as CardType[]).map(type => ({
   ...(special[type] ?? { kind: "model" as const, description: SCENES.find(scene => scene.cardType === type)?.label ?? CARD_TYPE_LABELS[type] }),
 }));
 const groups = [
-  { id: "local", title: "本地指令", kinds: ["local"] },
+  { id: "local", title: "本地指令与演示", kinds: ["local", "demo"] },
   { id: "model", title: "模型场景", kinds: ["model"] },
   { id: "data", title: "数据与联网", kinds: ["data", "network"] },
 ] as const;
@@ -41,7 +43,7 @@ export function AvailableCards({ backendStatus, provider, connectionText }: Avai
     if (state === "checking") return "检查中";
     if (state === "requires-model") return "需连接当前模型";
     if (state === "requires-backend") return "需启动本地服务";
-    return kind === "network" ? "需联网" : kind === "data" ? "需提供数据" : "可用";
+    return kind === "network" ? "需联网" : kind === "data" ? "需提供数据" : kind === "demo" ? "DEMO · 无需模型" : "可用";
   };
 
   return <section className="mt-4 rounded-lg border border-neutral-200 bg-neutral-50/50 p-3" data-vivic-available-cards>
@@ -57,6 +59,7 @@ export function AvailableCards({ backendStatus, provider, connectionText }: Avai
     </div>
     <p className="mt-1 text-xs text-neutral-600" role="status" data-vivic-card-model-status>{connectionText}</p>
     <p className="mt-1 text-xs text-neutral-500">前往 Vivic Store 添加新卡片 · 商店即将上线</p>
+    <p className="mt-2 text-xs leading-relaxed text-neutral-600" data-vivic-demo-example>先体验：启动本地服务后，在用户页输入「下周去杭州住两晚，预算500」。无需连接模型，会生成明确标注的旅游 DEMO 卡；样例不代表真实酒店、报价或可预订库存。</p>
     {groups.map(group => {
       const cards = catalog.filter(card => (group.kinds as readonly Kind[]).includes(card.kind));
       return <div key={group.id} className="mt-3" data-vivic-card-group={group.id}>

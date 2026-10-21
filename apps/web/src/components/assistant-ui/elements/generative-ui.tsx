@@ -1,11 +1,12 @@
 "use client";
 
 import ReactMarkdown from "react-markdown";
+import { lazy, Suspense } from "react";
 import remarkGfm from "remark-gfm";
 import type { GenerativeUILibrary } from "@assistant-ui/generative-ui/react";
 import { defaultGenerativeUILibrary } from "@assistant-ui/generative-ui/react";
 import { GeoMap, type GeoMapPlace } from "./geo-map";
-import { MermaidDiagram } from "./mermaid-diagram";
+const MermaidDiagram = lazy(() => import("./mermaid-diagram").then(module => ({ default: module.MermaidDiagram })));
 
 const markdownBase = defaultGenerativeUILibrary.Markdown!;
 
@@ -46,7 +47,9 @@ export const styledGenerativeUILibrary: GenerativeUILibrary = {
     ...defaultGenerativeUILibrary.Diagram!,
     render: ({ code, title }) => (
       <figure data-aui="diagram">
-        <MermaidDiagram code={typeof code === "string" ? code : ""} />
+        <Suspense fallback={<div role="status" className="p-4 text-sm text-muted-foreground">正在加载图表…</div>}>
+          <MermaidDiagram code={typeof code === "string" ? code : ""} />
+        </Suspense>
         {typeof title === "string" || typeof title === "number" ? (
           <figcaption data-aui="diagram-title">{title}</figcaption>
         ) : null}

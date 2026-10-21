@@ -158,7 +158,8 @@ test("backend-first planning: rules miss -> stubbed LLM envelope reaches the can
     });
 
     await sendCommand(page, "加待办:模型路由验证");
-    await page.waitForTimeout(600);
+    await expect.poll(() => page.evaluate(() => window.__vivic?.getState())
+      .then(state => (state as { cards?: unknown[] } | undefined)?.cards?.length ?? 0)).toBe(1);
     const cardId = await page.evaluate(
       () =>
         (
@@ -174,7 +175,7 @@ test("backend-first planning: rules miss -> stubbed LLM envelope reaches the can
       spokenText: "已聚焦它",
     };
     await sendCommand(page, "我想仔细研究这项任务的细节，请将它居中显示");
-    await page.waitForTimeout(600);
+    await expect(page.locator("[data-vivic-command-feedback]")).toContainText("已聚焦它");
     const focus = await page.evaluate(
       () =>
         (
@@ -197,8 +198,9 @@ test("offline mode: aborted /api falls back to in-browser rules with honest badg
   await page.waitForSelector('[data-vivic-control="ready"]');
   await page.route("**/api/**", (route) => route.abort());
   await sendCommand(page, "五分钟倒计时");
-  await page.waitForTimeout(800);
   await expect(page.locator("[data-vivic-intent-mode]")).toContainText("离线本地模式");
+  await expect.poll(() => page.evaluate(() => window.__vivic?.getState())
+    .then(state => (state as { cards?: unknown[] } | undefined)?.cards?.length ?? 0)).toBe(1);
   const cards = await page.evaluate(
     () =>
       (

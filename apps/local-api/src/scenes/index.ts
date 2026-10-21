@@ -25,7 +25,10 @@ const zoneOf = (ctx: CanvasContext) => ctx.timeZone ?? "Asia/Shanghai";
 
 /** Evidence the model may cite: the user's words, the clarification turn, the linked page and the canvas. */
 export function sceneCorpus(req: SceneRequest): { corpus: Corpus; sourceTextLength: number } {
-  const canvas = req.ctx.cards.map(card => JSON.stringify({ aliases: card.aliases ?? [], displayProps: card.displayProps, source: card.sourceDataSummary }));
+  const canvas = req.ctx.cards.map(card => {
+    const truncated = (card as typeof card & { contextSummary?: { truncatedFields: string[] } }).contextSummary?.truncatedFields ?? [];
+    return JSON.stringify({ aliases: card.aliases ?? [], displayProps: Object.fromEntries(Object.entries(card.displayProps).filter(([key]) => !truncated.includes(key))), source: card.sourceDataSummary });
+  });
   const corpus = buildCorpus([req.text, req.continuation?.utterance ?? "", req.continuation?.question ?? "", req.page?.title ?? "", req.page?.text ?? "", ...canvas],
     { now: req.now, timeZone: zoneOf(req.ctx) });
   const own = `${req.text}\n${req.continuation?.utterance ?? ""}`.replace(URLS, "").replace(/\s+/g, "");

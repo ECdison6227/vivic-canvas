@@ -1,12 +1,12 @@
 # Vivic 卡片开发契约
 
-版本：2026-10-20，按 `c20a217` 现有源码核对。供新卡片开发、AI 编程与 PR 验收共同使用。类型和运行时 Schema 才是可执行依据，本文解释各层的责任，不另建一套解析协议。
+版本：2026-10-21。已补入 PLAT-01 的结构化服务数据通道和 PLAT-02 声明式包入口。供新卡片开发、AI 编程与 PR 验收共同使用；类型和运行时 Schema 是可执行依据。
 
 本轮样例与定向检查见 [验证记录](verification/card-development-20261020.md)。
 
 配套 [开发 Skill](../.agents/skills/vivic-card-development/SKILL.md) 指导 AI 执行步骤；[飞猪旅游系列任务](tasks/fliggy-travel-cards.md) 说明第一项实际需求。Skill 不会在 Vivic 产品运行时执行，也不会自动注册卡片。
 
-每张具体卡片还需填写 [单卡设计表](cards/CARD_SPEC_TEMPLATE.md)，确定参数、可编辑字段、视觉/主题与验收。这份通用契约不能单独决定一张酒店卡长什么样。未来无源码修改的导入目标见 [卡片扩展设计](CARD_EXTENSION_DESIGN.md)，该部分是待实现方案。
+每张具体卡片还需填写 [单卡设计表](cards/CARD_SPEC_TEMPLATE.md)，确定参数、可编辑字段、视觉/主题与验收。旅游 v0 的实际字段见 [飞猪映射接口](cards/fliggy/spec.md)。无源码修改的声明式包入口见 [卡片扩展设计](CARD_EXTENSION_DESIGN.md) 和 [目标进度参考包](../examples/card-packages/goal-progress)。
 
 ## 1. 先分清三种结构
 
@@ -16,7 +16,7 @@
 | `CardRecord` | 卡片类型、可显示内容、来源、ID、布局、元数据 | 由受控后端构建并校验，不能让模型编造 ID/坐标/时间戳 |
 | React renderer | 显示卡片、接收用户编辑操作 | 开发者编写并注册；模型不生成或执行 React/HTML/JS |
 
-当前内置卡片仍在源码中注册。导入任意外部卡片包、热安装、第三方 SDK 和通用 MCP 宿主尚未完成；不要把这份 Skill 描述成已交付的插件系统。
+内置卡片仍在源码中注册。扩展包 v0.1 仅允许受控 JSON 组件和 JSON Schema 子集，不执行 JS/React/表达式，不提供联网或工具能力。使用当前包协议，不把第三方 SDK 或任意 MCP 宿主当作已有功能。
 
 ## 2. 当前创建链路
 
@@ -56,7 +56,7 @@ flowchart LR
 - `card_type` 是现有解析器允许的可选兼容字段，提供时必须与场景映射一致；不要引入第二套独立类型选择。
 - `data` 由 `apps/local-api/src/scenes/payload.ts` 的 `SceneData` 逐场景校验。字段类型、必填/可选、长度、数量、枚举、边界都要明确；不是任意 JSON。
 - 不在单张 payload 里添加 `component`、`html`、`css`、`layout`、`id` 等未声明字段。新增类型要同时定义后端 payload 和持久化 CardRecord Schema。
-- 少了必要事实时返回既有 `clarify`，例如 `{"clarify":"请补充入住和离店日期。"}`。这只说明既有澄清结构，不表示旅游路由已接入。
+- 少了必要事实时返回 `clarify`，例如 `{"clarify":"计划住几晚？"}`。旅游使用 `travel_offers` 查询场景，仅提取条件，不能输出服务结果。
 - 模型也可以同时输出已有 `actions`，但仍由 ActionEnvelope、目标/操作和事实校验检查；本任务不开放任意新动作。
 
 `spokenText` 的当前运行时上限为 180 字符；prompt 另建议短说明。业务字段的实际长度以 Zod 为准，不能用自然语言提示替代校验。
@@ -67,9 +67,11 @@ flowchart LR
 
 新卡片必须逐字段注明来源和计算方式。金额、库存、可售状态、交通时刻、评分、链接不能由 LLM 凭记忆补全；允许的推导须有确定计算规则及输入依据。
 
-**MCP 结果当前还没有通用入口进入上述证据上下文。** 飞猪适配须先校验真实工具返回，再由受控 builder 映射为卡片，或经过维护者设计的结构化证据接入；不能把整个工具响应塞到用户文字里、伪装成已抓取网页，或关闭 grounding 来绕过限制。外部文本是数据，不是可执行指令。
+服务结果走独立结构化通道：`travel_offers` 查询参数 → 用户文字 grounding → `TravelProvider.query` → `TravelProviderResultSchema` → 确定性 `buildTravelCard` → `CardRecord/ActionEnvelope`。实现位于 `local-api/src/providers/travel.ts` 与 `scenes/travel.ts`。模型只抽查询参数；价格、评分、链接与结果名称仅来自适配器。不得把整个工具响应塞进 corpus、伪装用户文字或关闭 grounding。外部文本始终是数据。
 
-`sources` 必须是实际来源记录。当前网页来源结构包括 `title/url/fetchedAt/provider/readFullPage`；没有实际读取页面时不能标记 `readFullPage: true`。MCP 不是网页抓取，优先在已定义的 `sourceData` 中记录服务、工具、查询时间和请求引用，再明确是否存在真实可用的来源链接。
+`sources` 必须是实际来源记录。`EvidenceRef.kind` 可为 `web|service`，旧记录省略 kind 仍按网页来源读取；网页必须有 URL，service 可以没有 URL。`readFullPage:true` 仅代表实际网页读取，不能用于 MCP。服务请求引用放严格的 sourceData，凭据禁止入卡。
+
+默认旅游适配器为不联网的 `vivic-demo`。所有生成卡明确标记 `mode:"demo"`，显示虚构样例提示；没有真实飞猪调用证据前不得改成 live。空结果保存 `status:"empty",items:[]`；错误、超时或取消不生成卡。批次失败整体不应用。查询日期可用用户原话 `dateText:"下周"`，不把模糊日期猜成具体入住日。模型和适配器错误均不作为下一轮模型指令。
 
 ## 5. 完整卡片由宿主生成
 
@@ -86,7 +88,7 @@ flowchart LR
 }
 ```
 
-以上是固定 TEST ID 的有效持久化样例；真实创建的唯一 ID/时间戳由 builder 生成，布局再交宿主处理。`displayProps` 是该类型的严格显示结构；`sourceData` 当前是开放对象，**不是秘密存储，也不是绕过 Schema 的任意 UI 配置口**。它可能进入上下文、同步和导出，必须最小化、可序列化，不存凭据/订单身份数据/函数/DOM/AbortController。
+以上是固定 TEST ID 的有效持久化样例；真实 ID/时间戳由 builder 生成。`displayProps` 是严格显示结构；旧类型部分 sourceData 开放，旅游与扩展卡严格限制来源字段。sourceData **不是秘密存储或任意 UI 配置口**，可能进入上下文、同步和导出，不存凭据/订单身份数据/函数/DOM/AbortController。
 
 `layout.surface` 缺省兼容旧数据，表示 Display；用户页位置由宿主处理。`variant` 虽有 minimal/standard/expanded 枚举，运行中的切换规则仍受现有 Action 限制；不要以枚举存在就开放任意密度变更。
 
@@ -125,7 +127,9 @@ function ExampleCardView({ card, height, highlight }: CardViewProps<"ProgressRin
 
 每个字段的 spec 必须列类型、必填、默认值、范围/单位、来源、是否可编辑、由什么控件/话术修改、修改后的副作用，以及是否持久化。自然语言和手工输入应使用同一套有效值与可编辑边界。
 
-当前实现的 `displayProps` 内混有展示数据和可编辑内容；编辑 UI 是开发者逐卡编写，**没有根据 Schema 自动生成参数面板的通用功能**。现有 Schema 也不自动提供所有字段的读写权限。对于外部事实只读，新增 UI 限制的同时，宿主更新处理也须核对允许字段，不能仅靠隐藏输入框。
+当前内置卡片的 `displayProps` 内混有展示数据和可编辑内容，内置编辑 UI 仍由开发者逐卡编写；`ExtensionCard` 则按已安装包的 config/state Schema 生成受控参数表单。现有 Schema 不自动提供所有字段的读写权限。对于外部事实只读，新增 UI 限制的同时，宿主更新处理也须核对允许字段，不能仅靠隐藏输入框。
+
+`CARD_FIELD_POLICY` 按 CardRecord 路径声明 query/result/userState；宿主合并 patch 后调用 `cardFieldPolicyIssue`，完整卡片校验仍必须通过。未声明策略的旧卡保持编辑兼容。旅游普通更新仅允许 `selectedIds/notes`；结果和来源只允许宿主的受控刷新写入，查询条件不能改后继续沿用旧结果。刷新时保留仍有效的选择与备注，迟到结果由宿主请求序号丢弃。扩展卡根据精确 hash 对应定义校验 config/data/state，模型不能自行改写 def。
 
 ### 6.2 外观、深浅色与复用
 
@@ -165,7 +169,7 @@ function ExampleCardView({ card, height, highlight }: CardViewProps<"ProgressRin
 | `apps/web/tests/e2e/scene-cards.spec.ts` 及适用保存/布局用例 | 刷新恢复、双窗/移动、布局与实际交互 | 集成 |
 | `Vivic_Kimi_Handoff_v0.6/contracts/*.schema.json` | 从共享类型重新生成，不手工编辑 | 协议 PR |
 
-当前测试有固定 20 场景/24 renderer 的覆盖断言；新增类型后按真实数量更新，并增加新类型覆盖。不能只删除计数断言来跳过遗漏。`Record<SceneId,...>` / `Record<CardType,...>` 的类型错误也要逐处处理，不用 `as any` 掩盖。
+当前固定覆盖 21 个内置场景、26 个 renderer（含通用扩展卡）；新增类型时更新真实计数并增加覆盖，不能删除断言规避遗漏。`travel_offers` 必须用异步 `buildProviderSceneActions/buildAllSceneActions` 构建，不能传给只处理用户事实的同步 builder。扩展场景用 `ext.<manifest.id>`，定义经包内容 hash 重新校验后按需注入模型提示。
 
 具体任务不要求一个人独占所有文件：先合入最小兼容协议 PR，前后端再分别开发，最后集中集成。协议未合入时可做独立 props/fixture 预览，但未注册的类型不能伪称已能进入产品；不要通过强制类型转换让占位卡混进真实画布。
 

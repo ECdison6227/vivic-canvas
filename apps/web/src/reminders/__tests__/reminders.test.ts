@@ -76,7 +76,8 @@ describe("reminder delivery owned by the controller", () => {
     expect(host.getSnapshot().activeCanvasId).toBe(other);
     const card = displayStore.getState().cards[0]!.record;
     expect(card.type === "CountdownCard" && card.sourceData.notifiedAt).toBeTruthy();
-    expect((await db.getCanvas(canvasId))!.cardsById.hidden!.sourceData.notifiedAt).toBeTruthy();
+    const persistedHidden = (await db.getCanvas(canvasId))!.cardsById.hidden!;
+    expect(persistedHidden.type === "CountdownCard" && persistedHidden.sourceData.notifiedAt).toBeTruthy();
     expect(host.getSnapshot().reminderNotices).toHaveLength(1);
     display.stop();
   });
@@ -171,7 +172,7 @@ describe("reminder delivery owned by the controller", () => {
     expect(reader.getSnapshot().reminderNotices).toHaveLength(1);
     host.stop(); await flushChannel();
     const persisted = (await db.getCanvas(canvasId))!.cardsById.once!;
-    expect(persisted.sourceData.notifiedAt).toBeTruthy();
+    expect(persisted.type === "CountdownCard" && persisted.sourceData.notifiedAt).toBeTruthy();
     await reader.checkReminders();
     expect(reader.getSnapshot().reminderNotices).toHaveLength(1);
   });

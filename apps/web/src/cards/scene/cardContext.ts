@@ -20,6 +20,7 @@ export interface CardActions {
   editable: boolean;
   update: (cardId: string, patch: CardPatch) => boolean;
   remove?: (cardId: string) => boolean;
+  refresh?: (cardId: string) => Promise<boolean>;
   /** Store user-picked photos locally and return image references for the card. */
   addPhotos?: (files: File[]) => Promise<SceneImage[]>;
 }
@@ -36,6 +37,7 @@ export function useCardEditor<T extends CardRecord>(card: T) {
     editable,
     patch: (displayProps: Partial<T["displayProps"]>): boolean => editable ? actions!.update(card.id, { displayProps: displayProps as Record<string, unknown> }) : false,
     remove: (): boolean => editable && actions?.remove ? actions.remove(card.id) : false,
+    refresh: editable && actions?.refresh ? () => actions.refresh!(card.id) : undefined,
     addPhotos: editable && actions?.addPhotos ? actions.addPhotos : undefined,
   };
 }

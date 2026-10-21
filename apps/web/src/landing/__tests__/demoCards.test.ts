@@ -13,9 +13,18 @@ describe("landing demo cards", () => {
     }
   });
 
-  it("the ring shows all twenty scene cards once, plus classic cards", () => {
+  it("the ring shows all twenty-one scene cards once, plus classic cards", () => {
     expect(new Set(RING_ORDER).size).toBe(RING_ORDER.length);
     const scenes = new Set(RING_ORDER.map(key => sceneOfCard(cards[key].card)).filter(Boolean));
     expect(scenes.size).toBe(SCENES.length);
+  });
+  it("labels tourism as a synthetic demo without live availability or booking links", () => {
+    expect(RING_ORDER).toContain("travel");
+    expect(cards.travel.card.type).toBe("TravelOffersCard");
+    if (cards.travel.card.type !== "TravelOffersCard") throw new Error("Travel demo fixture has wrong type");
+    expect(cards.travel.card.displayProps.mode).toBe("demo");
+    expect(cards.travel.card.displayProps.items.every(item => !item.detailUrl)).toBe(true);
+    expect(cards.travel.card.sourceData.provider).toBe("vivic-demo");
+    expect(cards.travel.prompt).toContain("DEMO");
   });
 });

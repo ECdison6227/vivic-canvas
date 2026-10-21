@@ -69,9 +69,9 @@ export function NewsCardView({ card, height }: CardViewProps<"NewsCard">) {
       {url && <DetailField label="原文"><SceneLink href={url}>{hostnameOf(url)}</SceneLink></DetailField>}
       {sources.length > 0 && <DetailField label={`引用来源 · ${sources.length}`}>
         <ul className="m-0 grid list-none gap-2 p-0" data-news-sources>{sources.map((item, index) => <li key={index} className="grid min-w-0 gap-0.5">
-          <SceneLink href={item.url}>{item.title.trim() || hostnameOf(item.url)}</SceneLink>
+          {item.url ? <SceneLink href={item.url}>{item.title.trim() || hostnameOf(item.url)}</SceneLink> : <span>{item.title}</span>}
           <span className="vivic-scene-muted text-[11.5px]">
-            {[hostnameOf(item.url), formatFetched(item.fetchedAt), item.readFullPage ? "已读全文" : "仅摘要"].filter(Boolean).join(" · ")}
+            {[item.url ? hostnameOf(item.url) : "服务来源", formatFetched(item.fetchedAt), item.readFullPage ? "已读全文" : "仅摘要"].filter(Boolean).join(" · ")}
           </span>
         </li>)}</ul>
       </DetailField>}

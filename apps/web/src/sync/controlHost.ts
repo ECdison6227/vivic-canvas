@@ -2,6 +2,7 @@ import { notifyReminder } from "@/reminders/notifications";
 import { ActionEnvelopeSchema, CardRecordSchema, TargetChoiceSchema, type ActionEnvelope } from "@/contracts";
 import { isLiveWeatherCard, nextAliases } from "@/location/liveWeather";
 import type { WeatherHereFields } from "@/ai/api";
+import { fetchTravelOffers } from "@/ai/api";
 import { newId } from "@/lib/id";
 import {
   emptyVivicState,
@@ -38,6 +39,9 @@ import { isDue, reminderText, sameDelivery, conditionSatisfied, deliveredNoticeC
 import { isDateCountdown, nextReminderOccurrence, type CardSurface, type CountdownCard } from "@vivic/contracts";
 import { presentCards } from "@/canvas/reminderPresentation";
 import { playReminderSound } from "@/reminders/sound";
+import { envelopeCardPolicyIssue } from "./cardPolicy";
+import { extensionDefinitions, validateExtensionCard } from "@/extensions/definitionStore";
+import { getCanvasRecovery } from "@/persistence/canvasRecord";
 
 /**
  * CONTROL_OWNER host: the sole writer. Dispatches validated ActionEnvelopes
@@ -66,6 +70,7 @@ export interface ControlSnapshot {
   reminders: ReminderSummary[];
   reminderNotices: ReminderNotice[];
   reminderError: string | null;
+  recovery?: { canvasId: string; quarantinedCardCount: number; issueCount: number };
 }
 
 export interface ControlHostDeps {
@@ -78,6 +83,7 @@ export interface ControlHostDeps {
   reminderPollMs?: number;
   now?: () => number;
   onLocalDataReset?: () => void;
+  travelRefresh?: typeof fetchTravelOffers;
 }
 
 export interface ControlHost {
@@ -92,6 +98,7 @@ export interface ControlHost {
   arrangeCanvas: () => DispatchResult;
   /** Swap verified "where I am" weather into an existing live card; layout, pin and subcards stay. */
   refreshWeatherCard: (cardId: string, fields: WeatherHereFields) => DispatchResult;
+  refreshTravelCard: (cardId: string) => Promise<DispatchResult>;
   setActivity: (requestId: string, activity: VivicState["activity"]) => void;
   setTargetChoice: (choice: VivicState["targetChoice"]) => void;
   undo: () => boolean;
@@ -118,8 +125,11 @@ export const createControlHost = (deps: ControlHostDeps): ControlHost => {
   const store = deps.store ?? canvasStore;
 
   const records = new Map<string, CanvasRecord>();
+  const retainRecovery = (record: CanvasRecord, previous = records.get(record.id)): CanvasRecord =>
+    previous?.recovery && !record.recovery ? { ...record, recovery: previous.recovery } : record;
   const persistedVersions = new Map<string, number>();
   const repairedFitRequests = new Map<string, string>();
+  const travelRequests = new Map<string, AbortController>();
   let activeCanvasId: string | null = null;
   let ready = false;
   let seqByCanvas = new Map<string, number>();
@@ -192,6 +202,11 @@ export const createControlHost = (deps: ControlHostDeps): ControlHost => {
       reminders: getReminders(),
       reminderNotices,
       reminderError,
+      ...(activeCanvasId && records.get(activeCanvasId)?.recovery ? { recovery: {
+        canvasId: activeCanvasId,
+        quarantinedCardCount: getCanvasRecovery(records.get(activeCanvasId)!)?.quarantinedCardCount ?? 0,
+        issueCount: records.get(activeCanvasId)!.recovery!.issues.length,
+      } } : {}),
     };
     listeners.forEach((l) => l());
   };
@@ -222,12 +237,12 @@ export const createControlHost = (deps: ControlHostDeps): ControlHost => {
     const canvasId = activeCanvasId;
     const meta = records.get(activeCanvasId);
     if (!meta) return;
-    const record = toCanvasRecord(
+    const record = retainRecovery(toCanvasRecord(
       activeCanvasId,
       meta.title,
       meta.version,
       store.getState(),
-    );
+    ));
     records.set(activeCanvasId, record);
     await queueWrite(async () => {
       // A queued write from a demoted host must not overwrite the new owner.
@@ -252,7 +267,7 @@ export const createControlHost = (deps: ControlHostDeps): ControlHost => {
     for (const record of loaded) {
       const state = fromCanvasRecord(record);
       if (!hasUnpinnedOverlap(state.cards)) { repaired.push(record); continue; }
-      const next = toCanvasRecord(record.id, record.title, record.version + 1, { ...state, cards: relayout(state.cards) });
+      const next = retainRecovery(toCanvasRecord(record.id, record.title, record.version + 1, { ...state, cards: relayout(state.cards) }), record);
       let saved = false;
       await queueWrite(async () => {
         if (owner.mode() !== "owner" || stopped || sessionEpoch !== epoch) return;
@@ -384,7 +399,7 @@ export const createControlHost = (deps: ControlHostDeps): ControlHost => {
     })();
     const result = targetStore.interact(requestId, raw);
     if (!result.ok || result.deduplicated) return result;
-    const record = toCanvasRecord(canvasId, meta.title, meta.version + 1, targetStore.getState());
+    const record = retainRecovery(toCanvasRecord(canvasId, meta.title, meta.version + 1, targetStore.getState()));
     records.set(canvasId, record);
     emit();
     void queueWrite(async () => {
@@ -430,7 +445,7 @@ export const createControlHost = (deps: ControlHostDeps): ControlHost => {
     const current = store.getState();
     const next = { ...current, cards: relayout(current.cards), focus: null, lastFitRequestId: newId("arrange") };
     store.loadState(next);
-    const record = toCanvasRecord(canvasId, meta.title, meta.version + 1, next);
+    const record = retainRecovery(toCanvasRecord(canvasId, meta.title, meta.version + 1, next));
     records.set(canvasId, record); emit();
     void queueWrite(async () => {
       if (!canPersist()) return;
@@ -454,7 +469,7 @@ export const createControlHost = (deps: ControlHostDeps): ControlHost => {
     if (!parsed.success || !isLiveWeatherCard(parsed.data)) return { ok: false, error: "invalid-card" };
     const next = { ...current, cards: current.cards.map(c => c === entry ? { ...c, record: parsed.data } : c) };
     store.loadState(next);
-    const record = toCanvasRecord(canvasId, meta.title, meta.version + 1, next);
+    const record = retainRecovery(toCanvasRecord(canvasId, meta.title, meta.version + 1, next));
     records.set(canvasId, record); emit();
     void queueWrite(async () => {
       if (!canPersist()) return;
@@ -534,7 +549,7 @@ export const createControlHost = (deps: ControlHostDeps): ControlHost => {
     }
   };
 
-  const dispatch = (raw: unknown): DispatchResult => {
+  const dispatch = (raw: unknown, authority: "user" | "provider" = "user"): DispatchResult => {
     if (!writable()) {
       return { ok: false, error: "readonly-not-owner" };
     }
@@ -548,6 +563,9 @@ export const createControlHost = (deps: ControlHostDeps): ControlHost => {
     let envelope: ActionEnvelope = parsed.data;
     // Never apply an envelope for another canvas to the active canvas store.
     if (envelope.canvasId !== activeCanvasId) return { ok: false, error: "wrong-canvas" };
+    if (store.getState().processedRequestIds.includes(envelope.requestId)) return { ok: true, deduplicated: true };
+    const policyIssue = envelopeCardPolicyIssue(envelope, store.getState().cards.map(entry => entry.record), validateExtensionCard, authority);
+    if (policyIssue) return { ok: false, error: policyIssue };
     if (envelope.actions.some(action => action.type === "canvas.switch")) {
       if (envelope.actions.some(action => action.type !== "canvas.switch" && action.type !== "canvas.create"))
         return { ok: false, error: "mixed-canvas-routing" };
@@ -593,6 +611,36 @@ export const createControlHost = (deps: ControlHostDeps): ControlHost => {
       }
     }
     return result;
+  };
+
+  const refreshTravelCard: ControlHost["refreshTravelCard"] = async cardId => {
+    if (!writable()) return { ok: false, error: "readonly-not-owner" };
+    const original = store.getState().cards.find(entry => entry.record.id === cardId && !entry.exitingRequestId)?.record;
+    if (original?.type !== "TravelOffersCard") return { ok: false, error: "missing-travel-card" };
+    travelRequests.get(cardId)?.abort();
+    const controller = new AbortController(), acceptedEpoch = sessionEpoch, canvasId = activeCanvasId;
+    travelRequests.set(cardId, controller);
+    try {
+      const result = await (deps.travelRefresh ?? fetchTravelOffers)(original.displayProps.query,
+        AbortSignal.any([controller.signal, AbortSignal.timeout(10000)]));
+      if (controller.signal.aborted || travelRequests.get(cardId) !== controller || !writable()
+        || sessionEpoch !== acceptedEpoch || activeCanvasId !== canvasId) return { ok: false, error: "旧查询结果已丢弃。" };
+      if (!result.ok) return result;
+      const current = store.getState().cards.find(entry => entry.record.id === cardId && !entry.exitingRequestId)?.record;
+      if (current?.type !== "TravelOffersCard" || JSON.stringify(current.displayProps.query) !== JSON.stringify(original.displayProps.query))
+        return { ok: false, error: "卡片或查询已改变，旧结果已丢弃。" };
+      const parsed = CardRecordSchema.safeParse({ ...current,
+        displayProps: { ...result.card.displayProps, notes: current.displayProps.notes,
+          selectedIds: current.displayProps.selectedIds.filter(id => result.card.displayProps.items.some(item => item.id === id)) },
+        sourceData: result.card.sourceData, sources: result.card.sources,
+        metadata: { ...current.metadata, updatedAt: new Date(now()).toISOString() },
+      });
+      if (!parsed.success) return { ok: false, error: "刷新结果未通过校验。" };
+      // Provider authority is held only by this validated, generation-checked callback.
+      return dispatch({ schemaVersion: "0.6", requestId: newId("travel-refresh"), canvasId,
+        actions: [{ type: "card.create", card: parsed.data }] }, "provider");
+    } catch { return { ok: false, error: controller.signal.aborted ? "查询已取消。" : "旅游查询暂不可用，请重试。" }; }
+    finally { if (travelRequests.get(cardId) === controller) travelRequests.delete(cardId); }
   };
 
   // ------------------------------------------------------------ canvas CRUD
@@ -731,7 +779,7 @@ export const createControlHost = (deps: ControlHostDeps): ControlHost => {
     const meta = activeCanvasId ? records.get(activeCanvasId) : undefined;
     const record =
       activeCanvasId && meta
-        ? toCanvasRecord(activeCanvasId, meta.title, meta.version, store.getState())
+        ? retainRecovery(toCanvasRecord(activeCanvasId, meta.title, meta.version, store.getState()))
         : undefined;
     return record ? JSON.stringify(toCanvasFile(record), null, 2) : "";
   };
@@ -745,7 +793,7 @@ export const createControlHost = (deps: ControlHostDeps): ControlHost => {
     // their own record; canvas id itself is always fresh.
     let record = fileToCanvasRecord(parsed.file, id);
     const imported = fromCanvasRecord(record);
-    if (hasUnpinnedOverlap(imported.cards)) record = toCanvasRecord(id, record.title, record.version, { ...imported, cards: relayout(imported.cards) });
+    if (hasUnpinnedOverlap(imported.cards)) record = retainRecovery(toCanvasRecord(id, record.title, record.version, { ...imported, cards: relayout(imported.cards) }), record);
     records.set(id, record);
     void queueWrite(async () => {
       if (!canPersist()) return;
@@ -911,6 +959,7 @@ export const createControlHost = (deps: ControlHostDeps): ControlHost => {
 
   const start = async () => {
     await owner.start();
+    await extensionDefinitions.ready();
     await loadPreferences();
     const inbox = await deps.db.getMeta("reminderInbox");
     if (inbox) {
@@ -956,6 +1005,8 @@ export const createControlHost = (deps: ControlHostDeps): ControlHost => {
 
   const stop = () => {
     stopped = true;
+    for (const controller of travelRequests.values()) controller.abort();
+    travelRequests.clear();
     if (reminderTimer) clearInterval(reminderTimer);
     if (heartbeatTimer) clearInterval(heartbeatTimer);
     if (autosaveTimer) clearTimeout(autosaveTimer);
@@ -967,7 +1018,8 @@ export const createControlHost = (deps: ControlHostDeps): ControlHost => {
   return {
     start,
     stop,
-    dispatch,
+    dispatch: raw => dispatch(raw),
+    refreshTravelCard,
     setCardPinned: (cardId, pinned, canvasId) => localInteraction(cardId, { kind: "card.pin", pinned }, canvasId),
     moveCard: (cardId, x, y, canvasId) => localInteraction(cardId, { kind: "card.move", x, y }, canvasId),
     setCardSurface: (cardId, surface, position, canvasId) => localInteraction(cardId, { kind: "card.surface", surface,

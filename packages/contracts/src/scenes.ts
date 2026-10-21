@@ -8,6 +8,7 @@ import { isDateCountdown, type CardRecord, type CardType } from "./cardRecord";
  * Weather, Note, Table and SearchResult keep their existing, non-scene paths.
  */
 export const SCENES = [
+  { id: "travel_offers", cardType: "TravelOffersCard", label: "旅游查询结果", group: "travel" },
   { id: "countdown", cardType: "CountdownCard", label: "重要日期倒计时", group: "time" },
   { id: "academic_paper", cardType: "PaperCard", label: "学术文献整理", group: "knowledge" },
   { id: "photo_gallery", cardType: "GalleryCard", label: "多张照片展示", group: "visual" },
@@ -42,6 +43,7 @@ export const SCENE_OF_CARD_TYPE = Object.fromEntries(SCENES.map(scene => [scene.
 
 /** Default canvas footprint per scene. Scene cards render at exactly this height on Display. */
 export const SCENE_CARD_SIZES: { [K in SceneId]: { width: number; height: number } } = {
+  travel_offers: { width: 400, height: 360 },
   countdown: { width: 300, height: 200 },
   academic_paper: { width: 380, height: 300 },
   photo_gallery: { width: 420, height: 340 },

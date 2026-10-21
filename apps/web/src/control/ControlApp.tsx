@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { buildCanvasContext, fetchWeatherHere, postIntent } from "@/ai/api";
+import { buildCanvasContext, fetchWeatherHere, postIntent, intentStageLabel } from "@/ai/api";
 import { fixForRequest, freshFix, looksLikeWeather, subscribeLocation } from "@/location/deviceLocation";
 import { requestStartupPermissions } from "@/permissions/devicePermissions";
 import { startLiveWeather } from "@/location/liveWeather";
@@ -7,6 +7,7 @@ import { LocationSettings } from "./LocationSettings";
 import { cancelSpeech, speakText, subscribeSpeech, getSpeechSnapshot, speakShortFeedback, cancelShortFeedback } from "@/ai/speech";
 import { speechDisplayFrame, type SpeechRange } from "@/ai/speechTelemetry";
 import { LocalDecisionSettings } from "./LocalDecisionSettings";
+import { ExtensionManager } from "@/extensions/ExtensionManager";
 import { clarifiedCardAction, fastLocalCommand, parseCommand, type CommandResult } from "@/commands/parse";
 import { choiceNumber } from "@/commands/choice";
 import { completedCountdown } from "@/canvas/reminderPresentation";
@@ -134,9 +135,10 @@ export const ControlApp = () => {
   }, [host, setFeedback]);
 
   useEffect(() => {
+    const cancelVoiceActivity = () => { cancelVoiceInput(); cancelSpeech(); };
     window.addEventListener("vivic:provider-change", cancelPending);
-    window.addEventListener("vivic:voice-config-change", cancelPending);
-    return () => { window.removeEventListener("vivic:provider-change", cancelPending); window.removeEventListener("vivic:voice-config-change", cancelPending); };
+    window.addEventListener("vivic:voice-config-change", cancelVoiceActivity);
+    return () => { window.removeEventListener("vivic:provider-change", cancelPending); window.removeEventListener("vivic:voice-config-change", cancelVoiceActivity); };
   }, [cancelPending]);
 
   // Speech state follows actual audio loading/playback, rather than a guessed
@@ -463,6 +465,13 @@ export const ControlApp = () => {
             attachments,
             continuation,
             deviceLocation,
+            event => {
+              if (!isCurrent() || event.status !== "started" || event.stage === "total") return;
+              const text = intentStageLabel(event.stage);
+              pending.current!.text = text;
+              setFeedback(text);
+              host.setActivity(requestId, { requestId, text, expiresAt, phase: "thinking" });
+            },
           );
           if (!isCurrent()) return;
           cancelShortFeedback(requestId);
@@ -697,6 +706,7 @@ const ControlShell = (props: ShellProps) => {
           <LocationSettings disabled={readonly} />
           <CardSubcardsSection key={`${snap.activeCanvasId}:${snap.ownerMode}:${snap.ownerId}:${snap.ready}`} host={props.host} />
           <LocalDecisionSettings disabled={readonly || !snap.ready} />
+          <ExtensionManager host={props.host} disabled={readonly || !snap.ready} />
 
           <RemindersSection host={props.host} readonly={readonly} />
 

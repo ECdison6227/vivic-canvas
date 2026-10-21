@@ -27,6 +27,9 @@ export const CanvasSettings = ({ host, disabled = false, selectedCardId }: Canva
   return (
     <section className="rounded-xl border border-neutral-200 bg-white p-4" data-vivic-canvas-settings>
       <h2 className="text-sm font-semibold">画布设置</h2>
+      {snapshot.recovery && <p role="status" className="mt-2 text-xs text-amber-700" data-vivic-recovery-notice>
+        已恢复兼容内容，{snapshot.recovery.quarantinedCardCount} 张不兼容卡片已单独保留。原始数据仍在，导出画布可一并备份。
+      </p>}
       <fieldset disabled={readonly} className="mt-3 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-xs text-neutral-500">按卡片尺寸整理位置，固定卡片保留原位。</p>

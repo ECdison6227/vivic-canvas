@@ -11,6 +11,7 @@ import "@/control/userCardLayer.css";
 
 /** One test utterance per scene — type it into the real Control input to exercise the AI path. */
 const SAMPLE_INPUT: Record<SceneId, string> = {
+  travel_offers: "下周去杭州住两晚，预算 500",
   countdown: "距离我的生日还有 25 天，帮我做个倒计时",
   academic_paper: "帮我整理一下这篇论文：Attention Is All You Need，作者 Ashish Vaswani……",
   photo_gallery: "把这几张一起拍的照片做成照片墙：https://… https://…",

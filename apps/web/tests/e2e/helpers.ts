@@ -11,6 +11,17 @@ fs.mkdirSync(EVIDENCE, { recursive: true });
 let seq = 0;
 const rid = (tag: string) => `e2e-${tag}-${Date.now()}-${(seq += 1)}`;
 
+/** Navigation completes before a lazy route has mounted its async runtime. */
+export const waitForDisplayRuntime = async (page: Page, canvasId?: string) => {
+  await page.waitForFunction(expectedId => {
+    const runtime = window.__vivic;
+    const status = runtime?.status?.();
+    if (!runtime?.getState || !status || typeof status !== "object") return false;
+    return expectedId === undefined || "canvasId" in status && status.canvasId === expectedId
+      && "hydrated" in status && status.hydrated === true;
+  }, canvasId);
+};
+
 export const fire = async (
   page: Page,
   tag: string,

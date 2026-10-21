@@ -19,7 +19,7 @@ function safeJson(value: unknown, depth = 0): boolean {
 
 export function encodeProvenance(value: DataProvenance): string | null {
   const sourceData = { ...value.sourceData }; delete sourceData[PROVENANCE_FIELD];
-  if (!safeJson(sourceData) || value.sources.some(source => source.url.length > 2048)) return null;
+  if (!safeJson(sourceData) || value.sources.some(source => source.url && source.url.length > 2048)) return null;
   const parsed = Receipt.safeParse({ version: 1, sources: value.sources, sourceData });
   if (!parsed.success) return null;
   const text = JSON.stringify(parsed.data);

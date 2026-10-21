@@ -7,6 +7,7 @@ import { createApp } from "./app.js";
 import { loadConfig } from "./config.js";
 import { installOpenAIEgress, redactProxy } from "./openaiProxy.js";
 import { filePreferences } from "./preferences.js";
+import { writeDiagnostic } from "./diagnostics.js";
 
 // Before anything fetches: OpenAI must leave through the user's proxy.
 const egress = installOpenAIEgress();
@@ -20,7 +21,7 @@ const config = loadConfig();
 // overwrite the user's real connection choice.
 const preferences = process.env.VIVIC_PREFERENCES === "off" ? undefined
   : filePreferences(path.join(homedir(), ".vivic", "preferences.json"));
-const app = createApp({ config, preferences });
+const app = createApp({ config, preferences, onDiagnostic: writeDiagnostic });
 
 /**
  * Production story (documented in README): after `pnpm --filter @vivic/web

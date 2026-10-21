@@ -1,6 +1,6 @@
 import { lazy, Suspense } from "react";
-import { ControlApp } from "@/control/ControlApp";
-import { DisplayApp } from "@/display/DisplayApp";
+const ControlApp = lazy(() => import("@/control/ControlApp").then(module => ({ default: module.ControlApp })));
+const DisplayApp = lazy(() => import("@/display/DisplayApp").then(module => ({ default: module.DisplayApp })));
 
 /**
  * One app, three pages (pathname routing, no router dependency):
@@ -27,7 +27,7 @@ if (/^\/landing(?:\/|$)/.test(window.location.pathname) && window.location.pathn
 
 function App() {
   if (isPlayground && CardPlayground) return <Suspense fallback={null}><CardPlayground /></Suspense>;
-  return isDisplay ? <DisplayApp /> : <ControlApp />;
+  return <Suspense fallback={<div role="status" aria-label="正在载入画布" />}>{isDisplay ? <DisplayApp /> : <ControlApp />}</Suspense>;
 }
 
 export default App;

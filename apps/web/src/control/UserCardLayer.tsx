@@ -115,6 +115,11 @@ export function UserCardLayer({ host, theme, layerRef, receiving, notice, onNoti
       if (ok) onNotice("已删除，可输入「撤销」恢复。");
       return ok;
     },
+    refresh: async cardId => {
+      const result = await host.refreshTravelCard(cardId);
+      onNotice(result.ok ? "已刷新旅游结果。" : result.error);
+      return result.ok;
+    },
     addPhotos: async files => {
       const { images, errors } = await storePhotos(files, MAX_PHOTOS);
       onNotice(errors[0] ?? (images.length ? `已在本机保存 ${images.length} 张照片` : null));

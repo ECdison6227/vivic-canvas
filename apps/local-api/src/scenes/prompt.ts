@@ -2,6 +2,7 @@ import { SCENES } from "@vivic/contracts";
 
 /** Planner instructions for scene cards. One table, the same registry the UI renders from. */
 const DATA: Record<(typeof SCENES)[number]["id"], string> = {
+  travel_offers: `{"kind":"hotel|flight|poi","destination":"城市","origin?":"出发城市","startDate?":"YYYY-MM-DD","dateText?":"用户原文日期，如下周","nights?":2,"budget?":500,"partySize?":2}`,
   countdown: `{"title":"生日","targetDate":"YYYY-MM-DD","targetTime?":"HH:MM","note?":""}`,
   academic_paper: `{"title":"","authors?":[""],"venue?":"","year?":2017,"abstract?":"","keyPoints?":[""],"doi?":"10.x/…","url?":"https://…","tags?":[""]}`,
   photo_gallery: `{"title":"","images?":[{"url":"https://…","caption?":""}]}`,
@@ -25,6 +26,7 @@ const DATA: Record<(typeof SCENES)[number]["id"], string> = {
 };
 
 const INTENT: Record<(typeof SCENES)[number]["id"], string> = {
+  travel_offers: "查询酒店/航班/景点，仅提取用户明确给出的查询条件。酒店须日期和晚数；航班须日期与出发地；缺一项只问该项。dateText可保留用户模糊日期。不生成酒店名称、价格、评分、链接、库存或items，结果由服务提供；默认是明确标注的DEMO",
   countdown: "关注距离某个日期还剩多久（生日/考试/纪念日/假期），包括“离…还有多少天”这类提问：建卡，并在 spokenText 里直接说出天数。用户说“还有 N 天”时 targetDate 就是 today 加 N 天（如 today=2026-10-17、还有 25 天 → 2026-11-11），直接建卡，不要追问具体日期",
   academic_paper: "整理学术论文：标题、作者、来源、DOI、摘要",
   photo_gallery: "展示多张相互独立的照片",

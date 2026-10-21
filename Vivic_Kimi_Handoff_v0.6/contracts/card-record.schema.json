@@ -27,6 +27,13 @@
                 "type": "string",
                 "maxLength": 500
               },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "web",
+                  "service"
+                ]
+              },
               "url": {
                 "type": "string",
                 "pattern": "^https?:\\/\\/"
@@ -46,12 +53,28 @@
             },
             "required": [
               "title",
-              "url",
               "fetchedAt",
               "provider",
               "readFullPage"
             ],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "anyOf": [
+              {
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "service"
+                  }
+                }
+              },
+              {
+                "required": [
+                  "url"
+                ]
+              }
+            ]
           }
         },
         "layout": {
@@ -481,6 +504,13 @@
                 "type": "string",
                 "maxLength": 500
               },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "web",
+                  "service"
+                ]
+              },
               "url": {
                 "type": "string",
                 "pattern": "^https?:\\/\\/"
@@ -500,12 +530,28 @@
             },
             "required": [
               "title",
-              "url",
               "fetchedAt",
               "provider",
               "readFullPage"
             ],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "anyOf": [
+              {
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "service"
+                  }
+                }
+              },
+              {
+                "required": [
+                  "url"
+                ]
+              }
+            ]
           }
         },
         "layout": {
@@ -718,6 +764,13 @@
                 "type": "string",
                 "maxLength": 500
               },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "web",
+                  "service"
+                ]
+              },
               "url": {
                 "type": "string",
                 "pattern": "^https?:\\/\\/"
@@ -737,12 +790,28 @@
             },
             "required": [
               "title",
-              "url",
               "fetchedAt",
               "provider",
               "readFullPage"
             ],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "anyOf": [
+              {
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "service"
+                  }
+                }
+              },
+              {
+                "required": [
+                  "url"
+                ]
+              }
+            ]
           }
         },
         "layout": {
@@ -940,6 +1009,13 @@
                 "type": "string",
                 "maxLength": 500
               },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "web",
+                  "service"
+                ]
+              },
               "url": {
                 "type": "string",
                 "pattern": "^https?:\\/\\/"
@@ -959,12 +1035,28 @@
             },
             "required": [
               "title",
-              "url",
               "fetchedAt",
               "provider",
               "readFullPage"
             ],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "anyOf": [
+              {
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "service"
+                  }
+                }
+              },
+              {
+                "required": [
+                  "url"
+                ]
+              }
+            ]
           }
         },
         "layout": {
@@ -1179,6 +1271,13 @@
                 "type": "string",
                 "maxLength": 500
               },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "web",
+                  "service"
+                ]
+              },
               "url": {
                 "type": "string",
                 "pattern": "^https?:\\/\\/"
@@ -1198,12 +1297,28 @@
             },
             "required": [
               "title",
-              "url",
               "fetchedAt",
               "provider",
               "readFullPage"
             ],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "anyOf": [
+              {
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "service"
+                  }
+                }
+              },
+              {
+                "required": [
+                  "url"
+                ]
+              }
+            ]
           }
         },
         "layout": {
@@ -1397,6 +1512,13 @@
                 "type": "string",
                 "maxLength": 500
               },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "web",
+                  "service"
+                ]
+              },
               "url": {
                 "type": "string",
                 "pattern": "^https?:\\/\\/"
@@ -1416,12 +1538,28 @@
             },
             "required": [
               "title",
-              "url",
               "fetchedAt",
               "provider",
               "readFullPage"
             ],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "anyOf": [
+              {
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "service"
+                  }
+                }
+              },
+              {
+                "required": [
+                  "url"
+                ]
+              }
+            ]
           }
         },
         "layout": {
@@ -1627,6 +1765,13 @@
                 "type": "string",
                 "maxLength": 500
               },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "web",
+                  "service"
+                ]
+              },
               "url": {
                 "type": "string",
                 "pattern": "^https?:\\/\\/"
@@ -1646,12 +1791,28 @@
             },
             "required": [
               "title",
-              "url",
               "fetchedAt",
               "provider",
               "readFullPage"
             ],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "anyOf": [
+              {
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "service"
+                  }
+                }
+              },
+              {
+                "required": [
+                  "url"
+                ]
+              }
+            ]
           }
         },
         "layout": {
@@ -1876,6 +2037,13 @@
                 "type": "string",
                 "maxLength": 500
               },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "web",
+                  "service"
+                ]
+              },
               "url": {
                 "type": "string",
                 "pattern": "^https?:\\/\\/"
@@ -1895,12 +2063,732 @@
             },
             "required": [
               "title",
-              "url",
               "fetchedAt",
               "provider",
               "readFullPage"
             ],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "anyOf": [
+              {
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "service"
+                  }
+                }
+              },
+              {
+                "required": [
+                  "url"
+                ]
+              }
+            ]
+          }
+        },
+        "layout": {
+          "type": "object",
+          "properties": {
+            "x": {
+              "type": "number"
+            },
+            "y": {
+              "type": "number"
+            },
+            "width": {
+              "type": "number",
+              "minimum": 80
+            },
+            "height": {
+              "type": "number",
+              "minimum": 56
+            },
+            "pinned": {
+              "type": "boolean"
+            },
+            "surface": {
+              "type": "string",
+              "enum": [
+                "display",
+                "user"
+              ]
+            },
+            "userPos": {
+              "type": "object",
+              "properties": {
+                "x": {
+                  "type": "number",
+                  "minimum": -100000,
+                  "maximum": 100000
+                },
+                "y": {
+                  "type": "number",
+                  "minimum": -100000,
+                  "maximum": 100000
+                }
+              },
+              "required": [
+                "x",
+                "y"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "x",
+            "y",
+            "width",
+            "height",
+            "pinned"
+          ],
+          "additionalProperties": false
+        },
+        "metadata": {
+          "type": "object",
+          "properties": {
+            "createdAt": {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+            },
+            "updatedAt": {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+            },
+            "aliases": {
+              "maxItems": 12,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 80
+              }
+            },
+            "subcards": {
+              "maxItems": 24,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "itemId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "anchor": {
+                    "type": "string",
+                    "maxLength": 128
+                  },
+                  "text": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  }
+                },
+                "required": [
+                  "id",
+                  "text"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "createdAt",
+            "updatedAt"
+          ],
+          "additionalProperties": false,
+          "description": "Subcard IDs must be unique within the parent; enforced by the runtime MetadataSchema."
+        },
+        "type": {
+          "type": "string",
+          "const": "TravelOffersCard"
+        },
+        "displayProps": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "hotel",
+                    "flight",
+                    "poi"
+                  ]
+                },
+                "destination": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "origin": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "startDate": {
+                  "type": "string",
+                  "format": "date",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+                },
+                "dateText": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "nights": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 30
+                },
+                "budget": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "maximum": 10000000
+                },
+                "partySize": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 50
+                }
+              },
+              "required": [
+                "kind",
+                "destination"
+              ],
+              "additionalProperties": false
+            },
+            "items": {
+              "maxItems": 50,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "hotel",
+                      "flight",
+                      "poi"
+                    ]
+                  },
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "subtitle": {
+                    "type": "string",
+                    "maxLength": 300
+                  },
+                  "price": {
+                    "type": "object",
+                    "properties": {
+                      "amount": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "currency": {
+                        "type": "string",
+                        "pattern": "^[A-Z]{3}$"
+                      }
+                    },
+                    "required": [
+                      "amount",
+                      "currency"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "rating": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 5
+                  },
+                  "imageUrl": {
+                    "type": "string",
+                    "maxLength": 2048,
+                    "pattern": "^https:\\/\\/[^\\s<>\"']+$"
+                  },
+                  "detailUrl": {
+                    "type": "string",
+                    "maxLength": 2048,
+                    "pattern": "^https:\\/\\/[^\\s<>\"']+$"
+                  },
+                  "tags": {
+                    "maxItems": 8,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 40
+                    }
+                  }
+                },
+                "required": [
+                  "id",
+                  "kind",
+                  "title",
+                  "tags"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "fetchedAt": {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "demo",
+                "live"
+              ]
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "ok",
+                "empty"
+              ]
+            },
+            "selectedIds": {
+              "maxItems": 50,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              }
+            },
+            "notes": {
+              "type": "string",
+              "maxLength": 2000
+            }
+          },
+          "required": [
+            "query",
+            "items",
+            "fetchedAt",
+            "mode",
+            "status",
+            "selectedIds",
+            "notes"
+          ],
+          "additionalProperties": false
+        },
+        "sourceData": {
+          "type": "object",
+          "properties": {
+            "provider": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            "tool": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            "requestId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "expiresAt": {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+            }
+          },
+          "required": [
+            "provider",
+            "tool",
+            "requestId"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "id",
+        "variant",
+        "sources",
+        "layout",
+        "metadata",
+        "type",
+        "displayProps",
+        "sourceData"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "variant": {
+          "type": "string",
+          "enum": [
+            "minimal",
+            "standard",
+            "expanded"
+          ]
+        },
+        "sources": {
+          "maxItems": 15,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string",
+                "maxLength": 500
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "web",
+                  "service"
+                ]
+              },
+              "url": {
+                "type": "string",
+                "pattern": "^https?:\\/\\/"
+              },
+              "fetchedAt": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              "provider": {
+                "type": "string",
+                "maxLength": 80
+              },
+              "readFullPage": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "title",
+              "fetchedAt",
+              "provider",
+              "readFullPage"
+            ],
+            "additionalProperties": false,
+            "anyOf": [
+              {
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "service"
+                  }
+                }
+              },
+              {
+                "required": [
+                  "url"
+                ]
+              }
+            ]
+          }
+        },
+        "layout": {
+          "type": "object",
+          "properties": {
+            "x": {
+              "type": "number"
+            },
+            "y": {
+              "type": "number"
+            },
+            "width": {
+              "type": "number",
+              "minimum": 80
+            },
+            "height": {
+              "type": "number",
+              "minimum": 56
+            },
+            "pinned": {
+              "type": "boolean"
+            },
+            "surface": {
+              "type": "string",
+              "enum": [
+                "display",
+                "user"
+              ]
+            },
+            "userPos": {
+              "type": "object",
+              "properties": {
+                "x": {
+                  "type": "number",
+                  "minimum": -100000,
+                  "maximum": 100000
+                },
+                "y": {
+                  "type": "number",
+                  "minimum": -100000,
+                  "maximum": 100000
+                }
+              },
+              "required": [
+                "x",
+                "y"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "x",
+            "y",
+            "width",
+            "height",
+            "pinned"
+          ],
+          "additionalProperties": false
+        },
+        "metadata": {
+          "type": "object",
+          "properties": {
+            "createdAt": {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+            },
+            "updatedAt": {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+            },
+            "aliases": {
+              "maxItems": 12,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 80
+              }
+            },
+            "subcards": {
+              "maxItems": 24,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "itemId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "anchor": {
+                    "type": "string",
+                    "maxLength": 128
+                  },
+                  "text": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  }
+                },
+                "required": [
+                  "id",
+                  "text"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "createdAt",
+            "updatedAt"
+          ],
+          "additionalProperties": false,
+          "description": "Subcard IDs must be unique within the parent; enforced by the runtime MetadataSchema."
+        },
+        "type": {
+          "type": "string",
+          "const": "ExtensionCard"
+        },
+        "displayProps": {
+          "type": "object",
+          "properties": {
+            "def": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "maxLength": 80,
+                  "pattern": "^[a-z][a-z0-9-]*(?:\\.[a-z][a-z0-9-]*)*$"
+                },
+                "version": {
+                  "type": "string",
+                  "maxLength": 32,
+                  "pattern": "^\\d+\\.\\d+\\.\\d+$"
+                },
+                "hash": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                }
+              },
+              "required": [
+                "id",
+                "version",
+                "hash"
+              ],
+              "additionalProperties": false
+            },
+            "config": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "$ref": "#/$defs/__schema0"
+              }
+            },
+            "data": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "$ref": "#/$defs/__schema1"
+              }
+            },
+            "state": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "$ref": "#/$defs/__schema2"
+              }
+            }
+          },
+          "required": [
+            "def",
+            "config",
+            "data",
+            "state"
+          ],
+          "additionalProperties": false
+        },
+        "sourceData": {
+          "type": "object",
+          "properties": {},
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "id",
+        "variant",
+        "sources",
+        "layout",
+        "metadata",
+        "type",
+        "displayProps",
+        "sourceData"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "variant": {
+          "type": "string",
+          "enum": [
+            "minimal",
+            "standard",
+            "expanded"
+          ]
+        },
+        "sources": {
+          "maxItems": 15,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string",
+                "maxLength": 500
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "web",
+                  "service"
+                ]
+              },
+              "url": {
+                "type": "string",
+                "pattern": "^https?:\\/\\/"
+              },
+              "fetchedAt": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              "provider": {
+                "type": "string",
+                "maxLength": 80
+              },
+              "readFullPage": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "title",
+              "fetchedAt",
+              "provider",
+              "readFullPage"
+            ],
+            "additionalProperties": false,
+            "anyOf": [
+              {
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "service"
+                  }
+                }
+              },
+              {
+                "required": [
+                  "url"
+                ]
+              }
+            ]
           }
         },
         "layout": {
@@ -2144,6 +3032,13 @@
                 "type": "string",
                 "maxLength": 500
               },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "web",
+                  "service"
+                ]
+              },
               "url": {
                 "type": "string",
                 "pattern": "^https?:\\/\\/"
@@ -2163,12 +3058,28 @@
             },
             "required": [
               "title",
-              "url",
               "fetchedAt",
               "provider",
               "readFullPage"
             ],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "anyOf": [
+              {
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "service"
+                  }
+                }
+              },
+              {
+                "required": [
+                  "url"
+                ]
+              }
+            ]
           }
         },
         "layout": {
@@ -2391,6 +3302,13 @@
                 "type": "string",
                 "maxLength": 500
               },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "web",
+                  "service"
+                ]
+              },
               "url": {
                 "type": "string",
                 "pattern": "^https?:\\/\\/"
@@ -2410,12 +3328,28 @@
             },
             "required": [
               "title",
-              "url",
               "fetchedAt",
               "provider",
               "readFullPage"
             ],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "anyOf": [
+              {
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "service"
+                  }
+                }
+              },
+              {
+                "required": [
+                  "url"
+                ]
+              }
+            ]
           }
         },
         "layout": {
@@ -2652,6 +3586,13 @@
                 "type": "string",
                 "maxLength": 500
               },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "web",
+                  "service"
+                ]
+              },
               "url": {
                 "type": "string",
                 "pattern": "^https?:\\/\\/"
@@ -2671,12 +3612,28 @@
             },
             "required": [
               "title",
-              "url",
               "fetchedAt",
               "provider",
               "readFullPage"
             ],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "anyOf": [
+              {
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "service"
+                  }
+                }
+              },
+              {
+                "required": [
+                  "url"
+                ]
+              }
+            ]
           }
         },
         "layout": {
@@ -2934,6 +3891,13 @@
                 "type": "string",
                 "maxLength": 500
               },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "web",
+                  "service"
+                ]
+              },
               "url": {
                 "type": "string",
                 "pattern": "^https?:\\/\\/"
@@ -2953,12 +3917,28 @@
             },
             "required": [
               "title",
-              "url",
               "fetchedAt",
               "provider",
               "readFullPage"
             ],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "anyOf": [
+              {
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "service"
+                  }
+                }
+              },
+              {
+                "required": [
+                  "url"
+                ]
+              }
+            ]
           }
         },
         "layout": {
@@ -3185,6 +4165,13 @@
                 "type": "string",
                 "maxLength": 500
               },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "web",
+                  "service"
+                ]
+              },
               "url": {
                 "type": "string",
                 "pattern": "^https?:\\/\\/"
@@ -3204,12 +4191,28 @@
             },
             "required": [
               "title",
-              "url",
               "fetchedAt",
               "provider",
               "readFullPage"
             ],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "anyOf": [
+              {
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "service"
+                  }
+                }
+              },
+              {
+                "required": [
+                  "url"
+                ]
+              }
+            ]
           }
         },
         "layout": {
@@ -3436,6 +4439,13 @@
                 "type": "string",
                 "maxLength": 500
               },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "web",
+                  "service"
+                ]
+              },
               "url": {
                 "type": "string",
                 "pattern": "^https?:\\/\\/"
@@ -3455,12 +4465,28 @@
             },
             "required": [
               "title",
-              "url",
               "fetchedAt",
               "provider",
               "readFullPage"
             ],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "anyOf": [
+              {
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "service"
+                  }
+                }
+              },
+              {
+                "required": [
+                  "url"
+                ]
+              }
+            ]
           }
         },
         "layout": {
@@ -3659,6 +4685,13 @@
                 "type": "string",
                 "maxLength": 500
               },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "web",
+                  "service"
+                ]
+              },
               "url": {
                 "type": "string",
                 "pattern": "^https?:\\/\\/"
@@ -3678,12 +4711,28 @@
             },
             "required": [
               "title",
-              "url",
               "fetchedAt",
               "provider",
               "readFullPage"
             ],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "anyOf": [
+              {
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "service"
+                  }
+                }
+              },
+              {
+                "required": [
+                  "url"
+                ]
+              }
+            ]
           }
         },
         "layout": {
@@ -3903,6 +4952,13 @@
                 "type": "string",
                 "maxLength": 500
               },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "web",
+                  "service"
+                ]
+              },
               "url": {
                 "type": "string",
                 "pattern": "^https?:\\/\\/"
@@ -3922,12 +4978,28 @@
             },
             "required": [
               "title",
-              "url",
               "fetchedAt",
               "provider",
               "readFullPage"
             ],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "anyOf": [
+              {
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "service"
+                  }
+                }
+              },
+              {
+                "required": [
+                  "url"
+                ]
+              }
+            ]
           }
         },
         "layout": {
@@ -4162,6 +5234,13 @@
                 "type": "string",
                 "maxLength": 500
               },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "web",
+                  "service"
+                ]
+              },
               "url": {
                 "type": "string",
                 "pattern": "^https?:\\/\\/"
@@ -4181,12 +5260,28 @@
             },
             "required": [
               "title",
-              "url",
               "fetchedAt",
               "provider",
               "readFullPage"
             ],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "anyOf": [
+              {
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "service"
+                  }
+                }
+              },
+              {
+                "required": [
+                  "url"
+                ]
+              }
+            ]
           }
         },
         "layout": {
@@ -4397,6 +5492,13 @@
                 "type": "string",
                 "maxLength": 500
               },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "web",
+                  "service"
+                ]
+              },
               "url": {
                 "type": "string",
                 "pattern": "^https?:\\/\\/"
@@ -4416,12 +5518,28 @@
             },
             "required": [
               "title",
-              "url",
               "fetchedAt",
               "provider",
               "readFullPage"
             ],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "anyOf": [
+              {
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "service"
+                  }
+                }
+              },
+              {
+                "required": [
+                  "url"
+                ]
+              }
+            ]
           }
         },
         "layout": {
@@ -4625,6 +5743,13 @@
                 "type": "string",
                 "maxLength": 500
               },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "web",
+                  "service"
+                ]
+              },
               "url": {
                 "type": "string",
                 "pattern": "^https?:\\/\\/"
@@ -4644,12 +5769,28 @@
             },
             "required": [
               "title",
-              "url",
               "fetchedAt",
               "provider",
               "readFullPage"
             ],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "anyOf": [
+              {
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "service"
+                  }
+                }
+              },
+              {
+                "required": [
+                  "url"
+                ]
+              }
+            ]
           }
         },
         "layout": {
@@ -4877,6 +6018,13 @@
                 "type": "string",
                 "maxLength": 500
               },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "web",
+                  "service"
+                ]
+              },
               "url": {
                 "type": "string",
                 "pattern": "^https?:\\/\\/"
@@ -4896,12 +6044,28 @@
             },
             "required": [
               "title",
-              "url",
               "fetchedAt",
               "provider",
               "readFullPage"
             ],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "anyOf": [
+              {
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "service"
+                  }
+                }
+              },
+              {
+                "required": [
+                  "url"
+                ]
+              }
+            ]
           }
         },
         "layout": {
@@ -5124,6 +6288,13 @@
                 "type": "string",
                 "maxLength": 500
               },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "web",
+                  "service"
+                ]
+              },
               "url": {
                 "type": "string",
                 "pattern": "^https?:\\/\\/"
@@ -5143,12 +6314,28 @@
             },
             "required": [
               "title",
-              "url",
               "fetchedAt",
               "provider",
               "readFullPage"
             ],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "anyOf": [
+              {
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "service"
+                  }
+                }
+              },
+              {
+                "required": [
+                  "url"
+                ]
+              }
+            ]
           }
         },
         "layout": {
@@ -5431,6 +6618,13 @@
                 "type": "string",
                 "maxLength": 500
               },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "web",
+                  "service"
+                ]
+              },
               "url": {
                 "type": "string",
                 "pattern": "^https?:\\/\\/"
@@ -5450,12 +6644,28 @@
             },
             "required": [
               "title",
-              "url",
               "fetchedAt",
               "provider",
               "readFullPage"
             ],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "anyOf": [
+              {
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "service"
+                  }
+                }
+              },
+              {
+                "required": [
+                  "url"
+                ]
+              }
+            ]
           }
         },
         "layout": {
@@ -5668,6 +6878,13 @@
                 "type": "string",
                 "maxLength": 500
               },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "web",
+                  "service"
+                ]
+              },
               "url": {
                 "type": "string",
                 "pattern": "^https?:\\/\\/"
@@ -5687,12 +6904,28 @@
             },
             "required": [
               "title",
-              "url",
               "fetchedAt",
               "provider",
               "readFullPage"
             ],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "anyOf": [
+              {
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "service"
+                  }
+                }
+              },
+              {
+                "required": [
+                  "url"
+                ]
+              }
+            ]
           }
         },
         "layout": {
@@ -5920,6 +7153,13 @@
                 "type": "string",
                 "maxLength": 500
               },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "web",
+                  "service"
+                ]
+              },
               "url": {
                 "type": "string",
                 "pattern": "^https?:\\/\\/"
@@ -5939,12 +7179,28 @@
             },
             "required": [
               "title",
-              "url",
               "fetchedAt",
               "provider",
               "readFullPage"
             ],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "anyOf": [
+              {
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "service"
+                  }
+                }
+              },
+              {
+                "required": [
+                  "url"
+                ]
+              }
+            ]
           }
         },
         "layout": {
@@ -6136,6 +7392,101 @@
       "additionalProperties": false
     }
   ],
+  "$defs": {
+    "__schema0": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/__schema0"
+          }
+        },
+        {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/__schema0"
+          }
+        }
+      ]
+    },
+    "__schema1": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/__schema1"
+          }
+        },
+        {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/__schema1"
+          }
+        }
+      ]
+    },
+    "__schema2": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/__schema2"
+          }
+        },
+        {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/__schema2"
+          }
+        }
+      ]
+    }
+  },
   "$id": "https://vivic.local/contracts/card-record.schema.json",
   "title": "Vivic CardRecord v0.6",
   "description": "Generated from @vivic/contracts. Closed display fields; pure timers render digits, named reminders render their validated task and time. Runtime Zod remains required for semantic and identity checks."

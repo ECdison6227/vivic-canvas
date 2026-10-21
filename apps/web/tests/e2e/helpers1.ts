@@ -2,6 +2,7 @@ import { expect, type Page } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { waitForDisplayRuntime } from "./helpers";
 
 const here = fileURLToPath(new URL(".", import.meta.url));
 export const EVIDENCE1 = path.resolve(here, "../../../../evidence/phase1");
@@ -85,6 +86,7 @@ export const gotoDisplay = async (
 ) => {
   const page = await context.newPage();
   await page.goto(`/display?canvasId=${encodeURIComponent(canvasId)}`);
+  await waitForDisplayRuntime(page, canvasId);
   return page;
 };
 

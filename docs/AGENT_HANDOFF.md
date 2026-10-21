@@ -1,5 +1,9 @@
 # 当前交接
 
+2026-10-21 维护者实现更新：原设置改动已通过 [PR #16](https://github.com/ECdison6227/vivic-canvas/pull/16) 合入，DEC-01 已补配置容错并通过 [PR #15](https://github.com/ECdison6227/vivic-canvas/pull/15) 合入；#13/#14 已请求修改并保留 Draft。当前本机 `feat/card-platform-runtime` 正在完成最终验收，包含 PLAT-01 结构化旅游 DEMO、PLAT-02 声明式导包/Test Space、旧画布恢复、有限上下文、拆包、SSE 进度及中文评测集合。线上任务已存在：[PLAT-01 #9](https://github.com/ECdison6227/vivic-canvas/issues/9)、[PLAT-02 #10](https://github.com/ECdison6227/vivic-canvas/issues/10)。当前能力见 [CAPABILITIES](CAPABILITIES.md)，导包实际接口见 [CARD_TEST_SPACE](CARD_TEST_SPACE.md)；下文 10/20 记录用于追溯，不能再当作功能未实现清单。
+
+真实飞猪响应与真实模型质量仍需独立验收；105 条离线 golden 回放验证的是校验/builder，不等于模型命中率。新的平台实现尚未因上述 #15/#16 自动进入 main，提交状态以当前 Git 与验证记录为准。
+
 更新：2026-10-20。仓库整理已通过 PR #1 合入 `main`（`c20a217`）；GitHub Desktop 已安装并完成本机同步，`main-protection` 已在公开规则页确认 Active。当前为“飞猪旅游系列卡片”整理开发契约、Skill 与交接任务，尚未实现旅游卡片或实际 MCP 接入。
 
 最新：用户提供 10/19 会议 PDF/Excel，并授权只读飞书分工资料。已核对两场原始文字记录，形成 [实名分工与8项工单](team/README.md)、[AI 开工/提交PR提示词](team/WORKFLOW.md)、[两位伙伴所需资料](team/REFERENCES.md)。实际为 xlz 旅游/卡片/UI、马泽瑜决策/启动器、程佳锐核心/接入；此前推测的 CORE/FE/BE 草案已被替代。完整源材料留 `.cache`，不上传原始会议或私有研究内容。尚未创建线上 Issue、Project、assignee 或发送消息。

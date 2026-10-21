@@ -3,10 +3,11 @@ import path from "node:path";
 import {
   EVIDENCE1,
   activeCanvasId,
+  controlDispatch,
   gotoControl,
   gotoDisplay,
-  sendCommand,
 } from "./helpers1";
+import { countdownCard } from "./helpers";
 
 /**
  * Phase 1.1 (BUG 1): cards created outside the visible viewport trigger a
@@ -25,10 +26,20 @@ test("P1.1: third countdown auto-fits into view on /display", async ({
   const canvasId = await activeCanvasId(A);
   const B = await gotoDisplay(context, canvasId);
 
-  for (const cmd of ["五分钟倒计时", "六分钟倒计时", "七分钟倒计时"]) {
-    await sendCommand(A, cmd);
-    await A.waitForTimeout(400);
+  // Direct command responses intentionally focus their newest card. Exercise
+  // the separate overflow-fit path with owner creates that contain no focus.
+  for (const [index, minutes] of [5, 6, 7].entries()) {
+    const card = countdownCard();
+    await controlDispatch(A, `auto-fit-${index}`, canvasId, [{ type: "stage.awaken" },
+      { type: "card.create", card: { ...card, id: `auto-fit-timer-${index}`,
+        sourceData: { ...card.sourceData, targetAt: new Date(Date.now() + minutes * 60_000).toISOString() } } }]);
+    await expect(B.locator(".vivic-card")).toHaveCount(index + 1);
+    // Auto-fit uses this Display's measured viewport rather than owner size.
+    await expect.poll(() => B.evaluate(() => (window.__vivic!.getState() as {
+      viewportSize: { width: number; height: number } | null;
+    }).viewportSize)).toEqual({ width: 800, height: 600 });
   }
+  expect(await B.evaluate(() => (window.__vivic!.getState() as { focus: unknown }).focus)).toBeNull();
   await expect(B.locator(".vivic-card")).toHaveCount(3, { timeout: 8000 });
   // fitView animation is 450ms; give it slack.
   await B.waitForTimeout(1200);

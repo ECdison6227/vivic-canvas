@@ -2,6 +2,7 @@ import { z } from "zod";
 import { ActionEnvelopeSchema } from "./actionEnvelope";
 import { CardRecordSchema, CountdownSourceDataSchema, MetadataSchema, NoteCardSchema } from "./cardRecord";
 import { ReminderConditionSchema, TimeZoneSchema } from "./reminderSchedule";
+import { EvidenceRefSchema } from "./cardCommon";
 
 const baseUrl = "https://vivic.local/contracts/";
 
@@ -11,6 +12,9 @@ export function createWireJsonSchemas() {
   const options: NonNullable<Parameters<typeof z.toJSONSchema>[1]> = {
     target: "draft-2020-12",
     override: ({ zodSchema, jsonSchema }) => {
+      if (zodSchema === EvidenceRefSchema) jsonSchema.anyOf = [
+        { required: ["kind"], properties: { kind: { const: "service" } } }, { required: ["url"] },
+      ];
       if (zodSchema === CountdownSourceDataSchema) {
         jsonSchema.not = {
           required: ["schedule", "condition"],

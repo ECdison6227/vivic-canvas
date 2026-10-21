@@ -5,11 +5,12 @@ export const CardVariantSchema = z.enum(["minimal", "standard", "expanded"]);
 
 export const EvidenceRefSchema = z.strictObject({
   title: z.string().max(500),
-  url: z.string().regex(/^https?:\/\//),
+  kind: z.enum(["web", "service"]).optional(),
+  url: z.string().regex(/^https?:\/\//).optional(),
   fetchedAt: z.iso.datetime(),
   provider: z.string().max(80),
   readFullPage: z.boolean(),
-});
+}).refine(value => value.kind === "service" || Boolean(value.url), "网页来源需要 URL");
 
 export const cardId = z.string().min(1).max(128);
 

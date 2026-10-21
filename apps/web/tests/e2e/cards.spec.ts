@@ -8,10 +8,12 @@ import {
   internal,
   newEvidencePage,
   setTheme,
+  waitForDisplayRuntime,
 } from "./helpers";
 
 const boot = async (page: import("@playwright/test").Page) => {
   await page.goto("/display");
+  await waitForDisplayRuntime(page);
   await setTheme(page, "light");
   await awaken(page);
   await createDemoCards(page);

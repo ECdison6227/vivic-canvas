@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { SCENE_CARD_TYPE, SceneIdSchema, type SceneId } from "@vivic/contracts";
+import { SCENE_CARD_TYPE, SceneIdSchema, TravelQuerySchema, type SceneId } from "@vivic/contracts";
 
 /**
  * What the planner may return for a scene card: scene_id plus compact data.
@@ -18,6 +18,7 @@ const entry = <T extends z.ZodRawShape>(shape: T, key: keyof T & string) =>
   z.union([z.string().trim().min(1), z.strictObject(shape)]).transform(value => typeof value === "string" ? { [key]: value } : value);
 
 const SceneData = {
+  travel_offers: TravelQuerySchema,
   countdown: z.strictObject({ title: text(60), targetDate: date, targetTime: time.optional(), note: optional(120) }),
   academic_paper: z.strictObject({
     title: text(240), authors: z.array(text(80)).max(20).optional(), venue: optional(160), year: z.int().min(1000).max(2200).optional(),
@@ -98,7 +99,7 @@ export type ParsedScene = { [S in SceneId]: { scene: S; data: SceneDataOf<S> } }
 /** Structural validation with short, model-safe issue labels (never echo raw values). */
 export function parseScenePayload(raw: unknown): { ok: true; value: ParsedScene } | { ok: false; issue: string } {
   const outer = ScenePayloadSchema.safeParse(raw);
-  if (!outer.success) return { ok: false, issue: "cards 每项必须是 {scene_id, card_type?, data}，scene_id 必须是 20 个已登记场景之一" };
+  if (!outer.success) return { ok: false, issue: "cards 每项必须是 {scene_id, card_type?, data}，scene_id 必须是已登记场景之一" };
   const { scene_id: scene, card_type: cardType } = outer.data;
   if (cardType !== undefined && cardType !== SCENE_CARD_TYPE[scene]) {
     return { ok: false, issue: `scene_id ${scene} 只能对应 card_type ${SCENE_CARD_TYPE[scene]}` };
