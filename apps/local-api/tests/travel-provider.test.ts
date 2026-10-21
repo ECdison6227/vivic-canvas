@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { CardRecordSchema, EvidenceRefSchema, TravelOffersCardSchema, TravelProviderResultSchema, cardFieldPolicyIssue, type TravelQuery } from "@vivic/contracts";
+import { z } from "zod";
+import { CardRecordSchema, EvidenceRefSchema, ProviderResultSchema, TravelOffersCardSchema, TravelProviderResultSchema, cardFieldPolicyIssue, type TravelQuery } from "@vivic/contracts";
 import { buildTravelCard, demoTravelProvider, queryTravel } from "../src/providers/travel.js";
 import { buildProviderSceneActions, parseTravelDemo } from "../src/scenes/travel.js";
 import { parseScenePayload } from "../src/scenes/payload.js";
@@ -11,6 +12,14 @@ const query: TravelQuery = { kind: "hotel", destination: "杭州", dateText: "�
 const req = { text: "下周去杭州住两晚，预算500", ctx: emptyContext() };
 const raw = () => demoTravelProvider.query(query);
 describe("structured travel provider protocol", () => {
+  it("reuses the provider envelope with a non-travel query and compares timestamp precision correctly", () => {
+    const schema = ProviderResultSchema(z.strictObject({ id: z.string(), tempC: z.number() }), z.strictObject({ city: z.string() }));
+    const value = { provider: "TEST-weather", tool: "weather.current", requestId: "TEST", mode: "demo", status: "ok",
+      query: { city: "杭州" }, items: [{ id: "w1", tempC: 20 }], fetchedAt: "2026-10-21T00:00:00Z", expiresAt: "2026-10-21T00:00:00.100Z" };
+    expect(schema.safeParse(value).success).toBe(true);
+    expect(schema.safeParse({ ...value, expiresAt: "2026-10-20T23:59:59.999Z" }).success).toBe(false);
+    expect(schema.safeParse({ ...value, query: { destination: "杭州" } }).success).toBe(false);
+  });
   it("accepts service evidence without URL and preserves legacy web evidence", () => {
     const service = { kind: "service", title: "演示", fetchedAt: "2026-10-21T00:00:00.000Z", provider: "demo", readFullPage: false };
     expect(EvidenceRefSchema.safeParse(service).success).toBe(true);

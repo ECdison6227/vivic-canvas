@@ -29,19 +29,19 @@ export const TravelOfferSchema = z.strictObject({
 export type TravelOffer = z.infer<typeof TravelOfferSchema>;
 
 /** The only trusted adapter output. Tool text is data and never enters a planner prompt. */
-export const ProviderResultSchema = <T extends z.ZodType>(item: T) => z.strictObject({
+export const ProviderResultSchema = <T extends z.ZodType, Q extends z.ZodType>(item: T, query: Q) => z.strictObject({
   provider: z.string().trim().min(1).max(80), tool: z.string().trim().min(1).max(80),
   requestId: z.string().min(1).max(128), fetchedAt: z.iso.datetime(), expiresAt: z.iso.datetime().optional(),
-  mode: ProviderModeSchema, query: TravelQuerySchema, items: z.array(item).max(50),
+  mode: ProviderModeSchema, query, items: z.array(item).max(50),
   status: z.enum(["ok", "empty", "error"]),
 }).refine(value => value.status === "ok" ? value.items.length > 0 : value.items.length === 0,
   "ok 需要结果；empty/error 不得带结果")
-  .refine(value => !value.expiresAt || value.expiresAt >= value.fetchedAt, "过期时间不得早于获取时间");
-export interface ProviderResult<T> {
+  .refine(value => !value.expiresAt || Date.parse(value.expiresAt) >= Date.parse(value.fetchedAt), "过期时间不得早于获取时间");
+export interface ProviderResult<T, Q = Record<string, unknown>> {
   provider: string; tool: string; requestId: string; fetchedAt: string; expiresAt?: string;
-  mode: "demo" | "live"; query: TravelQuery; items: T[]; status: "ok" | "empty" | "error";
+  mode: "demo" | "live"; query: Q; items: T[]; status: "ok" | "empty" | "error";
 }
-export const TravelProviderResultSchema = ProviderResultSchema(TravelOfferSchema)
+export const TravelProviderResultSchema = ProviderResultSchema(TravelOfferSchema, TravelQuerySchema)
   .refine(value => new Set(value.items.map(item => item.id)).size === value.items.length, "结果 id 必须唯一")
   .refine(value => value.items.every(item => item.kind === value.query.kind), "结果品类与查询不符");
 

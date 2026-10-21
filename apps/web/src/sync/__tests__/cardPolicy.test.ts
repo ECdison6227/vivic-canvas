@@ -55,6 +55,36 @@ describe("owner field policy and provider refresh", () => {
     resolve({ ok: true, card }); expect((await pending).ok).toBe(false);
     expect(store.getState().cards).toEqual([]);
   });
+  it("rejects a provider response for a different query without changing the original card", async () => {
+    const card = travel();
+    const { host, store, send } = await setup(async () => ({ ok: true, card: { ...card,
+      displayProps: { ...card.displayProps, query: { ...card.displayProps.query, destination: "北京" } } } }));
+    send([{ type: "card.create", card }]);
+    const before = store.getState();
+    expect((await host.refreshTravelCard(card.id)).ok).toBe(false);
+    expect(store.getState()).toBe(before);
+  });
+  it("never applies an old result after switching A to B and back to A", async () => {
+    let resolve!: (value: { ok: true; card: ReturnType<typeof travel> }) => void;
+    const { host, store, send } = await setup(() => new Promise(done => { resolve = done; }));
+    const card = travel(); send([{ type: "card.create", card }]);
+    const firstId = host.getSnapshot().activeCanvasId!, pending = host.refreshTravelCard(card.id);
+    const otherId = host.createCanvas("TEST B"); host.switchCanvas(otherId); host.switchCanvas(firstId);
+    const before = store.getState();
+    resolve({ ok: true, card: { ...card, sourceData: { ...card.sourceData, requestId: "TEST-too-late" } } });
+    expect((await pending).ok).toBe(false); expect(store.getState()).toBe(before);
+  });
+  it("does not attach a deleted card's pending result to a new card with the same id and query", async () => {
+    let resolve!: (value: { ok: true; card: ReturnType<typeof travel> }) => void;
+    const { host, store, send } = await setup(() => new Promise(done => { resolve = done; }));
+    const card = travel(); send([{ type: "card.create", card }]);
+    const pending = host.refreshTravelCard(card.id);
+    send([{ type: "card.delete", targetId: card.id }]);
+    send([{ type: "card.create", card }]);
+    const before = store.getState();
+    resolve({ ok: true, card: { ...card, sourceData: { ...card.sourceData, requestId: "TEST-deleted" } } });
+    expect((await pending).ok).toBe(false); expect(store.getState()).toBe(before);
+  });
   it("blocks extension creation without an exact enabled definition", () => {
     const envelope = { schemaVersion: "0.6" as const, requestId: "TEST", canvasId: "TEST", actions: [{ type: "card.create" as const, card: testCards.ExtensionCard }] };
     expect(envelopeCardPolicyIssue(envelope, [], () => ({ ok: false, error: "missing definition" }))).toBe("missing definition");

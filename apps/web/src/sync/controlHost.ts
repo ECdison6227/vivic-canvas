@@ -36,7 +36,7 @@ import {
 import { parseSyncMessage, DisplayPreferencesSchema, DEFAULT_DISPLAY_PREFERENCES,
   type DisplayPreferences, type CanvasInteraction, type SyncMessage } from "./protocol";
 import { isDue, reminderText, sameDelivery, conditionSatisfied, deliveredNoticeCurrent, ReminderInboxSchema, type ReminderNotice, type ReminderSummary } from "@/reminders/reminders";
-import { isDateCountdown, nextReminderOccurrence, type CardSurface, type CountdownCard } from "@vivic/contracts";
+import { isDateCountdown, nextReminderOccurrence, TravelQuerySchema, type CardSurface, type CountdownCard } from "@vivic/contracts";
 import { presentCards } from "@/canvas/reminderPresentation";
 import { playReminderSound } from "@/reminders/sound";
 import { envelopeCardPolicyIssue } from "./cardPolicy";
@@ -130,6 +130,9 @@ export const createControlHost = (deps: ControlHostDeps): ControlHost => {
   const persistedVersions = new Map<string, number>();
   const repairedFitRequests = new Map<string, string>();
   const travelRequests = new Map<string, AbortController>();
+  const cancelTravelRequests = (ids: Iterable<string> = travelRequests.keys()) => {
+    for (const id of ids) { travelRequests.get(id)?.abort(); travelRequests.delete(id); }
+  };
   let activeCanvasId: string | null = null;
   let ready = false;
   let seqByCanvas = new Map<string, number>();
@@ -216,6 +219,7 @@ export const createControlHost = (deps: ControlHostDeps): ControlHost => {
     instanceId,
     lockProvider: deps.lockProvider,
     onModeChange: mode => {
+      cancelTravelRequests();
       if (mode === "owner" && ready) { sessionEpoch = newId("owner"); void refreshOwnerState(); }
       emit();
     },
@@ -566,6 +570,11 @@ export const createControlHost = (deps: ControlHostDeps): ControlHost => {
     if (store.getState().processedRequestIds.includes(envelope.requestId)) return { ok: true, deduplicated: true };
     const policyIssue = envelopeCardPolicyIssue(envelope, store.getState().cards.map(entry => entry.record), validateExtensionCard, authority);
     if (policyIssue) return { ok: false, error: policyIssue };
+    if (authority === "user") {
+      const invalidated = envelope.actions.flatMap(action => action.type === "card.delete" ? [action.targetId]
+        : action.type === "cards.delete" ? action.targetIds : action.type === "card.create" ? [action.card.id] : []);
+      cancelTravelRequests(invalidated);
+    }
     if (envelope.actions.some(action => action.type === "canvas.switch")) {
       if (envelope.actions.some(action => action.type !== "canvas.switch" && action.type !== "canvas.create"))
         return { ok: false, error: "mixed-canvas-routing" };
@@ -626,6 +635,9 @@ export const createControlHost = (deps: ControlHostDeps): ControlHost => {
       if (controller.signal.aborted || travelRequests.get(cardId) !== controller || !writable()
         || sessionEpoch !== acceptedEpoch || activeCanvasId !== canvasId) return { ok: false, error: "旧查询结果已丢弃。" };
       if (!result.ok) return result;
+      const responseQuery = TravelQuerySchema.safeParse(result.card.displayProps.query);
+      if (!responseQuery.success || JSON.stringify(responseQuery.data) !== JSON.stringify(original.displayProps.query))
+        return { ok: false, error: "服务返回的查询条件与本次请求不一致，未修改卡片。" };
       const current = store.getState().cards.find(entry => entry.record.id === cardId && !entry.exitingRequestId)?.record;
       if (current?.type !== "TravelOffersCard" || JSON.stringify(current.displayProps.query) !== JSON.stringify(original.displayProps.query))
         return { ok: false, error: "卡片或查询已改变，旧结果已丢弃。" };
@@ -648,6 +660,7 @@ export const createControlHost = (deps: ControlHostDeps): ControlHost => {
     if (!writable()) return;
     if (id === activeCanvasId) return;
     if (!records.has(id)) return;
+    cancelTravelRequests();
     const activity = store.getState().activity;
     if (activity) setActivity(activity.requestId, null);
     void saveActiveNow().catch(() => undefined);
@@ -733,6 +746,7 @@ export const createControlHost = (deps: ControlHostDeps): ControlHost => {
     if (!activeCanvasId) return;
     const meta = records.get(activeCanvasId);
     if (!meta) return;
+    cancelTravelRequests();
     store.loadState(emptyVivicState());
     records.set(activeCanvasId, { ...meta, version: meta.version + 1, updatedAt: new Date().toISOString() });
     void saveActiveNow().catch(() => undefined);
@@ -741,6 +755,7 @@ export const createControlHost = (deps: ControlHostDeps): ControlHost => {
 
   const clearLocalData: ControlHost["clearLocalData"] = async beforeClear => {
     if (!writable()) return { ok: false, error: "readonly-not-owner" };
+    cancelTravelRequests();
     const acceptedEpoch = sessionEpoch;
     if (autosaveTimer) { clearTimeout(autosaveTimer); autosaveTimer = null; }
     // Save accepted edits before blocking new ones; a cache failure must not

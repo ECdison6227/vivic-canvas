@@ -200,6 +200,8 @@ pnpm build
 
 ## 9. 发给队员的开工结构
 
+统一服务结果使用 `ProviderResultSchema(itemSchema, querySchema)`，由各适配器明确自己的参数和结果 Schema；不要把非旅游服务硬塞进旅游查询字段。旅游参考使用 `ProviderResult<TravelOffer, TravelQuery>` / `TravelProviderResultSchema`，其他系列可复用相同 provider/tool/requestId/时间/mode/status 信封。
+
 每张卡片任务先给出用途、scene/cardType 候选、字段表、事实来源、输入输出例子、双模式交互、样例/失败状态、允许文件、接口集成点和验收命令，再让 AI 开工。SKILL 负责引导阅读与执行，Schema 负责强制校验，PR/测试负责验证和接收成果。
 
 在不自动加载项目 Skill 的工具中，直接要求 AI 读取 `.agents/skills/vivic-card-development/SKILL.md` 即可；不要为了读规则而启用 Vivic 运行时的 Pi extensions 或 coding tools。

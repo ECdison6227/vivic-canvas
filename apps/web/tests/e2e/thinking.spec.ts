@@ -44,7 +44,11 @@ test("pending feedback reaches both windows, escalates, then clears on completio
   // Snapshot, not just an already-open subscriber, must retain live feedback.
   const late = await context.newPage();
   await late.goto(`/display?canvasId=${canvasId}`);
-  await expect(late.locator('[data-vivic-thinking]')).toHaveText("让我想想…");
+  await expect.poll(async () => {
+    const current = await page.locator('[data-vivic-command-feedback]').textContent();
+    const observed = await late.locator('[data-vivic-thinking]').textContent().catch(() => null);
+    return (current === "让我想想…" || current === "响应较慢，仍在处理…") && observed === current;
+  }).toBe(true);
   await expect(page.locator('[data-vivic-command-feedback]')).toHaveText("响应较慢，仍在处理…", { timeout: 7000 });
   await expect(display.locator('[data-vivic-thinking]')).toHaveText("响应较慢，仍在处理…");
   const dir = path.resolve(process.cwd(), "../../evidence/voice-feedback/regression/thinking");

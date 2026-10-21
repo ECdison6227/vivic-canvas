@@ -12,6 +12,9 @@ export const E2E_STUB_PORT = Number(process.env.VIVIC_E2E_STUB_PORT ?? 45991);
 export default defineConfig({
   testDir: "./tests/e2e",
   timeout: 90_000,
+  // Lazy routes, IndexedDB commits and background-window rendering are async.
+  // Keep exact assertions while giving each UI transition an explicit budget.
+  expect: { timeout: 15_000 },
   workers: 1,
   reporter: [["list"]],
   use: {

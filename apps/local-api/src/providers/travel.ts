@@ -17,7 +17,7 @@ export const demoTravelProvider: TravelProvider = {
   },
 };
 
-export type TravelLookup = { ok: true; result: ProviderResult<TravelOffer> } | { ok: false; message: string };
+export type TravelLookup = { ok: true; result: ProviderResult<TravelOffer, TravelQuery> } | { ok: false; message: string };
 /** Bound time even for an adapter that ignores AbortSignal. Never expose raw provider errors. */
 export async function queryTravel(provider: TravelProvider, query: TravelQuery, signal?: AbortSignal, timeoutMs = 5000): Promise<TravelLookup> {
   const controller = new AbortController();
