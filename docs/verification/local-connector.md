@@ -1,7 +1,7 @@
 # RUN-01 本地启动器验证记录
 
-日期：2026-10-21  
-基线：`ea9fbe8`（`vivic-canvas/main`）  
+日期：2026-10-21
+基线：`ea9fbe8`（`vivic-canvas/main`）
 范围：`contrib/local-connector/` 独立原型与协议文档。
 
 ## 已验证
