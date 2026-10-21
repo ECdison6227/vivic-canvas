@@ -160,6 +160,7 @@ export const runIntent = async (
     if (deps.decision && !hasImages && !continuation && !adapterOnly) {
       const result = await localDecisionIntent(req.text, req.canvasContext, deps.decision, budget.signal);
       budget.signal.throwIfAborted();
+      if (deps.isSessionCurrent && !deps.isSessionCurrent()) return { kind: "error", message: "模型连接已变更，旧决策结果已丢弃。" };
       if (result) return result;
     }
     if (adapterOnly) return { kind: "clarify", message: "请明确要查询的城市或资料关键词；本次没有执行其他操作。", usedProvider: "rules" };

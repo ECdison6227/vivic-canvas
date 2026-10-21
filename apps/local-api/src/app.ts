@@ -27,6 +27,7 @@ import { createDataClient, DataError, localeAnswer, weatherCardFields, type Data
 import { validateImageAttachment, imageInputErrorMessage, type ImageDecoder } from "./images.js";
 import { decodeImage } from "./imageDecoder.js";
 import { DecisionManager } from "./decision/manager.js";
+import { DecisionRouter, HttpDecisionProvider, decisionTimeout, type DecisionProvider } from "./decision/provider.js";
 import type { PreferenceStore } from "./preferences.js";
 
 /**
@@ -44,6 +45,8 @@ export interface AppDeps {
   data?: DataClient;
   imageDecoder?: ImageDecoder;
   decision?: DecisionManager;
+  /** Optional independent DEC-01 API/local provider. */
+  decisionProvider?: DecisionProvider;
   /** Remembers the chosen connection across restarts; absent in tests. */
   preferences?: PreferenceStore;
 }
@@ -65,7 +68,22 @@ export const createApp = (deps: AppDeps) => {
   const credentials = deps.credentials ?? new CredentialStore();
   const gpt = deps.gpt ?? new GptProvider({ fetchImpl: deps.fetchImpl });
   const data = deps.data ?? createDataClient({ fetchImpl: deps.fetchImpl });
-  const decision = deps.decision ?? new DecisionManager();
+  const configuredProvider = deps.decisionProvider ?? (() => {
+    if (deps.decision || !config.decisionProviderUrl) return undefined;
+    const primary = new HttpDecisionProvider(config.decisionProviderUrl, {
+      name: config.decisionProviderKind ?? "api", timeoutMs: config.decisionProviderTimeoutMs,
+      fetchImpl: deps.fetchImpl, protocol: config.decisionProviderProtocol, model: config.decisionProviderModel,
+      getToken: () => config.decisionProviderToken,
+    });
+    const fallback = config.decisionProviderFallbackUrl ? new HttpDecisionProvider(config.decisionProviderFallbackUrl, {
+      name: "local", timeoutMs: config.decisionProviderTimeoutMs, fetchImpl: deps.fetchImpl,
+    }) : undefined;
+    return new DecisionRouter(primary, fallback);
+  })();
+  const decision = deps.decision ?? new DecisionManager(undefined, configuredProvider, {
+    enabled: config.decisionProviderEnabled !== false,
+    timeoutMs: 2 * decisionTimeout(config.decisionProviderTimeoutMs),
+  });
   const { preferences } = deps;
   const saved = preferences?.read() ?? {};
   let activeProvider: "stepfun" | "gpt" = saved.activeProvider ?? "stepfun";
