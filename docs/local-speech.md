@@ -1,5 +1,9 @@
 # 本地语音实现与主线接入
 
+2026-10-21 更新：控制窗口取得写入权后自动准备 X-ASR、KWS、VAD 三个模型，共 184,617,237 字节；已缓存模型直接复用。只读窗口不下载，准备过程不启动麦克风。下载逐个进行，失败保留单项错误和手动重试；取消、清理缓存或窗口失去写入权会停止相应准备，清理后不会在同一页会话中自动回填。固定唤醒词改为 `vivic`，其英文发音词元已按实际固定模型词表核对；词表通过不等于真人唤醒率验收。下方 2026-10-15 的结果是旧版本历史实测。
+
+同日新增启动权限准备：前台可写控制窗口打开时请求位置和麦克风权限，每页只请求一次；显式关闭位置或选择仅文字输入时保留该选择。麦克风已授权时只检查权限，需要请求时通过 `getUserMedia` 获得授权后立即停止所有临时轨道，不创建录音、转写或上传任务。拒绝、不支持、设备不存在或暂不可用均有设置提示；忽略麦克风提示不会阻塞位置请求或文字输入。实际录音与唤醒仍需手动开启。
+
 2026-10-15。状态：本地 X-ASR / KWS / Silero VAD 的真实 WASM 文件链路已跑通；设置、单次前台唤醒组件及独立浏览器 TTS adapter 已实现。本文更新实现状态；前期依据见 [源码核查](sherpaw-poc-plan.md)。本任务没有修改主线的 ControlApp、VoiceInput、CommandSection、speech.ts、api.ts、PCM 编码器、package、lockfile 或 Vite 配置；主线负责挂载和应用路由。
 
 只沿用 StepFun Coding Plan 与 GPT（Pi 现有 OAuth）的 LLM 范围。本模块不调用任何 LLM、不读认证、不执行卡片动作。STT 和 TTS 独立；GPT 未配置语音仍可纯文字操作。没有增加依赖；使用已安装的 `@sherpaw/{asr,kws,vad,preloader}@0.3.0`。
@@ -40,6 +44,7 @@ const text = await transcribeLocalPcm(samples, {
 localSpeechModels.subscribe(listener); // 返回 unsubscribe
 localSpeechModels.getSnapshot();      // 引用稳定的快照，更新后换引用
 await localSpeechModels.refresh();    // 仅检查缓存，不下载
+await localSpeechModels.prepareDefaultModels(); // 仅补齐缺失模型；设置组件会在可写窗口挂载后调用
 await localSpeechModels.prepareModel("asr-zh", { signal });
 localSpeechModels.cancelDownload("asr-zh");
 await localSpeechModels.clearModelCache(); // 可传单个 ModelId
@@ -95,17 +100,17 @@ await localSpeechModels.clearModelCache(); // 可传单个 ModelId
 
 上面主线函数名为接入示意，不是本模块创建的新后端。`onSegment` 最好返回整个上传 Promise，组件在完成/失败后结束会话；若返回 void，麦克风仍立刻停止，但 segment.signal 会保留到取消、下一次开启或卸载，以免中途取消调用方的异步上传。
 
-挂载和 props 更新绝不开麦。用户每次点击后，最多 **前台等待 300 秒，只收一段（最长 60 秒）**；结束后显示需要重新开启，不自动循环、不宣称常驻。只在 Control 使用。固定唤醒短语为 **「你好维维」**，不开放任意字符串输入框：
+挂载和 props 更新绝不开麦。用户每次点击后，最多 **前台等待 300 秒，只收一段（最长 60 秒）**；结束后显示需要重新开启，不自动循环、不宣称常驻。只在 Control 使用。固定唤醒短语为 **「vivic」**，不开放任意字符串输入框：
 
 ```ts
-DEFAULT_WAKE_PHRASE === "你好维维";
+DEFAULT_WAKE_PHRASE === "vivic";
 DEFAULT_WAKE_KEYWORDS[0].matches === [
-  { tokens: ["n", "ǐ", "h", "ǎo", "w", "éi", "w", "éi"] },
-  { tokens: ["n", "í", "h", "ǎo", "w", "éi", "w", "éi"] },
+  { tokens: ["V", "IH1", "V", "IH0", "K"] },
+  { tokens: ["V", "IY1", "V", "IH0", "K"] },
 ];
 ```
 
-两个变体逐项通过固定 KWS 包实际 `tokens.txt` 校验，并通过 native detector 初始化。**这不是默认短语现场命中率或误唤醒率的保证**；本轮真实 KWS 命中测试使用授权合成录音中已有的「十分钟」。用户应说完唤醒短语再说命令；与唤醒词粘连的命令首字仍需现场调试，转写须供用户检查。
+`vivic` 的两个英文发音变体逐项通过固定 KWS 包实际 `tokens.txt` 校验；使用该模型的 [CMU 英文音素格式](https://k2-fsa.github.io/sherpa/onnx/kws/pretrained_models/index.html#customize-your-own-keywords)。**这不是默认短语现场命中率或误唤醒率的保证**；历史真实 KWS 命中测试使用授权合成录音中已有的「十分钟」。用户应说完唤醒短语再说命令；与唤醒词粘连的命令首字仍需现场调试。转写依照用户的自动发送选项处理，默认自动发送，关闭后留在输入框供检查。
 
 `ownerKey / recognition / mode / cancelKey` 变化、disabled、speaking、blur、hidden、pagehide、取消按钮和卸载均会停止会话、关闭 AudioContext、释放 stream/port/Worker，过期回调不再交付文字。**主线在同窗口 PTT 开始、provider 切换、外部 TTS 取消或整体取消时递增 `cancelKey`；不要依赖按钮焦点变化等同于 window blur。** 不要在该组件自身 `onBegin` 内递增同一个 key，否则会取消刚开启的会话。
 

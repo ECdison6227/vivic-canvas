@@ -10,7 +10,7 @@ const statusText = (snapshot: LocationSnapshot): string => {
       ? `实时定位中 · 精度约 ${Math.max(1, Math.round(snapshot.fix.accuracyM))} 米 · ${time(snapshot.fix.capturedAt)} 更新`
       : "实时定位中…";
     case "locating": return "正在获取位置…（首次会弹出浏览器的位置授权）";
-    case "off": return "未开启。问“今天天气如何”时会请求一次授权；未授权时按网络大致位置回答。";
+    case "off": return "位置已关闭。可手动开启；未授权时按网络大致位置回答。";
     default: return snapshot.error ?? "无法定位。";
   }
 };
@@ -25,7 +25,7 @@ export const LocationSettings = ({ disabled }: { disabled: boolean }) => {
   return <section className="rounded-xl border border-neutral-200 bg-white p-4" data-vivic-location data-status={snapshot.status}>
     <div className="flex items-center gap-2 text-sm font-semibold"><MapPin className="h-4 w-4" />位置</div>
     <p className="mt-2 text-xs text-neutral-500">
-      用系统定位（GPS／Wi-Fi）回答“这里天气”，天气卡会随你移动或每 15 分钟自动更新。位置只在本页内存中使用，发出前取整到约 1 公里；画布只记录城市名和取整坐标。
+      打开 Vivic 时会请求位置权限，用系统定位（GPS／Wi-Fi）回答“这里天气”，天气卡会随你移动或每 15 分钟自动更新。位置只在本页内存中使用，发出前取整到约 1 公里；画布只记录城市名和取整坐标。
     </p>
     <div className="mt-3 flex flex-wrap items-center gap-2">
       <Button size="sm" variant="outline" disabled={disabled || snapshot.status === "unsupported"} aria-pressed={on}

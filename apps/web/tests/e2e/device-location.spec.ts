@@ -103,7 +103,6 @@ test("我在哪里 answers from the device position and reaches Display", async 
 });
 
 test("turning location off falls back without prompting again", async ({ page }) => {
-  await page.locator("[data-vivic-location-toggle]").click();
   await expect(page.locator("[data-vivic-location]")).toHaveAttribute("data-status", "watching");
   await page.locator("[data-vivic-location-toggle]").click();
   await expect(page.locator("[data-vivic-location]")).toHaveAttribute("data-status", "off");

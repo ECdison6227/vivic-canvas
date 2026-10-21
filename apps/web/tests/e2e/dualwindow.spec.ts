@@ -128,6 +128,11 @@ test("B01: 打开 Vivic 展示窗口 opens a pinned display window", async ({
   browser,
 }) => {
   const context = await browser.newContext();
+  await context.addInitScript(() => {
+    localStorage.setItem("vivic.deviceLocation.v1", "off");
+    localStorage.setItem("vivic.voice.providers.v1", JSON.stringify({ stt: "none", tts: "none", browserVoice: "" }));
+  });
+  await context.route("https://huggingface.co/**", route => route.abort());
   const A = await gotoControl(context);
   const canvasId = await activeCanvasId(A);
   const [popup] = await Promise.all([
@@ -137,18 +142,25 @@ test("B01: 打开 Vivic 展示窗口 opens a pinned display window", async ({
   await popup.waitForLoadState("domcontentloaded");
   expect(popup.url()).toContain("/display");
   expect(popup.url()).toContain(`canvasId=${encodeURIComponent(canvasId)}`);
+  await expect(popup.getByRole("button", { name: "点击隐藏顶部栏", exact: true })).toBeVisible();
   await expect(A.getByText(/拖到第二屏/)).toBeVisible();
   await popup.close();
   await context.close();
 });
 
-/** B02: /display carries zero chrome — standby and synced-workspace alike. */
-test("B02: /display has no settings/nav/debug chrome", async ({ browser }) => {
+/** B02: dismissing the temporary hint leaves zero persistent chrome in either stage. */
+test("B02: /display has no settings/nav/debug chrome after closing its fullscreen hint", async ({ browser }) => {
   const context = await browser.newContext();
-  // Standby: whole document text must be empty.
+  await context.addInitScript(() => {
+    localStorage.setItem("vivic.deviceLocation.v1", "off");
+    localStorage.setItem("vivic.voice.providers.v1", JSON.stringify({ stt: "none", tts: "none", browserVoice: "" }));
+  });
+  await context.route("https://huggingface.co/**", route => route.abort());
+  // Standby: only the temporary entry hint is allowed; dismissing it leaves no text.
   const standby = await context.newPage();
   await standby.goto("/display");
   await standby.waitForSelector(".siri-orb");
+  await standby.getByRole("button", { name: "关闭全屏提示", exact: true }).click();
   await standby.waitForTimeout(800);
   expect((await standby.evaluate(() => document.body.innerText.trim()))).toBe("");
   await standby.close();
@@ -157,6 +169,7 @@ test("B02: /display has no settings/nav/debug chrome", async ({ browser }) => {
   const A = await gotoControl(context);
   const canvasId = await activeCanvasId(A);
   const B = await gotoDisplay(context, canvasId);
+  await B.getByRole("button", { name: "关闭全屏提示", exact: true }).click();
   await controlDispatch(A, "todo", canvasId, [
     { type: "stage.awaken" },
     { type: "card.create", card: todoCardRecord("b02-todo", ["任务甲"]) },

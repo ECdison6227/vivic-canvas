@@ -1,4 +1,3 @@
-import { VoiceCloneSettings } from "./VoiceCloneSettings";
 import { AudioOutputSettings } from "./AudioOutputSettings";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Select } from "radix-ui";
@@ -20,6 +19,8 @@ import { GptConnection } from "./GptConnection";
 import { selectLlmModel, selectLlmProvider, type LlmProvider } from "@/ai/providers";
 import { getVoiceConfiguration, setVoiceConfiguration, subscribeVoiceConfiguration, type SttProvider, type TtsProvider } from "@/ai/voiceConfig";
 import { createBrowserTtsAdapter } from "@/ai/localSpeech/browserTts";
+import { getMicrophonePermission, requestMicrophonePermission, subscribeMicrophonePermission } from "@/permissions/devicePermissions";
+import { AvailableCards } from "./AvailableCards";
 
 type BackendState =
   | { status: "checking" }
@@ -41,6 +42,7 @@ export const AiSection = ({ onBackendChange, disabled = false }: AiSectionProps)
   const seen = useRef<{ instance?: string; stepfunConnected: boolean }>({ stepfunConnected: false });
   const speech = useSyncExternalStore(subscribeSpeech, getSpeechSnapshot);
   const voiceConfig = useSyncExternalStore(subscribeVoiceConfiguration, getVoiceConfiguration);
+  const microphone = useSyncExternalStore(subscribeMicrophonePermission, getMicrophonePermission);
   const [browserVoices, setBrowserVoices] = useState<Array<{ value: string; label: string }>>([]);
   const previewController = useRef<AbortController | null>(null);
 
@@ -227,6 +229,8 @@ export const AiSection = ({ onBackendChange, disabled = false }: AiSectionProps)
               : "StepFun 使用 Coding Plan Key；连接测试会读取目录并验证推理。GPT 可复用本机 Pi 登录或在上方授权；未连接时本地指令照常可用。"}
       </p>
 
+      <AvailableCards backendStatus={backend.status} provider={active} connectionText={badge.text} />
+
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         <div className="space-y-1"><p className="text-xs text-neutral-700">语音输入（STT）</p><Choice label="语音输入服务" testId="stt-provider" value={voiceConfig.stt} disabled={disabled || busy}
           options={[{ value: "stepfun", label: "StepFun Plan ASR" }, { value: "local", label: "本地 Sherpaw ASR" }, { value: "none", label: "仅文字输入" }]}
@@ -235,9 +239,17 @@ export const AiSection = ({ onBackendChange, disabled = false }: AiSectionProps)
           options={[{ value: "stepfun", label: "StepFun Plan TTS" }, { value: "browser", label: "系统本地音色" }, { value: "none", label: "仅卡片与字幕" }]}
           onChange={tts => { setSpeechEnabled(false); setVoiceConfiguration({ tts: tts as TtsProvider }); }} /></div>
       </div>
-      <p className="mt-2 text-xs text-neutral-500">语音与决策模型独立。没有语音服务时可直接使用文字；本地识别需先下载下方模型。</p>
+      <p className="mt-2 text-xs text-neutral-500">语音与决策模型独立。没有语音服务时可直接使用文字；本地语音模型会自动下载，可在下方查看进度。</p>
 
-      {voiceConfig.tts === "stepfun" && <VoiceCloneSettings disabled={disabled || busy || !stepfun?.connected} />}
+      <div className="mt-3 flex flex-wrap items-center gap-2" data-vivic-microphone-permission data-status={microphone.phase}>
+        <p className="text-xs text-neutral-600" role="status">{microphone.phase === "idle" && voiceConfig.stt === "none" ? "当前仅文字输入，未请求麦克风权限。" : microphone.message}</p>
+        {microphone.phase !== "granted" && <Button variant="outline" size="sm"
+          disabled={disabled || microphone.phase === "requesting" || microphone.phase === "unsupported"}
+          onClick={() => void requestMicrophonePermission()}>
+          {microphone.phase === "requesting" ? "等待麦克风授权…" : microphone.phase === "denied" ? "重新检查麦克风权限" : "请求麦克风权限"}
+        </Button>}
+      </div>
+
       <AudioOutputSettings disabled={disabled || busy} />
       <label className="mt-3 flex items-center gap-2 text-xs text-neutral-700">
         <Input
@@ -263,7 +275,7 @@ export const AiSection = ({ onBackendChange, disabled = false }: AiSectionProps)
           <div className="mt-1 flex flex-wrap items-center gap-2">
             <Select.Root
               value={speech.preferences.voice}
-              onValueChange={(voice) => setSpeechPreferences({ voice: voice as SpeechVoiceId, clonedVoiceId: "" })}
+              onValueChange={(voice) => setSpeechPreferences({ voice: voice as SpeechVoiceId })}
             >
               <Select.Trigger asChild>
                 <Button id="vivic-tts-voice" variant="outline" className="min-w-40 flex-1 justify-between" data-vivic-tts-voice>

@@ -25,18 +25,20 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("voice and speed are used for preview, volume stays browser-only, preferences survive reload", async ({ page, context }) => {
+  await expect(page.locator('[data-vivic-tts-voice]')).toHaveText("温柔女声");
+  await expect(page.locator('[data-vivic-tts-speed]')).toHaveValue("1.3");
   let payload: Record<string, unknown> | undefined;
   await page.route("**/api/speech", route => {
     payload = route.request().postDataJSON();
     return route.fulfill({ contentType: "audio/mpeg", body: Buffer.from("ID3-silent-fixture") });
   });
   await page.locator('[data-vivic-tts-voice]').click();
-  await page.getByRole("option", { name: "温柔女声", exact: true }).click();
-  await page.locator('[data-vivic-tts-speed]').fill("1.3");
+  await page.getByRole("option", { name: "磁性男声", exact: true }).click();
+  await page.locator('[data-vivic-tts-speed]').fill("1.1");
   await page.locator('[data-vivic-tts-volume]').fill("0");
   await page.locator('[data-vivic-tts-preview]').click();
   await expect(page.locator('[data-vivic-tts-note]')).toHaveText("正在播放…");
-  expect(payload).toMatchObject({ voice: "wenrounvsheng", speed: 1.3 });
+  expect(payload).toMatchObject({ voice: "cixingnansheng", speed: 1.1 });
   expect(payload).not.toHaveProperty("volume");
   const display = await context.newPage(); await display.goto("/display");
   await expect(display.locator('[data-vivic-speaking]')).toContainText("你好", { timeout: 5000 });
@@ -47,8 +49,8 @@ test("voice and speed are used for preview, volume stays browser-only, preferenc
   await expect(page.locator('[data-vivic-tts-note]')).not.toHaveText("正在播放…");
   await expect(display.locator('[data-vivic-speaking]')).toHaveCount(0);
   await page.reload();
-  await expect(page.locator('[data-vivic-tts-voice]')).toHaveText("温柔女声");
-  await expect(page.locator('[data-vivic-tts-speed]')).toHaveValue("1.3");
+  await expect(page.locator('[data-vivic-tts-voice]')).toHaveText("磁性男声");
+  await expect(page.locator('[data-vivic-tts-speed]')).toHaveValue("1.1");
   await expect(page.locator('[data-vivic-tts-volume]')).toHaveValue("0");
   await expect(page.locator('[data-vivic-tts-toggle]')).not.toBeChecked();
   await display.close();

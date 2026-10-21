@@ -27,11 +27,10 @@ export interface SpeechPreferences {
   /** Explicit opt-in until the user's Plan timestamp capability is verified. */
   timestamps?: boolean;
   outputDeviceId?: string;
-  clonedVoiceId?: string;
 }
 
 export const SPEECH_PREFERENCES_STORAGE_KEY = "vivic.speech.preferences.v1";
-const DEFAULT_PREFERENCES: SpeechPreferences = { voice: "cixingnansheng", speed: 1, volume: 1 };
+const DEFAULT_PREFERENCES: SpeechPreferences = { voice: "wenrounvsheng", speed: 1.3, volume: 1 };
 const isVoice = (value: unknown): value is SpeechVoiceId => SPEECH_VOICES.some((voice) => voice.id === value);
 const inRange = (value: unknown, min: number, max: number): value is number =>
   typeof value === "number" && Number.isFinite(value) && value >= min && value <= max;
@@ -45,7 +44,6 @@ const readPreferences = (): { preferences: SpeechPreferences; preferenceError: s
         if ("voice" in raw && isVoice(raw.voice)) preferences.voice = raw.voice;
         if ("speed" in raw && inRange(raw.speed, 0.5, 2)) preferences.speed = raw.speed;
         if ("volume" in raw && inRange(raw.volume, 0, 1)) preferences.volume = raw.volume;
-        if ("clonedVoiceId" in raw && typeof raw.clonedVoiceId === "string" && /^(?:voice-[A-Za-z0-9_-]{1,100})?$/.test(raw.clonedVoiceId)) preferences.clonedVoiceId = raw.clonedVoiceId;
         if ("outputDeviceId" in raw && typeof raw.outputDeviceId === "string" && raw.outputDeviceId.length <= 512) preferences.outputDeviceId = raw.outputDeviceId;
         if ("timestamps" in raw && typeof raw.timestamps === "boolean") preferences.timestamps = raw.timestamps;
       }
@@ -139,10 +137,8 @@ export const setSpeechPreferences = (patch: Partial<SpeechPreferences>): boolean
       (patch.speed !== undefined && !inRange(patch.speed, 0.5, 2)) ||
       (patch.volume !== undefined && !inRange(patch.volume, 0, 1)) ||
       (patch.timestamps !== undefined && typeof patch.timestamps !== "boolean") ||
-      (patch.clonedVoiceId !== undefined && (typeof patch.clonedVoiceId !== "string" || !/^(?:voice-[A-Za-z0-9_-]{1,100})?$/.test(patch.clonedVoiceId))) ||
       (patch.outputDeviceId !== undefined && (typeof patch.outputDeviceId !== "string" || patch.outputDeviceId.length > 512))) return false;
   const preferences: SpeechPreferences = {
-    ...(patch.clonedVoiceId !== undefined || snapshot.preferences.clonedVoiceId !== undefined ? { clonedVoiceId: patch.clonedVoiceId ?? snapshot.preferences.clonedVoiceId } : {}),
     ...(patch.outputDeviceId !== undefined || snapshot.preferences.outputDeviceId !== undefined ? { outputDeviceId: patch.outputDeviceId ?? snapshot.preferences.outputDeviceId } : {}),
     voice: patch.voice ?? snapshot.preferences.voice,
     speed: patch.speed ?? snapshot.preferences.speed,
@@ -152,7 +148,7 @@ export const setSpeechPreferences = (patch: Partial<SpeechPreferences>): boolean
   };
   // Changing synthesis settings cancels obsolete audio. Volume is live, with no new request.
   if (preferences.voice !== snapshot.preferences.voice || preferences.speed !== snapshot.preferences.speed
-    || preferences.timestamps !== snapshot.preferences.timestamps || preferences.outputDeviceId !== snapshot.preferences.outputDeviceId || preferences.clonedVoiceId !== snapshot.preferences.clonedVoiceId) cancelSpeech();
+    || preferences.timestamps !== snapshot.preferences.timestamps || preferences.outputDeviceId !== snapshot.preferences.outputDeviceId) cancelSpeech();
   if (active?.audio) active.audio.volume = preferences.volume;
   let preferenceError: string | null = null;
   try {
@@ -280,7 +276,6 @@ const playText = (
           method: phrase ? "GET" : "POST",
           headers: { "content-type": "application/json" },
           ...(phrase ? {} : { body: JSON.stringify({ text: spokenText, voice, speed,
-            ...(snapshot.preferences.clonedVoiceId ? { clonedVoiceId: snapshot.preferences.clonedVoiceId } : {}),
             ...(snapshot.preferences.timestamps ? { timestamps: true } : {}) }) }),
           signal: AbortSignal.any([controller.signal, AbortSignal.timeout(20_000)]),
           cache: phrase ? "force-cache" : "no-store",

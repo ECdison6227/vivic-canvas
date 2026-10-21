@@ -12,8 +12,7 @@ const legacy = { theme: "auto" as const, reducedMotion: false, subtitles: true }
 describe("optional local daylight preferences", () => {
   it("preserves legacy records exactly without injecting schedule defaults", () => {
     expect(DisplayPreferencesSchema.parse(legacy)).toEqual(legacy);
-    // 2026-10-17: new installs default to the dark 午夜蓝紫 background; stored legacy records keep their theme.
-    expect(DEFAULT_DISPLAY_PREFERENCES).toEqual({ ...legacy, theme: "dark" });
+    expect(DEFAULT_DISPLAY_PREFERENCES).toEqual(legacy);
     expect(DisplayPreferencesSchema.parse(legacy)).not.toHaveProperty("darkPalette");
     expect(DisplayPreferencesSchema.parse(legacy)).not.toHaveProperty("lightPalette");
     expect(DisplayPreferencesSchema.parse(legacy)).not.toHaveProperty("dayStart");

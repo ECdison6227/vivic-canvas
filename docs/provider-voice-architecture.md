@@ -14,7 +14,7 @@
 | 视觉 | 当次附件、Sharp 完整解码、当前模型能力检查 | 浏览器 GPT 从自生成 TEST 图片得到 `17 + 26 = 43` 并创建便笺；未使用用户图片，不代表任意图片或模型均验收 |
 | ASR | 独立选关闭、StepFun Plan、本地 Sherpaw X-ASR | 云端有合成麦克风真实请求；本地有合成 WAV/虚拟 AudioWorklet 真实 WASM；物理麦克风未验收 |
 | TTS | 独立选关闭、StepFun Plan、浏览器 `localService` 音色 | 云端有历史接口/播放记录；浏览器音色仅模拟事件测试，无实际发声验收；最新测试静音/TTS 关闭 |
-| VAD/KWS | Sherpaw Worker、按需下载、前台单句，默认不开麦 | [本地语音归档](../evidence/phase3-local-speech/REPORT.md)17/17 文件/浏览器项目；样本「十分钟」命中，默认「你好维维」仅词表/native 初始化和静音不触发 |
+| VAD/KWS | Sherpaw Worker、默认下载并缓存、前台单句，默认不开麦；唤醒词 `vivic` | [本地语音归档](../evidence/phase3-local-speech/REPORT.md)是旧版实测；`vivic` 的实际词表已核对，真人唤醒率仍待验收 |
 
 STT/TTS 不依附所选 LLM。可以使用 GPT 加独立 StepFun 语音、本地 ASR，或纯文字；未配置音频不阻塞模型连接。LLM、搜索、视觉、ASR 和 TTS 分别验证，不能从 OAuth 成功推导语音权限，也不因换 LLM 擅自切换语音 provider。
 
@@ -43,13 +43,13 @@ GPT/StepFun 搜索保留真实标题/URL、时间和 provider，来源文本作�
 
 ## 本地语音与前台生命周期
 
-已安装 `@sherpaw/{asr,kws,vad,preloader}@0.3.0`。固定模型按用户操作下载，完整 SHA-256 后进入专用 IndexedDB；默认不下载，取消不提交部分缓存，损坏不标假 ready。模型 revision/散列/许可见 [manifest](../apps/web/src/ai/localSpeech/manifest.json)、[LICENSES](../LICENSES.md)。
+已安装 `@sherpaw/{asr,kws,vad,preloader}@0.3.0`。2026-10-21 起，可写控制窗口默认逐个下载缺失的三个固定模型，完整 SHA-256 后进入专用 IndexedDB；已缓存模型复用，只读窗口不下载。取消不提交部分缓存，清理会停止自动准备，损坏不标假 ready。模型 revision/散列/许可见 [manifest](../apps/web/src/ai/localSpeech/manifest.json)、[LICENSES](../LICENSES.md)。
 
-X-ASR/KWS/Silero VAD 在 Worker 运行。捕获命令后先终止监听 Worker，再启动本地 ASR；选择云识别时仅把有界命令段交给独立 StepFun ASR。设置组件挂载不自行开麦、下载或上传。用户每次点击最多前台等待 300 秒，单段最长 60 秒，成功/失败后结束，不自动循环。失焦、隐藏、pagehide、取消、切画布/owner/provider 或 TTS 状态变化会停止、清理并丢弃迟到结果。
+X-ASR/KWS/Silero VAD 在 Worker 运行。捕获命令后先终止监听 Worker，再启动本地 ASR；选择云识别时仅把有界命令段交给独立 StepFun ASR。设置组件挂载会准备模型，前台可写控制窗口会请求位置和麦克风权限。麦克风已授权时只检查状态；需要请求时获授权即停止临时轨道，不启动录音、转写或上传，实际监听需手动开启。用户每次点击最多前台等待 300 秒，单段最长 60 秒，成功/失败后结束，不自动循环。失焦、隐藏、pagehide、取消、切画布/owner/provider 或 TTS 状态变化会停止、清理并丢弃迟到结果。
 
 本地 ASR 文件结果约 7.40 秒，VAD→ASR 4.48 秒，虚拟 AudioWorklet→重采样→VAD→ASR 11.17 秒（含实时音源等待），均是合成音，不是物理麦克风或整页 GPU 场景性能保证。ASR/KWS 浏览器下载用已验证文件经 loopback 提供，不能称该耗时为公网速度；VAD 固定 HF URL 有真实 CORS/校验记录。
 
-默认「你好维维」未做声学命中、召回率或误唤醒率验收；真实 KWS 命中的是「十分钟」。物理麦克风、Safari、5 分钟监听、锁屏/睡眠唤醒仍待验收。识别结果默认供用户检查；PTT/文字保留为显式降级，不自动换云服务。详见 [local-speech](local-speech.md)。
+当前默认唤醒词 `vivic` 未做真人声学命中、召回率或误唤醒率验收；历史真实 KWS 命中的是「十分钟」。物理麦克风、Safari、5 分钟监听、锁屏/睡眠唤醒仍待验收。识别结果默认自动发送，用户可关闭后检查文字；PTT/文字保留为显式降级，不自动换云服务。详见 [local-speech](local-speech.md)。
 
 ## 独立 TTS 与测试约束
 

@@ -1,7 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { Download, HardDrive, Square, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { localSpeechModels, SPEECH_MODELS } from "@/ai/localSpeech";
+import { DEFAULT_WAKE_PHRASE, localSpeechModels, SPEECH_MODELS } from "@/ai/localSpeech";
 import type { LocalSpeechModelManager } from "@/ai/localSpeech";
 export { LocalWakeInput } from "./LocalWakeInput";
 export type { LocalWakeInputProps } from "./LocalWakeInput";
@@ -19,9 +19,13 @@ export const LocalSpeechSettings = ({ disabled = false, manager = localSpeechMod
   const [clearing, setClearing] = useState(false);
   useEffect(() => {
     let active = true;
-    void manager.refresh().catch(() => { if (active) setError("无法读取本地模型缓存，仍可使用 PTT 或文字。"); });
-    return () => { active = false; };
-  }, [manager]);
+    const controller = new AbortController();
+    const prepare = disabled ? manager.refresh() : manager.prepareDefaultModels({ signal: controller.signal });
+    void prepare.catch(cause => {
+      if (active && !(cause instanceof DOMException && cause.name === "AbortError")) setError("无法读取本地模型缓存，仍可使用 PTT 或文字。");
+    });
+    return () => { active = false; controller.abort(); };
+  }, [manager, disabled]);
   const clear = async () => {
     setClearing(true); setError(null);
     try { await onBeforeClear?.(); await manager.clearModelCache(); }
@@ -30,8 +34,9 @@ export const LocalSpeechSettings = ({ disabled = false, manager = localSpeechMod
   };
   return (
     <section className="rounded-xl border border-neutral-200 bg-white p-4" data-vivic-local-speech>
-      <div className="flex items-center gap-2 text-sm font-semibold"><HardDrive className="h-4 w-4" />本地语音（可选）</div>
-      <p className="mt-2 text-xs text-neutral-500">按需下载，默认不监听。模型首次加载可能较慢并占用较多内存；失败时仍可按住说话或输入文字。</p>
+      <div className="flex items-center gap-2 text-sm font-semibold"><HardDrive className="h-4 w-4" />本地语音</div>
+      <p className="mt-2 text-xs text-neutral-500">首次打开会自动下载下方三个模型，已缓存的不会重复下载。模型首次加载可能较慢并占用较多内存；失败时仍可使用文字输入。</p>
+      <p className="mt-2 text-xs text-neutral-600">默认唤醒词已配置为「{DEFAULT_WAKE_PHRASE}」。麦克风权限会在启动时请求；点击“开启单次监听”后才开始监听，默认不监听。</p>
       <ul className="mt-3 space-y-3">
         {SPEECH_MODELS.map(model => {
           const state = snapshot.models[model.id];
@@ -41,7 +46,7 @@ export const LocalSpeechSettings = ({ disabled = false, manager = localSpeechMod
           return <li key={model.id} className="rounded-lg border border-neutral-200 p-3" data-local-speech-model={model.id}>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div><p className="text-sm font-medium">{model.label}</p><p className="mt-1 text-xs text-neutral-500">{(model.bytes / 1_000_000).toFixed(2)} MB · {cached ? "已缓存，加载时再次校验" : state.phase === "verifying" ? "正在校验完整性…" : busy ? `下载 ${percent}%` : "尚未就绪"}</p></div>
-              {busy ? <Button size="sm" variant="outline" disabled={clearing} onClick={() => manager.cancelDownload(model.id)}><Square className="h-3 w-3" />取消</Button>
+              {busy ? <Button size="sm" variant="outline" disabled={disabled || clearing} onClick={() => manager.cancelDownload(model.id)}><Square className="h-3 w-3" />取消</Button>
                 : <Button size="sm" variant="outline" disabled={disabled || clearing} onClick={() => {
                   setError(null);
                   void manager.prepareModel(model.id).catch(cause => {
