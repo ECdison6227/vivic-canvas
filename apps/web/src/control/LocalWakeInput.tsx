@@ -108,8 +108,8 @@ export const LocalWakeInput = (props: LocalWakeInputProps) => {
     : phase === "recording" ? "正在收取一条指令，静音后结束。"
     : phase === "transcribing" ? "已停止麦克风，正在本地识别…"
     : phase === "delivering" ? "已停止麦克风，正在交付语音识别…"
-    : phase === "done" ? "本次已结束。请检查转写文字；继续使用需重新开启。"
-    : "默认不开麦。一次开启最多前台等待 5 分钟，只收一段后停止；失焦即取消。");
+    : phase === "done" ? "本次识别已结束；继续使用需重新开启。"
+    : "默认不监听。一次开启最多前台等待 5 分钟，只收一段后停止；失焦即取消。");
   const title = props.mode === "vad" ? "本地语音分段（单次）" : `本地唤醒（单次）· 固定短语：${DEFAULT_WAKE_PHRASE}`;
   if (props.compact) return <div className="vivic-wake" data-vivic-local-wake data-local-wake-phase={phase}>
     <button type="button" className="vivic-chip" disabled={props.disabled || props.speaking || busy} onClick={begin} title={`${title}。${caption}`}>

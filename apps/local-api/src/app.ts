@@ -1,4 +1,3 @@
-import { cloneVoice, CloneVoiceRequestSchema } from "./voiceClone.js";
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
@@ -17,7 +16,7 @@ import {
 import { validateConnection, chatJson, probeAnswered, PLAN_CHAT_MODELS } from "./stepfun.js";
 import { providerRecoveryHint } from "./providerError.js";
 import { SPEECH_MODEL, synthesizeSpeech } from "./speech.js";
-import { DEFAULT_SPEECH_VOICE, SPEECH_VOICES, SPEECH_VOICES_SOURCE } from "./voices.js";
+import { DEFAULT_SPEECH_SPEED, DEFAULT_SPEECH_VOICE, SPEECH_VOICES, SPEECH_VOICES_SOURCE } from "./voices.js";
 import { createAsrRoutes, ASR_BODY_LIMIT_BYTES } from "./asr.js";
 import { createSearchClient, createSearchRoutes, type SearchClient } from "./search/index.js";
 import { GptProvider } from "./gpt/provider.js";
@@ -251,33 +250,11 @@ export const createApp = (deps: AppDeps) => {
     return c.json({ ok: true });
   });
 
-  const clonedVoices = new WeakMap<object, Set<string>>();
-  app.get("/api/speech/cloned-voices", c => {
-    c.header("Cache-Control", "no-store");
-    const credential = credentials.getSecret();
-    return c.json({ voices: credential ? [...(clonedVoices.get(credential) ?? [])] : [] });
-  });
-  app.post("/api/speech/cloned-voices", bodyLimit({ maxSize: 4096 }), async c => {
-    c.header("Cache-Control", "no-store");
-    const input = CloneVoiceRequestSchema.safeParse(await readJson(c));
-    if (!input.success) return c.json({ ok: false, error: "请提供有效 File ID、可选原文，并确认你有权使用该声音。" }, 400);
-    const credential = credentials.getSecret();
-    if (!credential) return c.json({ ok: false, error: "请先连接 StepFun Plan。" }, 503);
-    try {
-      const id = await cloneVoice(credential, input.data, { ...stepfun, timeoutMs: config.speechTimeoutMs ?? 15000 }, c.req.raw.signal);
-      if (credentials.getSecret() !== credential || c.req.raw.signal.aborted) return c.json({ ok: false, error: "连接已变更，复刻结果未启用。" }, 503);
-      const voices = clonedVoices.get(credential) ?? new Set<string>();
-      if (voices.size >= 20) voices.delete(voices.values().next().value!);
-      voices.add(id); clonedVoices.set(credential, voices);
-      return c.json({ ok: true, id });
-    } catch { return c.json({ ok: false, error: "Plan 音色复刻未完成，请检查文件时长、权限、额度或连接；没有切换计费接口。" }, 503); }
-  });
-
   app.get("/api/speech/voices", (c) => {
     c.header("Cache-Control", "no-store");
     return c.json({
       model: SPEECH_MODEL, voices: SPEECH_VOICES, defaultVoice: DEFAULT_SPEECH_VOICE,
-      speed: { min: 0.5, max: 2, default: 1 },
+      speed: { min: 0.5, max: 2, default: DEFAULT_SPEECH_SPEED },
       source: SPEECH_VOICES_SOURCE, verifiedAt: "2026-10-15",
     });
   });
@@ -307,11 +284,9 @@ export const createApp = (deps: AppDeps) => {
     if (!credential) {
       return c.json({ ok: false, code: "speech-disconnected", error: "语音不可用：请先连接 StepFun Coding Plan Key。" }, 503);
     }
-    if (parsed.data.clonedVoiceId && !clonedVoices.get(credential)?.has(parsed.data.clonedVoiceId))
-      return c.json({ ok: false, code: "speech-unknown-voice", error: "该复刻音色未在当前连接中确认，请重新复刻或使用官方音色。" }, 400);
     const result = await synthesizeSpeech(credential, parsed.data.text, {
       ...stepfun, timeoutMs: config.speechTimeoutMs ?? 15000,
-    }, c.req.raw.signal, { ...parsed.data, ...(parsed.data.clonedVoiceId ? { voice: parsed.data.clonedVoiceId } : {}) });
+    }, c.req.raw.signal, parsed.data);
     // A disconnect/reconnect during synthesis must not deliver stale audio.
     if (credentials.getSecret() !== credential) {
       return c.json({ ok: false, code: "speech-disconnected", error: "语音已取消：模型连接已变更。" }, 503);

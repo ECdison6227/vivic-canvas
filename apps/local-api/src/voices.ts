@@ -12,11 +12,12 @@ export const SPEECH_VOICES = [
 ] as const;
 export type SpeechVoiceId = (typeof SPEECH_VOICES)[number]["id"];
 export const SPEECH_VOICE_IDS = SPEECH_VOICES.map((voice) => voice.id);
-export const DEFAULT_SPEECH_VOICE: SpeechVoiceId = "cixingnansheng";
+export const DEFAULT_SPEECH_VOICE: SpeechVoiceId = "wenrounvsheng";
+export const DEFAULT_SPEECH_SPEED = 1.3;
 
 export interface SpeechOptions {
-  /** Caller validates official IDs or current-session clone membership. */
-  voice?: string;
+  /** Caller validates official voice IDs. */
+  voice?: SpeechVoiceId;
   speed?: number;
   timestamps?: boolean;
 }

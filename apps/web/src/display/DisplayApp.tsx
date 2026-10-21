@@ -4,6 +4,7 @@ import { applyUrlTheme } from "@/lib/urlTheme";
 import { StageRoot } from "@/stage/StageRoot";
 import { canvasStore } from "@/state/canvasStore";
 import { getDisplayRuntime, type DisplayRuntime } from "@/sync/browserRuntime";
+import { FullscreenHint } from "./FullscreenHint";
 
 declare global {
   interface Window {
@@ -21,8 +22,8 @@ const isDevPanel = import.meta.env.DEV && params.get("dev") === "1";
 const pinnedCanvasId = params.get("canvasId") ?? undefined;
 
 /**
- * /display — stage only. No nav, no settings entry, no chrome
- * (AGENTS.md §1.4). The ?dev=1 panel is restricted to development builds.
+ * /display — full-window stage with a dismissible browser-fullscreen hint.
+ * No persistent nav/settings chrome. ?dev=1 is restricted to development builds.
  */
 export const DisplayApp = () => {
   useEffect(() => {
@@ -50,6 +51,7 @@ export const DisplayApp = () => {
   return (
     <>
       <StageRoot />
+      <FullscreenHint />
       {isDevPanel && <DevPanel />}
     </>
   );

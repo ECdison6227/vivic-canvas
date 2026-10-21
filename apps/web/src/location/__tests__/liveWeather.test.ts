@@ -9,7 +9,7 @@ import { createMemoryHub, flushChannel } from "@/sync/channel";
 import { createMemoryLockProvider } from "@/sync/testing";
 import { createControlHost } from "@/sync/controlHost";
 import type { WeatherHereFields } from "@/ai/api";
-import { asksWhere, fixForRequest, freshFix, getLocationSnapshot, looksLikeWeather, resetLocationForTests, resumeLocation, startLocation, stopLocation, LOCATION_PREFERENCE } from "../deviceLocation";
+import { asksWhere, fixForRequest, freshFix, getLocationSnapshot, looksLikeWeather, resetLocationForTests, resumeLocation, stopLocation, LOCATION_PREFERENCE } from "../deviceLocation";
 import { refreshReason, startLiveWeather } from "../liveWeather";
 
 const NOW = Date.parse("2026-10-17T08:00:00.000Z");
@@ -74,6 +74,7 @@ describe("browser geolocation", () => {
   let watch: ReturnType<typeof vi.fn>, success: PositionCallback, failure: PositionErrorCallback;
   let permission = "prompt";
   beforeEach(() => {
+    permission = "prompt";
     localStorage.clear(); resetLocationForTests();
     watch = vi.fn((ok: PositionCallback, error: PositionErrorCallback) => { success = ok; failure = error; return 7; });
     Object.defineProperty(navigator, "geolocation", { configurable: true, value: { watchPosition: watch, clearWatch: vi.fn() } });
@@ -106,11 +107,24 @@ describe("browser geolocation", () => {
     expect(watch).toHaveBeenCalledTimes(1);
   });
 
-  it("resumes on page load only when it was on and already granted", async () => {
+  it("requests location on opening without waiting for a weather question", async () => {
     await resumeLocation();
-    startLocation(); stopLocation(); localStorage.setItem(LOCATION_PREFERENCE, "on"); watch.mockClear();
-    await resumeLocation(); expect(watch).not.toHaveBeenCalled();
+    expect(watch).toHaveBeenCalledTimes(1);
+    await resumeLocation(); expect(watch).toHaveBeenCalledTimes(1);
+    expect(localStorage.getItem(LOCATION_PREFERENCE)).toBe("on");
+  });
+
+  it("respects an explicit off choice and does not repeat browser-denied requests", async () => {
+    stopLocation(); await resumeLocation(); expect(watch).not.toHaveBeenCalled();
+    localStorage.removeItem(LOCATION_PREFERENCE);
+    permission = "denied"; await resumeLocation();
+    expect(watch).not.toHaveBeenCalled(); expect(getLocationSnapshot().status).toBe("denied");
     permission = "granted"; await resumeLocation(); expect(watch).toHaveBeenCalledTimes(1);
+  });
+
+  it("can request location when the Permissions API query is unsupported", async () => {
+    Object.defineProperty(navigator, "permissions", { configurable: true, value: { query: async () => { throw new TypeError("Unsupported query"); } } });
+    await resumeLocation(); expect(watch).toHaveBeenCalledTimes(1);
   });
 
   it.each(["今天天气如何", "外面冷不冷", "要不要带伞", "北京气温", "我在哪里", "我在哪儿？", "我的位置", "请问我现在在什么地方"])

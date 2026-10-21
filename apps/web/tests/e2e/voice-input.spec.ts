@@ -15,7 +15,8 @@ wav.write("data", 36); wav.writeUInt32LE(samples * 2, 40);
 for (let i = 0; i < samples; i++) wav.writeInt16LE(Math.round(Math.sin(i * 2 * Math.PI * 440 / 16000) * 6000), 44 + i * 2);
 fs.writeFileSync(toneFile, wav);
 
-test.use({ launchOptions: { args: ["--mute-audio", "--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream", `--use-file-for-fake-audio-capture=${toneFile}`] }, permissions: ["microphone"] });
+test.use({ launchOptions: { ...(process.env.VIVIC_E2E_CHROMIUM ? { executablePath: process.env.VIVIC_E2E_CHROMIUM } : {}),
+  args: ["--mute-audio", "--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream", `--use-file-for-fake-audio-capture=${toneFile}`] }, permissions: ["microphone"] });
 
 const hold = async (page: Page) => {
   await page.bringToFront();
@@ -31,7 +32,8 @@ test.beforeEach(async ({ page }) => {
   await expect(page.locator('[data-vivic-control]')).toHaveAttribute("data-vivic-owner", "owner");
 });
 
-test("native AudioWorklet records WAV, transcribes into review, then uses the shared command engine", async ({ page, context }) => {
+test("disabling automatic sending records WAV, transcribes into review, then uses the shared command engine", async ({ page, context }) => {
+  await page.locator('[data-vivic-voice-auto]').uncheck();
   let uploads = 0;
   await page.route("**/api/transcribe", async route => {
     const body = route.request().postDataBuffer()!;
@@ -121,10 +123,9 @@ test("typing during transcription preserves the draft until the user chooses rep
   await expect(page.locator('[data-vivic-command-input]')).toHaveValue("10分钟后提醒我喝水");
 });
 
-test("explicit automatic mode sends the recognized command on release", async ({ page }) => {
+test("automatic mode is on by default and sends the recognized command on release", async ({ page }) => {
   await page.route("**/api/transcribe", route => route.fulfill({ json: { ok: true, text: "10分钟后提醒我喝水" } }));
-  await expect(page.locator('[data-vivic-voice-auto]')).not.toBeChecked();
-  await page.locator('[data-vivic-voice-auto]').check();
+  await expect(page.locator('[data-vivic-voice-auto]')).toBeChecked();
   await hold(page); await page.mouse.up();
   await expect(page.locator('[data-vivic-reminder-text]')).toHaveText("喝水");
   await expect(page.locator('[data-vivic-command-input]')).toHaveValue("");

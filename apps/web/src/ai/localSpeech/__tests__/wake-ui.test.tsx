@@ -40,10 +40,11 @@ const render = async (patch: Partial<LocalWakeInputProps> = {}) => {
 describe("explicit one-shot wake UI (mocked capture only)", () => {
   it("never enables on mount; a click uses only the verified fixed preset and streams PCM", async () => {
     const onBegin = vi.fn(), view = await render({ onBegin });
-    expect(state.microphones).toHaveLength(0); expect(view.node.textContent).toContain("你好维维");
+    expect(state.microphones).toHaveLength(0); expect(view.node.textContent).toContain("vivic");
     await view.click(); expect(onBegin).toHaveBeenCalledTimes(1);
     expect(state.sessions[0]!.options.maxListenSeconds).toBe(300);
-    expect(state.sessions[0]!.options.keywords?.[0]?.matches[0]?.tokens).toEqual(["n", "ǐ", "h", "ǎo", "w", "éi", "w", "éi"]);
+    expect(state.sessions[0]!.options.keywords?.[0]?.label).toBe("vivic");
+    expect(state.sessions[0]!.options.keywords?.[0]?.matches[0]?.tokens).toEqual(["V", "IH1", "V", "IH0", "K"]);
     const samples = new Float32Array(512).fill(0.1);
     await state.microphones[0]!.options!.onPcm(samples, 16000);
     expect(state.sessions[0]!.acceptPcm).toHaveBeenCalledWith(samples, 16000);

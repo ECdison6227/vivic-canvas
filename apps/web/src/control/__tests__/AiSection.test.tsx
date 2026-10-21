@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProvidersStatusResponse } from "@/ai/api";
 import { AiSection } from "../AiSection";
+import { CARD_TYPE_LABELS } from "@/contracts";
 
 // TEST status replies only; no backend, key, microphone or audio output.
 let root: Root, container: HTMLDivElement;
@@ -52,5 +53,32 @@ describe("AI connection panel across backend restarts", () => {
     status = { activeProvider: "gpt", instance: "TEST-a", providers: [stepfun(false), gpt(true)], degradations: [] };
     await refresh();
     expect(badge()).toContain("已连接 · gpt-test");
+  });
+
+  it("shows every registered card once and follows the selected provider's connection", async () => {
+    status = { activeProvider: "stepfun", providers: [stepfun(true), gpt(false)], degradations: [] };
+    await act(async () => root.render(<AiSection />)); await refresh();
+    const cards = Array.from(container.querySelectorAll("[data-vivic-available-card]"));
+    expect(cards.map(card => card.getAttribute("data-vivic-available-card")).sort()).toEqual(Object.keys(CARD_TYPE_LABELS).sort());
+    expect(container.querySelector('[data-vivic-available-card="ProgressRingCard"]')?.getAttribute("data-availability")).toBe("ready");
+    expect(container.querySelector('[data-vivic-available-card="WeatherCard"]')?.textContent).toContain("需联网");
+    expect(container.querySelector('[data-vivic-available-card="TableCard"]')?.textContent).toContain("需提供数据");
+    status = { activeProvider: "gpt", providers: [stepfun(true), gpt(false)], degradations: [] };
+    await refresh();
+    expect(container.querySelector('[data-vivic-available-card="ProgressRingCard"]')?.getAttribute("data-availability")).toBe("requires-model");
+    expect(container.querySelector('[data-vivic-available-card="TodoCard"]')?.getAttribute("data-availability")).toBe("ready");
+    status = { activeProvider: "gpt", providers: [stepfun(false), gpt(true)], degradations: [] };
+    await refresh();
+    expect(container.querySelector("[data-vivic-card-model-status]")?.textContent).toContain("gpt-test");
+    expect(container.querySelector('[data-vivic-available-card="ProgressRingCard"]')?.getAttribute("data-availability")).toBe("ready");
+  });
+
+  it("keeps local cards available when the backend goes offline and does not advertise model or data service availability", async () => {
+    status = { activeProvider: "stepfun", providers: [stepfun(true), gpt(false)], degradations: [] };
+    await act(async () => root.render(<AiSection />)); await refresh();
+    vi.mocked(fetch).mockRejectedValue(new Error("TEST offline")); await refresh();
+    expect(container.querySelectorAll('[data-vivic-available-card][data-availability="ready"]')).toHaveLength(3);
+    expect(container.querySelector('[data-vivic-available-card="ProgressRingCard"]')?.getAttribute("data-availability")).toBe("requires-model");
+    expect(container.querySelector('[data-vivic-available-card="ChartCard"]')?.getAttribute("data-availability")).toBe("requires-backend");
   });
 });

@@ -15,7 +15,7 @@ engine = sherpa_onnx.OfflineTts(sherpa_onnx.OfflineTtsConfig(model=sherpa_onnx.O
 out = ROOT/'evidence/next-plan/wake-fixtures'; out.mkdir(parents=True, exist_ok=True)
 rows=[]
 for speaker in [3,6,9]:
-    for label, text in [('wake','你好维维。'),('command','十分钟后提醒我喝水。')]:
+    for label, text in [('wake','vivic.'),('command','十分钟后提醒我喝水。')]:
         audio=engine.generate(text,sid=speaker,speed=1)
         samples=np.asarray(audio.samples)
         # Linear resampling suffices for an acoustic test fixture; no playback.
