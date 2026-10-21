@@ -34,10 +34,10 @@ python contrib/local-connector/connector.py serve --provider-command python path
 
 ## 模型下载
 
-`GET /v1/models` 只显示模型大小、受控相对路径和是否配置下载源。只有用户明确调用 `/v1/models/download` 才会复制模型文件，支持进度查询和取消；没有下载源时返回 `MODEL_SOURCE_UNCONFIGURED`，不会静默下载全部模型。
+`GET /v1/models` 只显示模型大小、受控相对路径和是否配置下载源。当前“下载”仅指从受控本地目录复制文件，尚无网络下载适配；默认目录只有 fixture，未配置真实模型源。只有用户明确调用 `/v1/models/download` 才会复制模型文件，支持进度查询和取消；没有下载源时返回 `MODEL_SOURCE_UNCONFIGURED`，不会静默下载全部模型。
 
 ## 平台边界
 
-- Windows 使用 `CREATE_NEW_PROCESS_GROUP`，停止时只终止保存的 `Popen` 进程句柄。
+- Windows 使用 `CREATE_NEW_PROCESS_GROUP`，停止时以保存的 `Popen` PID 调用 `taskkill /PID <pid> /T /F` 清理对应进程树，不按进程名或端口选择程序。
 - macOS/Linux 使用独立 process group，停止时发送 `SIGTERM`，超时再对同一 PID `kill`。
 - 本轮只在当前开发机运行标准库测试；Windows/macOS 的支持矩阵与真实设备记录见验证文档，不把 Linux/CI 结果冒充两平台通过。

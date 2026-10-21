@@ -20,6 +20,10 @@ py -3 -m unittest discover -s contrib/local-connector -p "test_*.py" -v
 4. 决策请求返回 `runId`，取消变为 `canceled`；重连重新拉起同一受管服务，之后请求可完成。
 5. 配置的 provider 端口被其他 socket 占用时返回 `PORT_OCCUPIED`，不杀占用者。
 6. 未配置模型源时只展示目录信息，下载返回 `MODEL_SOURCE_UNCONFIGURED`，不会默认下载。
+7. 连接器自身端口被占用时绑定失败，不复用占用者的 socket；受管子进程异常退出后状态为 `PROVIDER_EXITED`，不自动重启。
+8. 显式复制本地模型 fixture 的任务可取消，取消后不留下目标文件。
+
+提交前复核：Windows、Python 3.14.2，8/8 测试通过；Python 源文件编译检查及 `git diff --check` 通过。
 
 ## 结果边界
 
@@ -27,6 +31,7 @@ py -3 -m unittest discover -s contrib/local-connector -p "test_*.py" -v
 - 本轮未启用真实模型权重、真实 API key、物理麦克风、音频播放或公网监听；这些属于后续适配/授权工作。
 - 当前设备记录为 Windows 开发机；macOS 只完成代码路径设计审查，尚无真实设备运行记录。Linux/CI 结果也不能替代两平台实测。
 - 核心 Vivic `app.ts`、owner/持久化、共享契约和 `scripts/dev.mjs` 未修改。集成时由维护者把浏览器状态读取接到已有本地后端，并保留 `OFFLINE` 降级。
+- 当前交付为 Draft 阶段：尚无真实 DEC-01 模型服务验收、provider 启动/推理超时、网络模型下载及产品 UI 接线。独立测试不证明上述能力已完成。
 
 ## 复现与手工观察
 
