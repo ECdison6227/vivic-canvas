@@ -26,6 +26,7 @@ import { createDataClient, DataError, localeAnswer, weatherCardFields, type Data
 import { validateImageAttachment, imageInputErrorMessage, type ImageDecoder } from "./images.js";
 import { decodeImage } from "./imageDecoder.js";
 import { DecisionManager } from "./decision/manager.js";
+import { DecisionRouter, HttpDecisionProvider, decisionTimeout, type DecisionProvider } from "./decision/provider.js";
 import type { PreferenceStore } from "./preferences.js";
 
 /**
@@ -43,6 +44,8 @@ export interface AppDeps {
   data?: DataClient;
   imageDecoder?: ImageDecoder;
   decision?: DecisionManager;
+  /** Optional independent DEC-01 API/local provider. */
+  decisionProvider?: DecisionProvider;
   /** Remembers the chosen connection across restarts; absent in tests. */
   preferences?: PreferenceStore;
 }
@@ -64,7 +67,31 @@ export const createApp = (deps: AppDeps) => {
   const credentials = deps.credentials ?? new CredentialStore();
   const gpt = deps.gpt ?? new GptProvider({ fetchImpl: deps.fetchImpl });
   const data = deps.data ?? createDataClient({ fetchImpl: deps.fetchImpl });
-  const decision = deps.decision ?? new DecisionManager();
+  let decisionConfigurationError: string | undefined;
+  const configuredProvider = deps.decisionProvider ?? (() => {
+    if (deps.decision || !config.decisionProviderUrl) return undefined;
+    try {
+    const primary = new HttpDecisionProvider(config.decisionProviderUrl, {
+      name: config.decisionProviderKind ?? "api", timeoutMs: config.decisionProviderTimeoutMs,
+      fetchImpl: deps.fetchImpl, protocol: config.decisionProviderProtocol, model: config.decisionProviderModel,
+      getToken: () => config.decisionProviderToken,
+    });
+    const fallback = config.decisionProviderFallbackUrl ? new HttpDecisionProvider(config.decisionProviderFallbackUrl, {
+      name: "local", timeoutMs: config.decisionProviderTimeoutMs, fetchImpl: deps.fetchImpl,
+    }) : undefined;
+    return new DecisionRouter(primary, fallback);
+    } catch {
+      // Operator configuration must not take down the text/rules/LLM path.
+      // Never echo the configured URL, token, or upstream exception.
+      decisionConfigurationError = "决策服务配置无效，已回退到原有指令流程。请检查地址、协议、服务类型和模型名称后重启。";
+      console.warn(JSON.stringify({ event: "decision.configuration_invalid" }));
+      return undefined;
+    }
+  })();
+  const decision = deps.decision ?? new DecisionManager(undefined, configuredProvider, {
+    enabled: config.decisionProviderEnabled !== false,
+    timeoutMs: 2 * decisionTimeout(config.decisionProviderTimeoutMs),
+  });
   const { preferences } = deps;
   const saved = preferences?.read() ?? {};
   let activeProvider: "stepfun" | "gpt" = saved.activeProvider ?? "stepfun";
@@ -300,11 +327,14 @@ export const createApp = (deps: AppDeps) => {
     return c.body(result.audio, 200);
   });
 
-  app.get("/api/decision/status", c => c.json(decision.status()));
-  app.post("/api/decision/prepare", c => c.json(decision.prepare()));
-  app.post("/api/decision/stop", c => c.json(decision.stop()));
-  app.post("/api/decision/clear", c => c.json(decision.clear()));
-  app.post("/api/decision/enable", c => c.json(decision.enable()));
+  const decisionStatus = (status = decision.status()) => decisionConfigurationError
+    ? { ...status, configurationError: decisionConfigurationError, error: status.error ?? decisionConfigurationError }
+    : status;
+  app.get("/api/decision/status", c => c.json(decisionStatus()));
+  app.post("/api/decision/prepare", c => c.json(decisionStatus(decision.prepare())));
+  app.post("/api/decision/stop", c => c.json(decisionStatus(decision.stop())));
+  app.post("/api/decision/clear", c => c.json(decisionStatus(decision.clear())));
+  app.post("/api/decision/enable", c => c.json(decisionStatus(decision.enable())));
 
   // Live refresh of a "where I am" weather card. Returns verified card fields
   // only; Control replaces the card body locally, so no Action is involved.
