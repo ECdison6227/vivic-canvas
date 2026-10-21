@@ -9,7 +9,7 @@
 在 Windows 开发机使用 Python 标准库测试：
 
 ```powershell
-python -m unittest discover -s contrib/local-connector -p "test_*.py" -v
+py -3 -m unittest discover -s contrib/local-connector -p "test_*.py" -v
 ```
 
 测试覆盖：
@@ -31,7 +31,7 @@ python -m unittest discover -s contrib/local-connector -p "test_*.py" -v
 ## 复现与手工观察
 
 ```powershell
-python contrib/local-connector/connector.py serve --port 8791
+py -3 contrib/local-connector/connector.py serve --port 8791
 ```
 
 用启动输出的 token 请求 `GET /v1/health`、`GET /v1/capabilities`，再依次调用 `/v1/service/start`、`/v1/decide`、`/v1/runs/{id}`、`/v1/runs/{id}/cancel`、`/v1/service/reconnect` 与 `/v1/service/stop`。另一个程序占用 `--provider-port` 指定端口时，启动会给出结构化 `PORT_OCCUPIED`，不会清理其他进程。
