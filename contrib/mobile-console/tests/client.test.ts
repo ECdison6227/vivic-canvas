@@ -28,6 +28,50 @@ function setup() {
   return {client,transports,welcome,snapshot};
 }
 describe("phone confirmation and reconnect semantics", () => {
+  it("keeps timed-out writes unknown despite late ACK/executing frames until a real result arrives", () => {
+    const { client, transports } = setup(); const t = transports[0]!;
+    const id = client.submit({ kind: "text.submit", text: "create once" })!;
+    vi.advanceTimersByTime(1001);
+    expect(client.getSnapshot().requests[0]?.status).toBe("unknown");
+    t.receive({ ...scope, deviceId: "phone", type: "accepted", requestId: id });
+    t.receive({ ...scope, type: "executing", forDeviceId: "phone", requestId: id });
+    expect(client.getSnapshot().requests[0]?.status).toBe("unknown");
+    expect(client.submit({ kind: "text.submit", text: "another write" })).toBeNull();
+    t.receive({ ...scope, type: "result", forDeviceId: "phone", requestId: id, status: "succeeded", message: "confirmed once" });
+    expect(client.getSnapshot().requests[0]).toMatchObject({ status: "succeeded", message: "confirmed once" });
+    expect(t.sent.filter(frame => frame.type === "command")).toHaveLength(1);
+  });
+  it("does not let repeated progress ACKs extend the original request deadline or regress execution", () => {
+    const { client, transports } = setup(); const t = transports[0]!;
+    const id = client.submit({ kind: "text.submit", text: "deadline" })!;
+    vi.advanceTimersByTime(400);
+    t.receive({ ...scope, type: "executing", forDeviceId: "phone", requestId: id });
+    vi.advanceTimersByTime(400);
+    t.receive({ ...scope, deviceId: "phone", type: "accepted", requestId: id });
+    expect(client.getSnapshot().requests[0]?.status).toBe("executing");
+    vi.advanceTimersByTime(201);
+    expect(client.getSnapshot().requests[0]?.status).toBe("unknown");
+  });
+  it("requires a fresh owner snapshot after reconnect before admitting another write", () => {
+    const { client, transports, welcome, snapshot } = setup();
+    client.reconnect(); const next = transports[1]!;
+    next.receive(welcome);
+    expect(client.getSnapshot().snapshot?.ownerAvailable).toBe(false);
+    expect(client.submit({ kind: "text.submit", text: "stale state" })).toBeNull();
+    next.receive({ ...scope, type: "snapshot", sequence: 2, state: { ...snapshot, version: 2 } });
+    expect(client.submit({ kind: "text.submit", text: "fresh state" })).not.toBeNull();
+    expect(next.sent.find(frame => frame.type === "command")).toMatchObject({ expectedVersion: 2 });
+  });
+  it("ignores queued transport events after explicit revocation", () => {
+    const { client, transports, welcome, snapshot } = setup(); const t = transports[0]!;
+    const lateCallbacks = [...t.listeners]; client.revoke();
+    for (const callback of lateCallbacks) {
+      callback({ type: "message", frame: welcome });
+      callback({ type: "message", frame: { ...scope, type: "snapshot", sequence: 10, state: snapshot } });
+    }
+    expect(client.getSnapshot()).toMatchObject({ status: "revoked", snapshot: null });
+    expect(client.submit({ kind: "text.submit", text: "late authority" })).toBeNull();
+  });
   it("distinguishes relay ACK from execution and never lets late frames downgrade terminal results", () => {
     const {client,transports} = setup(); const t=transports[0]!;
     const id=client.submit({kind:"text.submit",text:"hello"})!;

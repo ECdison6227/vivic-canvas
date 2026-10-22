@@ -1,4 +1,4 @@
-import { parseFrame, type Frame } from "./protocol";
+import { MAX_BUFFERED_BYTES, parseFrame, serializeFrame, type Frame } from "./protocol";
 
 export type TransportEvent = { type: "open" } | { type: "message"; frame: Frame } | { type: "disconnect"; reason: string };
 export interface Transport {
@@ -9,6 +9,7 @@ export interface Transport {
 }
 export interface BrowserSocket {
   readyState: number;
+  bufferedAmount?: number;
   send(data: string): void;
   close(code?: number, reason?: string): void;
   addEventListener(type: string, listener: (event: any) => void): void;
@@ -50,7 +51,13 @@ export function createWebSocketTransport(value: string, socketFactory: (url: str
     },
     send(frame) {
       if (!socket || socket.readyState !== 1) return false;
-      try { socket.send(JSON.stringify(frame)); return true; } catch { return false; }
+      const serialized = serializeFrame(frame);
+      if (!serialized) return false;
+      if ((socket.bufferedAmount ?? 0) + new TextEncoder().encode(serialized).byteLength > MAX_BUFFERED_BYTES) {
+        socket.close(4008, "Outgoing buffer limit");
+        return false;
+      }
+      try { socket.send(serialized); return true; } catch { return false; }
     },
     close() { generation += 1; socket?.close(1000, "Client closed"); socket = null; },
     subscribe(listener) { listeners.add(listener); return () => { listeners.delete(listener); }; },

@@ -221,4 +221,15 @@ describe("ephemeral authenticated WebSocket relay", () => {
     const large = await connect(); const closed = new Promise<number>(resolve => large.ws.once("close", resolve)); large.ws.send("x".repeat(32769));
     expect(await closed).toBe(1009);
   });
+  it("counts malformed JSON and schema-invalid messages before issuing error responses", async () => {
+    const { connect } = await setup(); const socket = await connect();
+    const closed = new Promise<number>(resolve => socket.ws.once("close", resolve));
+    for (let i = 0; i < 100; i++) {
+      socket.ws.send(i % 2 ? "{broken-json" : JSON.stringify({ type: "unsupported" }));
+      expect((await socket.take("error")).code).toBe("invalid-frame");
+    }
+    socket.ws.send("{broken-json");
+    expect((await socket.take("error")).code).toBe("rate-limit");
+    expect(await closed).toBe(4008);
+  });
 });

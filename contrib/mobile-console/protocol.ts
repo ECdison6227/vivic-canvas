@@ -2,6 +2,8 @@ import { z } from "zod";
 
 export const PROTOCOL_VERSION = 1 as const;
 export const MAX_FRAME_BYTES = 32 * 1024;
+/** Bound queued network data as well as each individual frame. */
+export const MAX_BUFFERED_BYTES = 4 * MAX_FRAME_BYTES;
 export const PermissionSchema = z.enum(["text.submit", "canvas.switch", "card.pin"]);
 export type Permission = z.infer<typeof PermissionSchema>;
 export const PERMISSIONS: Permission[] = ["text.submit", "canvas.switch", "card.pin"];
@@ -73,6 +75,13 @@ export const FrameSchema = z.discriminatedUnion("type", [
   z.object({ v: z.literal(1), type: z.literal("error"), code: z.string().max(80), message: z.string().max(300), requestId: Id.optional() }).strict(),
 ]);
 export type Frame = z.infer<typeof FrameSchema>;
+/** Use the same UTF-8 wire limit for object and serialized inputs. */
+export function serializeFrame(frame: Frame): string | null {
+  try {
+    const serialized = JSON.stringify(frame);
+    return new TextEncoder().encode(serialized).byteLength <= MAX_FRAME_BYTES ? serialized : null;
+  } catch { return null; }
+}
 export function parseFrame(raw: unknown): Frame | null {
   try {
     if (typeof raw === "string") {
@@ -80,6 +89,6 @@ export function parseFrame(raw: unknown): Frame | null {
       raw = JSON.parse(raw);
     }
     const parsed = FrameSchema.safeParse(raw);
-    return parsed.success ? parsed.data : null;
+    return parsed.success && serializeFrame(parsed.data) !== null ? parsed.data : null;
   } catch { return null; }
 }

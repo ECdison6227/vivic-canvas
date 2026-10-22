@@ -2,7 +2,7 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import { isIP, type AddressInfo } from "node:net";
 import { WebSocket, WebSocketServer } from "ws";
-import { MAX_FRAME_BYTES, PERMISSIONS, parseFrame, type Frame, type Hello, type Permission } from "./protocol.js";
+import { MAX_BUFFERED_BYTES, MAX_FRAME_BYTES, PERMISSIONS, parseFrame, serializeFrame, type Frame, type Hello, type Permission } from "./protocol.js";
 
 export interface RelayOptions {
   /** A dedicated relay admission secret. Never a Vivic/model API credential. */
@@ -43,7 +43,14 @@ const hash = (value: string) => createHash("sha256").update(value).digest("hex")
 const equal = (a: string, b: string) => timingSafeEqual(Buffer.from(hash(a)), Buffer.from(hash(b)));
 const open = (socket?: WebSocket): socket is WebSocket => socket?.readyState === WebSocket.OPEN;
 const emit = (socket: WebSocket | undefined, frame: Frame) => {
-  if (open(socket)) socket.send(JSON.stringify(frame));
+  if (!open(socket)) return false;
+  const serialized = serializeFrame(frame);
+  if (!serialized) return false;
+  if (socket.bufferedAmount + Buffer.byteLength(serialized) > MAX_BUFFERED_BYTES) {
+    // A slow peer must not turn this ephemeral relay into an unbounded queue.
+    socket.terminate(); return false;
+  }
+  try { socket.send(serialized); return true; } catch { socket.terminate(); return false; }
 };
 const scope = (s: Session, deviceId: string) => ({ v: 1 as const, sessionId: s.id, epoch: s.epoch, deviceId });
 const canonicalIp = (address: string): string | undefined => {
@@ -204,12 +211,13 @@ export function createRelayServer(options: RelayOptions) {
     ws.on("pong", () => alive.add(ws));
     ws.on("error", () => undefined); // Neither payloads nor credential-bearing errors are logged.
     ws.on("message", (raw, binary) => {
-      if (binary) { rejected(ws, "invalid-frame", "仅支持 JSON 文本消息。"); ws.close(1003); return; }
-      const frame = parseFrame(raw.toString());
-      if (!frame) { rejected(ws, "invalid-frame", "消息未通过控制协议校验。"); return; }
+      // Malformed frames consume the same budget as valid requests, before parsing/responding.
       let rate = rates.get(ws);
       if (!rate || now() - rate.start > 10_000) { rate = { start: now(), count: 0 }; rates.set(ws, rate); }
       if (++rate.count > 100) { rejected(ws, "rate-limit", "消息过多，请稍后重试。"); ws.close(4008); return; }
+      if (binary) { rejected(ws, "invalid-frame", "仅支持 JSON 文本消息。"); ws.close(1003); return; }
+      const frame = parseFrame(raw.toString());
+      if (!frame) { rejected(ws, "invalid-frame", "消息未通过控制协议校验。"); return; }
       const a = auth.get(ws);
       if (!a) {
         if (frame.type !== "hello") { rejected(ws, "unauthorized", "请先完成配对或重连。"); return; }
@@ -247,7 +255,9 @@ export function createRelayServer(options: RelayOptions) {
       if (frame.type === "command" || frame.type === "cancel" || frame.type === "query" || frame.type === "snapshot.request") {
         if (!open(s.computer.socket) || !s.ownerAvailable) { rejected(ws, "owner-offline", "电脑 owner 不可用；本次消息未转交。", "requestId" in frame ? frame.requestId : undefined); return; }
         if (frame.type === "command" && !p.permissions.includes(frame.operation.kind)) { rejected(ws, "forbidden", "本会话未授权此操作。", frame.requestId); return; }
-        emit(s.computer.socket, frame);
+        if (!emit(s.computer.socket, frame)) {
+          rejected(ws, "owner-offline", "电脑连接无法接收；本次消息未转交。", "requestId" in frame ? frame.requestId : undefined); return;
+        }
         if (frame.type === "command") emit(ws, { ...scope(s, p.deviceId), type: "accepted", requestId: frame.requestId });
         return;
       }

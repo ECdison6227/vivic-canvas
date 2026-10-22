@@ -8,6 +8,8 @@
 
 生产文件以 `contrib/mobile-console/protocol.ts` 的运行时 Zod Schema 为准，不扩展 `packages/contracts` 或现有 BroadcastChannel 协议。中继使用独立 `ws`，关闭压缩，JSON 帧最大 32 KiB。操作文本最多 4000 字符；手机 UI 更保守地限制 2000 字符。未知字段拒绝。协议不是任意 URL/API/脚本转发器。
 
+收发两端均执行 UTF-8 字节上限，待发缓冲上限为 128 KiB；慢连接超过上限时关闭，未成功转交的命令不返回 accepted。所有入站消息（含非法 JSON/Schema）计入每连接 100 条/10 秒限流。快照只提供有界摘要，按字节预算截断卡片和画布列表并优先保留当前画布，不保证列出整个用户库。
+
 ## 身份和配对
 
 1. 运维单独配置 32–256 字符 relay admission secret；它不是 StepFun/GPT Key 或本地 API bearer，只在电脑首次接入和中继内存出现。
@@ -37,6 +39,8 @@
 文字执行器必须在**每次实际 dispatch 前**检查 AbortSignal 和 `isCurrent()`，在真实执行后返回结果。`createVivicHostAdapter` 只提供注入边界；不能把当前 ControlApp 的 void `submitCommand` 简单包成 `{ok:true}`。生产接线还需明确本地保存失败的回执语义：现有 dispatch/固定卡片返回的是动作接受结果，持久化由既有 owner 异步执行；本轮没有声称得到每次写入的 durable ACK。
 
 发送失败、超时、断线或中继错误不能证明此前未执行，手机保持 `unknown`，阻止继续写入并查询结果。只有电脑结果能结束这一不确定状态；没有记录时继续提示未知，需用户核对电脑，或结束会话后重新配对。迟到 ACK/执行通知不能覆盖已确认终态。撤销和会话更换后的迟到响应不能获得新会话权限。
+
+请求期限从提交开始计时，重复进度不延长期限。`unknown` 只能由电脑 result 确认，迟到 accepted/executing 不会让它回到处理中。重连收到 welcome 仅代表会话有效，收到新的电脑快照前仍禁止写入；主动断开和撤销使旧 transport 回调失效。
 
 ## 状态、加密与运维
 

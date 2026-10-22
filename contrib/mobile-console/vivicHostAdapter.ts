@@ -37,6 +37,9 @@ export function createVivicHostAdapter(options: VivicHostAdapterOptions): Comput
   const getSnapshot = (): CanvasSnapshot => {
     const snapshot = host.getSnapshot();
     const active = snapshot.canvases.find(canvas => canvas.id === snapshot.activeCanvasId);
+    const canvases = snapshot.canvases.slice(0, 100);
+    // The active canvas may be later than the first 100; it must remain selectable on mobile.
+    if (active && !canvases.some(canvas => canvas.id === active.id)) canvases[canvases.length - 1] = active;
     return {
       computerName: options.computerName.slice(0, 80),
       ownerAvailable: snapshot.ready && snapshot.ownerMode === "owner" && Boolean(active),
@@ -44,7 +47,7 @@ export function createVivicHostAdapter(options: VivicHostAdapterOptions): Comput
       activeCanvasId: snapshot.activeCanvasId,
       version: active?.version ?? 0,
       // Only summaries are authorized; don't forward card bodies, sources, images or preferences.
-      canvases: snapshot.canvases.slice(0, 100).map(({ id, title, version }) => ({ id, title: title.slice(0, 160), version })),
+      canvases: canvases.map(({ id, title, version }) => ({ id, title: title.slice(0, 160), version })),
       cards: options.readCards().filter(card => !card.exitingRequestId).slice(0, 200).map(({ record }) => ({
         id: record.id, title: record.type, type: record.type, pinned: record.layout.pinned,
       })),

@@ -49,6 +49,7 @@ export function createMobileClient(options: MobileClientOptions = {}): MobileCli
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   let expiryTimer: ReturnType<typeof setTimeout> | null = null;
   let stopped = false;
+  let generation = 0;
   const emit = () => listeners.forEach(listener => listener());
   const patch = (next: Partial<MobileState>) => { state = { ...state, ...next }; emit(); };
   const scope = () => welcome ? { v: 1 as const, sessionId: welcome.sessionId, deviceId, epoch: welcome.epoch } : null;
@@ -63,22 +64,30 @@ export function createMobileClient(options: MobileClientOptions = {}): MobileCli
     state = { ...state, requests: state.requests.map(r => pending(r) ? { ...r, status: "unknown", message: "执行结果未确认，请先查询结果；不会自动重发。" } : r) };
   };
   const expire = (status: "expired" | "revoked", message: string) => {
-    stopped = true; stopLoops(); clearRequests();
+    stopped = true; generation++; stopLoops(); clearRequests();
+    unsubscribe?.(); unsubscribe = null;
     if (expiryTimer) clearTimeout(expiryTimer); expiryTimer = null;
     token = null; welcome = null; transport?.close();
     uncertain(); patch({ status, snapshot: null, expiresAt: null, error: message });
   };
   const modifyRequest = (id: string, change: Partial<RequestState>) => {
-    const timer = timers.get(id); if (timer) clearTimeout(timer); timers.delete(id);
-    patch({ requests: state.requests.map(r => r.requestId === id && !["succeeded", "rejected", "cancelled"].includes(r.status) ? { ...r, ...change } : r) });
+    const current = state.requests.find(r => r.requestId === id);
+    if (!current || ["succeeded", "rejected", "cancelled"].includes(current.status)) return;
+    const progress = change.status === "accepted" || change.status === "executing";
+    // A delivery/progress frame cannot resolve an unknown write or move execution backwards.
+    if (progress && (!pending(current) || current.status === "executing" && change.status === "accepted")) return;
+    if (!progress) {
+      const timer = timers.get(id); if (timer) clearTimeout(timer); timers.delete(id);
+    }
+    patch({ requests: state.requests.map(r => r === current ? { ...r, ...change } : r) });
   };
   const requestTimer = (id: string) => {
-    if (state.requests.some(r => r.requestId === id && ["succeeded", "rejected", "cancelled"].includes(r.status))) return;
-    const timer = timers.get(id); if (timer) clearTimeout(timer);
+    // One deadline per submission. Repeated progress cannot keep it alive forever.
+    if (timers.has(id) || !state.requests.some(r => r.requestId === id && pending(r))) return;
     timers.set(id, setTimeout(() => modifyRequest(id, { status: "unknown", message: "电脑尚未确认结果，请查询；不会自动重发。" }), options.requestTimeoutMs ?? 20000));
   };
   const scoped = (frame: Frame) => welcome && "sessionId" in frame && frame.sessionId === welcome.sessionId && frame.epoch === welcome.epoch;
-  const connected = () => state.status === "connected" && !!welcome && now() < welcome.expiresAt;
+  const connected = () => !stopped && state.status === "connected" && !!welcome && now() < welcome.expiresAt;
   function lost(reason: string) {
     if (stopped) return;
     if (heartbeat) clearInterval(heartbeat); heartbeat = null;
@@ -132,11 +141,14 @@ export function createMobileClient(options: MobileClientOptions = {}): MobileCli
   function connect(resuming: boolean) {
     if (!relayUrl || (resuming && !token)) return;
     if (welcome && now() >= welcome.expiresAt) { expire("expired", "配对已过期，请重新配对。"); return; }
-    stopped = false; stopLoops(); transport?.close(); unsubscribe?.();
-    patch({ status: resuming ? "reconnecting" : "connecting", error: null });
+    const currentGeneration = ++generation;
+    stopped = false; stopLoops(); unsubscribe?.(); transport?.close();
+    patch({ status: resuming ? "reconnecting" : "connecting", error: null,
+      snapshot: state.snapshot ? { ...state.snapshot, ownerAvailable: false } : null });
     try {
       transport = (options.transportFactory ?? createWebSocketTransport)(relayUrl);
       unsubscribe = transport.subscribe(event => {
+        if (stopped || generation !== currentGeneration) return;
         if (event.type === "open") transport?.send({ v: 1, type: "hello", role: "mobile", deviceId, deviceName: name,
           ...(resuming && token ? { token } : { pairCode: pairCode ?? "" }) });
         else if (event.type === "message") receive(event.frame);
@@ -149,7 +161,7 @@ export function createMobileClient(options: MobileClientOptions = {}): MobileCli
     getSnapshot: () => state,
     subscribe(listener) { listeners.add(listener); return () => { listeners.delete(listener); }; },
     pair(url, code) {
-      stopped = true; stopLoops(); clearRequests(); transport?.close(); unsubscribe?.();
+      stopped = true; generation++; stopLoops(); clearRequests(); unsubscribe?.(); transport?.close();
       if (expiryTimer) clearTimeout(expiryTimer); expiryTimer = null;
       welcome = null; token = null; sequence = -1; relayUrl = url; pairCode = code.trim().toUpperCase();
       state = { status: "unpaired", snapshot: null, requests: [], error: null, expiresAt: null };
@@ -157,7 +169,7 @@ export function createMobileClient(options: MobileClientOptions = {}): MobileCli
     },
     reconnect() { if (token) { uncertain(); connect(true); } else patch({ status: "unpaired", error: "请重新配对；凭据未保存在浏览器中。" }); },
     disconnect() {
-      stopped = true; stopLoops(); transport?.close(); uncertain();
+      stopped = true; generation++; stopLoops(); unsubscribe?.(); unsubscribe = null; transport?.close(); uncertain();
       patch({ status: welcome ? "offline" : "unpaired", snapshot: state.snapshot ? { ...state.snapshot, ownerAvailable: false } : null });
     },
     revoke() { const s = scope(); if (s) send({ ...s, type: "revoke", targetDeviceId: deviceId }); expire("revoked", "已在此手机退出配对。"); },

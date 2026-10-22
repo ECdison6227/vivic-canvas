@@ -1,4 +1,4 @@
-import { CanvasSnapshotSchema, PERMISSIONS, type CanvasSnapshot, type Command, type Frame, type Permission, type Result, type Welcome } from "./protocol";
+import { CanvasSnapshotSchema, PERMISSIONS, serializeFrame, type CanvasSnapshot, type Command, type Frame, type Permission, type Result, type Welcome } from "./protocol";
 import type { Transport } from "./transport";
 
 export interface ComputerHostAdapter {
@@ -37,6 +37,7 @@ export function createComputerConnector(options: ComputerConnectorOptions) {
   let connected = false;
   let sequence = 0;
   let advertisedAvailability: boolean | null = null;
+  let snapshotError = false;
   let lastSeen = now();
   let queue = Promise.resolve();
   let unsubTransport: (() => void) | null = null;
@@ -55,16 +56,40 @@ export function createComputerConnector(options: ComputerConnectorOptions) {
     const s = scope(); if (!s || !connected) return;
     try {
       const snapshot = hostSnapshot();
-      if (advertisedAvailability !== snapshot.ownerAvailable) {
-        advertisedAvailability = snapshot.ownerAvailable;
-        send({ ...s, type: "owner.status", available: snapshot.ownerAvailable });
+      const frame: Extract<Frame, { type: "snapshot" }> = { ...s, type: "snapshot", sequence: ++sequence, state: { ...snapshot } };
+      // Schema row/character limits alone do not bound UTF-8 bytes. Retain navigation and
+      // the active canvas while fitting summaries to the same wire budget as the relay.
+      const fit = <T>(rows: T[], assign: (rows: T[]) => void) => {
+        let low = 0, high = rows.length;
+        while (low < high) {
+          const middle = Math.ceil((low + high) / 2);
+          assign(rows.slice(0, middle));
+          if (serializeFrame(frame)) low = middle; else high = middle - 1;
+        }
+        assign(rows.slice(0, low));
+      };
+      if (!serializeFrame(frame)) fit(snapshot.cards, rows => { frame.state.cards = rows; });
+      if (!serializeFrame(frame)) {
+        const active = snapshot.canvases.find(canvas => canvas.id === snapshot.activeCanvasId);
+        const others = snapshot.canvases.filter(canvas => canvas.id !== snapshot.activeCanvasId);
+        fit(others, rows => { frame.state.canvases = [...(active ? [active] : []), ...rows]; });
       }
-      send({ ...s, type: "snapshot", sequence: ++sequence, state: snapshot });
-    } catch { send({ ...s, type: "owner.status", available: false }); emit({ error: "电脑状态不符合远程协议，已停止控制。" }); }
+      if (!serializeFrame(frame)) throw new Error("Snapshot metadata exceeds wire budget");
+      if (advertisedAvailability !== snapshot.ownerAvailable) {
+        if (send({ ...s, type: "owner.status", available: snapshot.ownerAvailable })) advertisedAvailability = snapshot.ownerAvailable;
+      }
+      send(frame);
+      if (snapshotError) { snapshotError = false; emit({ error: null }); }
+    } catch {
+      if (send({ ...s, type: "owner.status", available: false })) advertisedAvailability = false;
+      snapshotError = true; emit({ error: "电脑状态不符合远程协议，已停止控制。" });
+    }
   }
   function makeResult(command: Command, status: Result["status"], message: string): Result {
+    let version: number | undefined;
+    try { version = hostSnapshot().version; } catch { /* Invalid host state still needs a terminal response. */ }
     return { v: 1, sessionId: command.sessionId, epoch: command.epoch, deviceId, type: "result", forDeviceId: command.deviceId, requestId: command.requestId,
-      status, message: message.slice(0, 500), version: host.getSnapshot().version };
+      status, message: message.slice(0, 500), ...(version !== undefined ? { version } : {}) };
   }
   function answer(entry: Entry, status: Result["status"], message: string) {
     entry.result = makeResult(entry.command, status, message);
@@ -72,10 +97,12 @@ export function createComputerConnector(options: ComputerConnectorOptions) {
   }
   function current(entry: Entry) {
     const c = entry.command;
-    const snapshot = hostSnapshot();
-    return active && connected && scoped(c) && authorized(c.deviceId, c.operation.kind) && !entry.abort.signal.aborted
-      && snapshot.ownerAvailable && snapshot.ownerEpoch === c.ownerEpoch
-      && snapshot.activeCanvasId === c.canvasId && snapshot.version === c.expectedVersion;
+    try {
+      const snapshot = hostSnapshot();
+      return active && connected && scoped(c) && authorized(c.deviceId, c.operation.kind) && !entry.abort.signal.aborted
+        && snapshot.ownerAvailable && snapshot.ownerEpoch === c.ownerEpoch
+        && snapshot.activeCanvasId === c.canvasId && snapshot.version === c.expectedVersion;
+    } catch { return false; }
   }
   async function execute(entry: Entry) {
     if (entry.result) return;
@@ -139,6 +166,8 @@ export function createComputerConnector(options: ComputerConnectorOptions) {
     if (!reconnect) reconnect = setTimeout(() => { reconnect = null; if (active) { emit({ status: "connecting" }); transport.connect(); } }, options.reconnectDelayMs ?? 1500);
   }
   function receive(frame: Frame) {
+    // An already queued callback may outlive unsubscribe/close.
+    if (!active) return;
     lastSeen = now();
     if (frame.type === "welcome") {
       if (frame.deviceId !== deviceId || frame.computerId !== deviceId) return;

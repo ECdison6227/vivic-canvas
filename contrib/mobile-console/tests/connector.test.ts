@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createComputerConnector, type ComputerHostAdapter } from "../connector";
-import { parseFrame, type CanvasSnapshot, type Command, type Frame, type Welcome } from "../protocol";
+import { MAX_FRAME_BYTES, parseFrame, type CanvasSnapshot, type Command, type Frame, type Welcome } from "../protocol";
 import type { Transport, TransportEvent } from "../transport";
 
 class FakeTransport implements Transport {
@@ -34,6 +34,50 @@ function setup(maxRequests = 512) {
 }
 
 describe("owner authorization, leases and exactly-once admission", () => {
+  it("restores owner availability after an invalid snapshot recovers", () => {
+    const { transport, host, connector } = setup();
+    const original = host.getSnapshot;
+    host.getSnapshot = () => { throw new Error("temporarily unavailable"); };
+    transport.receive({ v: 1, type: "snapshot.request", sessionId: "session", epoch: "epoch", deviceId: "phone" });
+    expect(transport.sent.at(-1)).toMatchObject({ type: "owner.status", available: false });
+    expect(connector.getSnapshot().error).toContain("停止控制");
+    host.getSnapshot = original;
+    transport.receive({ v: 1, type: "snapshot.request", sessionId: "session", epoch: "epoch", deviceId: "phone" });
+    expect(transport.sent.filter(frame => frame.type === "owner.status").at(-1)).toMatchObject({ available: true });
+    expect(connector.getSnapshot().error).toBeNull();
+  });
+  it("ignores a queued welcome after the connector has stopped", () => {
+    const { transport, connector } = setup();
+    const queued = [...transport.listeners]; connector.stop();
+    const count = transport.sent.length;
+    queued.forEach(listener => listener({ type: "message", frame: welcome }));
+    expect(connector.getSnapshot().status).toBe("stopped");
+    expect(transport.sent).toHaveLength(count);
+  });
+  it("fits worst-case UTF-8 summaries into the wire limit and retains the active canvas", () => {
+    const { transport, update } = setup();
+    update({
+      activeCanvasId: "canvas_99",
+      canvases: Array.from({ length: 100 }, (_, i) => ({ id: `canvas_${i}_${"x".repeat(80)}`.slice(0, 100), title: "旅".repeat(160), version: 1 })).map((canvas, i) => i === 99 ? { ...canvas, id: "canvas_99" } : canvas),
+      cards: Array.from({ length: 200 }, (_, i) => ({ id: `card_${i}_${"x".repeat(80)}`, title: "备".repeat(160), type: "卡".repeat(80), pinned: false })),
+    });
+    transport.receive({ v: 1, type: "snapshot.request", sessionId: "session", epoch: "epoch", deviceId: "phone" });
+    const frame = transport.sent.at(-1);
+    expect(frame?.type).toBe("snapshot");
+    expect(Buffer.byteLength(JSON.stringify(frame))).toBeLessThanOrEqual(MAX_FRAME_BYTES);
+    expect(parseFrame(JSON.stringify(frame))).not.toBeNull();
+    if (frame?.type === "snapshot") expect(frame.state.canvases.some(canvas => canvas.id === "canvas_99")).toBe(true);
+  });
+  it("returns a terminal rejection when host snapshot reads throw and keeps later commands usable", async () => {
+    const { transport, host, results } = setup(); const original = host.getSnapshot;
+    host.getSnapshot = () => { throw new Error("host read failed"); };
+    transport.receive(command()); await flush();
+    expect(results().at(-1)).toMatchObject({ requestId: "request", status: "rejected" });
+    expect(results().at(-1)).not.toHaveProperty("version");
+    host.getSnapshot = original;
+    transport.receive(command({ requestId: "after-recovery" })); await flush();
+    expect(results().at(-1)).toMatchObject({ requestId: "after-recovery", status: "succeeded" });
+  });
   it("removes a redeemed single-use pairing code from the computer state", () => {
     const { transport,connector }=setup();
     transport.receive({v:1,type:"pairing",sessionId:"session",epoch:"epoch",deviceId:"computer",pairCode:"PAIRCODE12",pairExpiresAt:Date.now()+120000});
