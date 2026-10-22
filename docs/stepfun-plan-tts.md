@@ -35,11 +35,11 @@
 
 | 名称 | Voice ID |
 | --- | --- |
-| 磁性男声（默认） | `cixingnansheng` |
+| 磁性男声 | `cixingnansheng` |
 | 温柔男声 | `wenrounansheng` |
 | 儒雅男士 | `ruyananshi` |
 | 经典女声 | `jingdiannvsheng` |
-| 温柔女声 | `wenrounvsheng` |
+| 温柔女声（默认） | `wenrounvsheng` |
 | 元气少女 | `yuanqishaonv` |
 | 邻家姐姐 | `linjiajiejie` |
 | 知性姐姐 | `zhixingjiejie` |
@@ -54,7 +54,7 @@
 { "text": "已聚焦", "voice": "linjiajiejie", "speed": 1.2 }
 ```
 
-JSON 仅接受 `text`、可选 `voice`、可选 `speed`。`text` 原始长度最多 200 个 UTF-16 码元，去除首尾空格后至少 1 个，拒绝控制字符、不可见格式字符和换行分隔符；`voice` 必须属于上述白名单；`speed` 必须是 `0.5–2` 的有限数值。原有 `{ "text": "已聚焦" }` 请求仍兼容，默认磁性男声和 1 倍速。请求体最多 4 KiB；客户端不能指定 Key、URL、模型、volume 或其他字段。
+JSON 仅接受 `text`、可选 `voice`、可选 `speed`。`text` 原始长度最多 200 个 UTF-16 码元，去除首尾空格后至少 1 个，拒绝控制字符、不可见格式字符和换行分隔符；`voice` 必须属于上述白名单；`speed` 必须是 `0.5–2` 的有限数值。原有 `{ "text": "已聚焦" }` 请求仍兼容，默认温柔女声和 1.3 倍速。前端未保存设置或重置语音偏好时采用相同默认值，已有有效偏好继续保留。请求体最多 4 KiB；客户端不能指定 Key、URL、模型、volume 或其他字段。
 
 成功：`200 audio/mpeg` 二进制，`Cache-Control: no-store`，音频最多 4 MiB。固定使用 `stepaudio-2.5-tts` 和 `mp3`。失败：`{ "ok": false, "code": "speech-...", "error": "可读错误" }`；未连接/Plan 不可用为 503，超时为 504，无效音频为 502，输入错误为 400/413/415，未鉴权为 401。请求取消传递给上游；合成期间连接变更会丢弃旧音频。
 

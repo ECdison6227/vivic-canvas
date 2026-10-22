@@ -1,7 +1,9 @@
 import { test, expect } from "@playwright/test";
 import path from "node:path";
 import { activeCanvasId, controlDispatch, sendCommand, showSettings, todoCardRecord } from "./helpers1";
-test.use({ video: { mode: "on", size: { width: 1440, height: 900 } } });
+// Existing audio-routing tests model an already-authorized microphone; startup
+// permission prompting is covered separately with synthetic streams.
+test.use({ video: { mode: "on", size: { width: 1440, height: 900 } }, permissions: ["microphone"] });
 test("dated, recurring and canvas-condition reminders persist without model requests, and only owner notifies silently", async ({ page, context }, info) => {
   await context.addInitScript(() => {
     Object.assign(window, { __testNotifications: [] });
@@ -80,8 +82,11 @@ test("model Blob cache survives native writes or byte fallback, while reset inva
   });
   expect(result).toEqual({ first: [1, 2, 3, 4], fallback: [1, 2, 3, 4], rejected: true, empty: true });
 });
-test("output selection and voice cloning require clicks, route before playback, and never touch microphone", async ({ page }) => {
+test("output selection uses official voices despite legacy clone preferences and never touches microphone", async ({ page }) => {
   await page.addInitScript(() => {
+    localStorage.setItem("vivic.speech.preferences.v1", JSON.stringify({
+      voice: "wenrounvsheng", speed: 1.2, volume: 0.5, clonedVoiceId: "voice-tone-TEST",
+    }));
     const state = { picks: 0, microphone: 0, plays: 0, sink: "", unavailable: false };
     Object.assign(window, { __audioDeviceTest: state });
     const devices = Object.assign(new EventTarget(), { selectAudioOutput: async () => { state.picks++; return { deviceId: "TEST-headset", label: "TEST headphones" }; },
@@ -97,22 +102,29 @@ test("output selection and voice cloning require clicks, route before playback, 
     Object.defineProperty(window, "Audio", { value: SilentAudio });
   });
   await page.route("**/api/providers/status", route => route.fulfill({ json: { providers: [{ name: "stepfun", connected: true, defaultModel: "step-3.5-flash", capabilities: ["text"] }], degradations: [] } }));
-  let clones = 0;
+  let cloneRequests = 0;
   await page.route("**/api/speech/cloned-voices", route => {
-    if (route.request().method() === "GET") return route.fulfill({ json: { voices: [] } });
-    clones++; expect(route.request().postDataJSON()).toMatchObject({ fileId: "file-TEST", authorized: true });
-    return route.fulfill({ json: { ok: true, id: "voice-tone-TEST" } });
+    cloneRequests++;
+    return route.fulfill({ status: 404, body: "Not Found" });
   });
-  await page.route("**/api/speech", route => { expect(route.request().postDataJSON().clonedVoiceId).toBe("voice-tone-TEST"); return route.fulfill({ contentType: "audio/mpeg", body: Buffer.from("ID3-TEST") }); });
-  await page.goto("/control"); await expect(page.locator("[data-vivic-output-choose]")).toBeEnabled(); expect(clones).toBe(0);
+  await page.route("**/api/speech", route => {
+    expect(route.request().postDataJSON()).toEqual({
+      text: "你好，我是 Vivic。这是当前音色的试听，你可以调整语速和音量。", voice: "wenrounvsheng", speed: 1.2,
+    });
+    return route.fulfill({ contentType: "audio/mpeg", body: Buffer.from("ID3-TEST") });
+  });
+  await page.goto("/control"); await expect(page.locator("[data-vivic-output-choose]")).toBeEnabled();
+  await expect(page.locator("[data-vivic-voice-clone]")).toHaveCount(0);
+  await expect(page.getByText("复刻音色", { exact: true })).toHaveCount(0);
+  await expect(page.locator("[data-vivic-tts-voice]")).toContainText("温柔女声");
+  expect(cloneRequests).toBe(0);
   await page.locator("[data-vivic-output-choose]").click(); await expect(page.locator("[data-vivic-audio-output]")).toContainText("已指定设备");
-  await page.getByLabel("复刻音色 File ID").fill("file-TEST"); await expect(page.locator("[data-vivic-clone-submit]")).toBeDisabled();
-  await page.locator("[data-vivic-clone-authorized]").check(); await page.locator("[data-vivic-clone-submit]").click();
-  await expect(page.locator("[data-vivic-voice-clone]")).toContainText("音色已创建并选用"); expect(clones).toBe(1);
+  await page.locator("[data-vivic-ai-section]").screenshot({ path: path.resolve(process.cwd(), "../../evidence/settings/voice-cloning-removed.png") });
   await expect(page.locator("[data-vivic-tts-toggle]")).not.toBeChecked();
   await page.locator("[data-vivic-tts-preview]").click();
   await expect.poll(() => page.evaluate(() => (window as unknown as { __audioDeviceTest: { plays: number } }).__audioDeviceTest.plays)).toBe(1);
   await page.evaluate(() => { (window as unknown as { __audioDeviceTest: { unavailable: boolean } }).__audioDeviceTest.unavailable = true; });
   await page.locator("[data-vivic-tts-preview]").click(); await expect(page.locator("[data-vivic-tts-note]")).toContainText("本次没有播放");
+  expect(cloneRequests).toBe(0);
   expect(await page.evaluate(() => (window as unknown as { __audioDeviceTest: { plays: number; microphone: number; picks: number } }).__audioDeviceTest)).toMatchObject({ plays: 1, microphone: 0, picks: 1 });
 });

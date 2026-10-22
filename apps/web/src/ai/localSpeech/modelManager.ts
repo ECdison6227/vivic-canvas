@@ -16,6 +16,9 @@ export class LocalSpeechModelManager {
   private clearing = new Set<ModelId>();
   private listeners = new Set<() => void>();
   private disposed = false;
+  private defaultPreparation: AbortController | null = null;
+  private defaultAttempts = new Set<ModelId>();
+  private defaultDownloadsPaused = false;
   private versions: Record<ModelId, number> = { "asr-zh": 0, "kws-zh-en": 0, vad: 0 };
   private snapshot: ModelsSnapshot = { models: Object.fromEntries(MODEL_IDS.map(id => [id,
     { phase: "absent", loaded: 0, total: getSpeechModel(id).bytes, error: null },
@@ -85,6 +88,35 @@ export class LocalSpeechModelManager {
         total: getSpeechModel(id).bytes, error: null });
     }
   };
+  /** Prepare missing models once per page session, without starting audio capture. */
+  prepareDefaultModels = async (options: { signal?: AbortSignal } = {}) => {
+    checkAbort(options.signal);
+    if (this.defaultPreparation && !this.defaultPreparation.signal.aborted) return;
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    options.signal?.addEventListener("abort", abort, { once: true });
+    this.defaultPreparation = controller;
+    try {
+      await this.refresh();
+      checkAbort(controller.signal);
+      if (this.defaultDownloadsPaused) return;
+      for (const id of MODEL_IDS) {
+        checkAbort(controller.signal);
+        const state = this.snapshot.models[id];
+        if (this.defaultAttempts.has(id) || ["cached", "ready", "downloading", "verifying"].includes(state.phase)) continue;
+        this.defaultAttempts.add(id);
+        try { await this.prepareModel(id, { signal: controller.signal }); }
+        catch (error) {
+          if (options.signal?.aborted && !this.defaultDownloadsPaused) this.defaultAttempts.delete(id);
+          if (controller.signal.aborted || error instanceof DOMException && error.name === "AbortError") throw error;
+          // Each failed model already exposes its error and an explicit retry button.
+        }
+      }
+    } finally {
+      options.signal?.removeEventListener("abort", abort);
+      if (this.defaultPreparation === controller) this.defaultPreparation = null;
+    }
+  };
   prepareModel = async (id: ModelId, options: { signal?: AbortSignal } = {}) => {
     const model = getSpeechModel(id);
     checkAbort(options.signal);
@@ -113,6 +145,9 @@ export class LocalSpeechModelManager {
   clearModelCache = async (id?: ModelId) => {
     const ids = id ? [getSpeechModel(id).id] : MODEL_IDS;
     if (ids.some(key => this.clearing.has(key))) throw new Error("正在清理模型缓存。");
+    this.defaultDownloadsPaused = true;
+    this.defaultPreparation?.abort();
+    ids.forEach(key => this.defaultAttempts.add(key));
     ids.forEach(key => { this.clearing.add(key); this.cancelDownload(key); });
     this.publish();
     try {
@@ -123,6 +158,7 @@ export class LocalSpeechModelManager {
   dispose = () => {
     if (this.disposed) return;
     this.disposed = true;
+    this.defaultPreparation?.abort();
     this.jobs.forEach(controller => controller.abort()); this.jobs.clear();
     this.worker?.terminate(); this.worker = null;
     this.pending.forEach(pending => { pending.cleanup(); pending.reject(abortError()); }); this.pending.clear();

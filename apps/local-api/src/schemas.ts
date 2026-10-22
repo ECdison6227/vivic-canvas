@@ -1,4 +1,3 @@
-import { CloneVoiceIdSchema } from "./voiceClone.js";
 import { z } from "zod";
 import { ActionEnvelopeSchema } from "@vivic/contracts";
 import { SPEECH_VOICE_IDS } from "./voices.js";
@@ -53,7 +52,6 @@ export const SpeechRequestSchema = z.strictObject({
   text: z.string().max(200)
     .regex(/^[^\p{Cc}\p{Cf}\p{Zl}\p{Zp}]*$/u, "只接受可见短句").trim().min(1),
   voice: z.enum(SPEECH_VOICE_IDS).optional(),
-  clonedVoiceId: CloneVoiceIdSchema.optional(),
   speed: z.number().min(0.5).max(2).optional(),
   timestamps: z.boolean().optional(),
 });

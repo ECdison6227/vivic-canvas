@@ -57,6 +57,7 @@ describe("speech player lifecycle (offline, no server)", () => {
   it("defaults off and never fetches when disabled", async () => {
     const speech = await loadSpeech();
     expect(speech.getSpeechSnapshot().enabled).toBe(false);
+    expect(speech.getSpeechSnapshot().preferences).toEqual({ voice: "wenrounvsheng", speed: 1.3, volume: 1 });
     expect(await speech.speakText("你好", { requestId: "one" })).toEqual({ status: "skipped" });
     expect(fetch).not.toHaveBeenCalled();
   });
@@ -268,7 +269,7 @@ describe("speech preferences and audition", () => {
     stored.set("vivic.speech.preferences.v1", value);
     const speech = await loadSpeech();
     expect(speech.getSpeechSnapshot()).toMatchObject({
-      enabled: false, preferences: { voice: "cixingnansheng", speed: 1, volume: 1 },
+      enabled: false, preferences: { voice: "wenrounvsheng", speed: 1.3, volume: 1 },
     });
     expect(fetch).not.toHaveBeenCalled();
   });
@@ -281,7 +282,7 @@ describe("speech preferences and audition", () => {
     const speech = await loadSpeech();
     expect(speech.getSpeechSnapshot()).toMatchObject({
       enabled: false, status: "idle", text: null, requestId: null,
-      preferences: { voice: "wenrounvsheng", speed: 1, volume: 0 },
+      preferences: { voice: "wenrounvsheng", speed: 1.3, volume: 0 },
     });
   });
 
@@ -302,7 +303,7 @@ describe("speech preferences and audition", () => {
   ])("rejects invalid settings without persisting: %j", async (patch) => {
     const speech = await loadSpeech();
     expect(speech.setSpeechPreferences(patch)).toBe(false);
-    expect(speech.getSpeechSnapshot().preferences).toEqual({ voice: "cixingnansheng", speed: 1, volume: 1 });
+    expect(speech.getSpeechSnapshot().preferences).toEqual({ voice: "wenrounvsheng", speed: 1.3, volume: 1 });
     expect(storage.setItem).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled();
   });

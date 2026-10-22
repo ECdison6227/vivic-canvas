@@ -1,14 +1,20 @@
-# Optional local speech models
+# Local speech models
 
 Only the pinned manifest and this explanation belong in `public/models/`.
 Do not commit ONNX weights, WASM files, `preload.data`, or recordings here.
 
-Vivic downloads a model only after an explicit user action. Downloads go into
-the browser's `vivic-local-speech-v1` IndexedDB database, not this directory.
+Vivic automatically prepares all three models when the owner opens the app.
+Existing browser caches are reused; read-only windows do not start downloads.
+Downloads go into the browser's `vivic-local-speech-v1` IndexedDB database, not this directory.
 The full byte count and SHA-256 are checked before caching and again before
 inference. Cancelled or failed downloads are not usable models. Clear the
 cache from Control; downloads may require temporary space exceeding their
-final asset size. Browser eviction/private mode/quota can prevent caching.
+final asset size. Clearing cancels automatic preparation for the page session;
+explicit retry controls remain available. Browser eviction/private mode/quota can prevent caching.
+
+The default keyword is `vivic`, with encoded English pronunciations for the
+pinned KWS vocabulary. Preparing models never starts microphone capture;
+listening still requires the user's explicit action.
 
 `asr-zh`: X-ASR Chinese/English 480 ms INT8, 169,227,953 bytes, Apache-2.0.
 `kws-zh-en`: Zipformer Chinese/English KWS, 13,076,183 bytes, Apache-2.0.

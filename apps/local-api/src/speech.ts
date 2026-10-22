@@ -1,6 +1,6 @@
 import type { StepfunCredential } from "./credentials.js";
 import type { StepfunDeps } from "./stepfun.js";
-import { DEFAULT_SPEECH_VOICE, type SpeechOptions } from "./voices.js";
+import { DEFAULT_SPEECH_SPEED, DEFAULT_SPEECH_VOICE, type SpeechOptions } from "./voices.js";
 import { readSpeechStream } from "./speechStream.js";
 import type { SpeechWord } from "@vivic/contracts";
 
@@ -48,7 +48,7 @@ export const synthesizeSpeech = async (
       },
       body: JSON.stringify({
         model: SPEECH_MODEL, input: text, voice: options.voice ?? DEFAULT_SPEECH_VOICE,
-        response_format: "mp3", ...(options.speed === undefined ? {} : { speed: options.speed }),
+        response_format: "mp3", speed: options.speed ?? DEFAULT_SPEECH_SPEED,
         ...(options.timestamps ? { timestamp: true, stream_format: "sse" } : {}),
       }),
       redirect: "error",

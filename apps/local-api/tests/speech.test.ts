@@ -20,6 +20,17 @@ const post = (app: ReturnType<typeof createApp>, body: unknown = { text: "已聚
   app.request("/api/speech", { method: "POST", headers: authed, body: JSON.stringify(body) });
 
 describe("POST /api/speech", () => {
+  it.each(["GET", "POST"])("does not expose the removed voice cloning route (%s)", async (method) => {
+    const fetchImpl = vi.fn<typeof fetch>();
+    const { app } = setup(fetchImpl);
+    const response = await app.request("/api/speech/cloned-voices", {
+      method, headers: authed,
+      ...(method === "POST" ? { body: JSON.stringify({ fileId: "file-TEST", authorized: true }) } : {}),
+    });
+    expect(response.status).toBe(404);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   it("requires session auth before doing any provider work", async () => {
     const fetchImpl = vi.fn<typeof fetch>();
     const { app } = setup(fetchImpl);
@@ -34,6 +45,7 @@ describe("POST /api/speech", () => {
     { text: "你好", apiKey: SECRET }, { text: "你好", model: "step-tts-mini" },
     { text: "你好", url: "https://api.stepfun.com/v1/audio/speech" },
     { text: "你好", voice: "unverified-voice" }, { text: "你好", voice: "" },
+    { text: "你好", voice: "voice-tone-TEST" }, { text: "你好", clonedVoiceId: "voice-tone-TEST" },
     { text: "你好", voice: null }, { text: "你好", speed: "1" },
     { text: "你好", speed: 0.49 }, { text: "你好", speed: 2.01 },
     { text: "你好", speed: null }, { text: "你好", volume: 0.5 },
@@ -71,7 +83,7 @@ describe("POST /api/speech", () => {
     const { app } = setup(fetchStub({ "/audio/speech": (init) => {
       expect(init?.headers).toMatchObject({ authorization: `Bearer ${SECRET}` });
       expect(JSON.parse(String(init?.body))).toEqual({
-        model: "stepaudio-2.5-tts", input: "已聚焦", voice: "cixingnansheng", response_format: "mp3",
+        model: "stepaudio-2.5-tts", input: "已聚焦", voice: "wenrounvsheng", speed: 1.3, response_format: "mp3",
       });
       expect(init?.redirect).toBe("error");
       expect(init?.signal).toBeInstanceOf(AbortSignal);
@@ -120,8 +132,8 @@ describe("POST /api/speech", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toBe("no-store");
     expect(await response.json()).toEqual({
-      model: "stepaudio-2.5-tts", voices: SPEECH_VOICES, defaultVoice: "cixingnansheng",
-      speed: { min: 0.5, max: 2, default: 1 }, source: SPEECH_VOICES_SOURCE, verifiedAt: "2026-10-15",
+      model: "stepaudio-2.5-tts", voices: SPEECH_VOICES, defaultVoice: "wenrounvsheng",
+      speed: { min: 0.5, max: 2, default: 1.3 }, source: SPEECH_VOICES_SOURCE, verifiedAt: "2026-10-15",
     });
     expect(fetchImpl).not.toHaveBeenCalled();
   });

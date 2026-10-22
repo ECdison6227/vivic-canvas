@@ -57,7 +57,7 @@ export const ChatComposer = ({
   const latestDraft = useRef(text); latestDraft.current = text;
   const draftAtVoiceStart = useRef("");
   const [unappliedVoice, setUnappliedVoice] = useState<string | null>(null);
-  const [autoVoice, setAutoVoice] = useState(false);
+  const [autoVoice, setAutoVoice] = useState(true);
   const autoAtVoiceStart = useRef(false);
   const [attachment, setAttachment] = useState<Attachment | null>(null);
   const [imageProcessing, setImageProcessing] = useState(false);

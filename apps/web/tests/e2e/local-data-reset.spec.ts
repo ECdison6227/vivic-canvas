@@ -65,7 +65,8 @@ test("explicit reset clears only isolated app data, cancels pending work, and re
   await expect(page.locator("[data-vivic-tts-toggle]")).not.toBeChecked();
   await expect(page.getByLabel("语音输入服务")).toHaveText("StepFun Plan ASR");
   await expect(reader.getByLabel("语音输入服务")).toHaveText("StepFun Plan ASR");
-  await expect(page.locator("[data-vivic-tts-speed]")).toHaveValue("1");
+  await expect(page.locator("[data-vivic-tts-speed]")).toHaveValue("1.3");
+  await expect(page.getByRole("radio", { name: "自动", exact: true })).toBeChecked();
   const stored = await page.evaluate(async () => {
     const open = indexedDB.open("vivic-local-speech-v1", 1);
     const db = await new Promise<IDBDatabase>(resolve => { open.onsuccess = () => resolve(open.result); });
