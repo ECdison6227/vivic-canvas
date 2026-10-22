@@ -24,7 +24,24 @@
 
 修订采用维护者允许的正式 workspace 方案：Web 声明包依赖，通过显式 exports 引用原型；根锁文件包含 contrib 的全部依赖，删除重复的嵌套锁文件。根 test/typecheck/build 命令包含原型对应检查，真实浏览器回归另行串行执行。没有放宽断言、删除或跳过原有测试。
 
-修订提交的干净 clone 检查结果将在本节记录。验证从根锁定安装开始，不使用个人工作区或其他分支的结果。
+代码修订提交：`adb4c2db753b4a7d1e5e511b9ecf0698d84eebac`。使用全新 `git clone --no-local --no-hardlinks`，checkout 该提交，从根锁定安装开始；不复制个人 node_modules、不单独安装 contrib、不引用其他分支结果。后续提交仅更新本验证文档；最终 PR head 与每步退出码另存本地验收日志。
+
+环境：Windows，Node 24.14.0，pnpm 12.11.2；浏览器 Edge 155.0.4283.62。本机 Node 与 CI 固定的 24.21.0 不同；本记录不代替 GitHub 的 Linux/Windows CI。
+
+| 命令（仓库根目录） | 实际结果 |
+| --- | --- |
+| `pnpm install --frozen-lockfile` | 通过，5 workspace、758 包，只使用根锁 |
+| `pnpm contracts:check` | 通过 |
+| `pnpm typecheck` | contracts、local-api、web、原型及其浏览器用例全部通过 |
+| `pnpm test` | Web：58 文件、529/529；API：38 文件通过、2 文件跳过，1070 通过、原有 3 项跳过；原型：3 文件、40/40 |
+| `pnpm build` | 桌面 main/landing 与独立手机/电脑 DEMO 双入口构建均通过 |
+| `pnpm --filter @vivic/web test:mobile:e2e` | 4/4 通过；静音、独立 context、`127.0.0.2:5174`，拒绝复用未知服务，无需本地 API |
+
+浏览器运行设置 `VIVIC_MOBILE_TEST_HOST=127.0.0.2`，用 `VIVIC_E2E_CHROMIUM` 指向本机 Edge，以避开已占用的 `127.0.0.1:5174`。四项保留原有断言，覆盖窄屏/浅色/横屏/错误、真实本机 WS 配对及文字/固定/切换、owner 离线与撤销、执行中取消/刷新清空凭据、独立电脑 DEMO 与手机 context 联动。已查看连接态及浅色设置截图。
+
+新增代理测试覆盖：可信代理后的不同 IP 分开计数；同一 IP 跨连接、IPv4/mapped IPv6 写法共享计数；非可信来源伪造转发头无效；缺失/非法/链式地址及非可信公网来源拒绝升级。nginx 示例使用 `$remote_addr` 覆写客户端转发头，可信代理列表默认空，公网模式要求显式配置。
+
+完整日志、每步退出码、提交/环境元信息在被忽略的 `evidence/mobile-console-feedback-20261022/fixed/`，最终 head 复验另存 `final-head/`；截图在同轮证据目录。检查前后 tracked 工作区均干净。构建保留既有语音 wasm 路径、module externalization、大 chunk、`__dirname` 等提示，退出码为 0；不通过屏蔽提示或跳过检查制造通过。
 
 ## 证明范围与未完成项
 
