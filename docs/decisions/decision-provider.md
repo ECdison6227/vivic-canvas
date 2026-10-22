@@ -2,6 +2,8 @@
 
 对应 [Issue #7](https://github.com/ECdison6227/vivic-canvas/issues/7)。用户于 2026-10-21 明确要求“集成并验证”，因此在独立适配层之外完成最小核心接线；未改 Action 白名单、阈值、原评测数据或既有 Kev 路径。实际证据见 [验证记录](../verification/decision-provider.md) 和 [冻结基准](decision-evaluation-20261021.md)。
 
+2026-10-22 反馈更新：维护者已接受核心接线范围，并在 [PR #15](https://github.com/ECdison6227/vivic-canvas/pull/15) 补上配置容错后合入。本页补充配置错误处理与 2026-10-21 真实模型诊断的复现参数；未据此更改原基准成绩或宣称模型质量通过验收。设置页补充与真实浏览器结果见 [反馈验收记录](../verification/decision-provider-feedback-20261022.md)。
+
 ## 行为与门控
 
 未配置 provider 时保留原 Kev 行为。配置后默认启用，可通过环境变量初始关闭，也可在设置页启停。确定规则仍优先；未被已有路由处理的指令才经过决策服务，再回到原规划/澄清流程。
@@ -58,13 +60,30 @@ wire 使用 ID 字典，拒绝数组、NaN、负值、缺失/多余候选、额�
 
 `/api/decision/status|enable|stop|prepare|clear` 继续受现有 API 鉴权保护。provider 模式增加 `mode: "provider"` 和 `lastState`，原有字段保留；`phase: ready` 仅表示请求入口启用，不代表健康探测通过。`lastMs` 包含管理器端到端等待，`bytes/gpuBytes=0` 表示此管理器不加载模型，不可用作外部服务内存指标。
 
+非法地址、`local-chat` 服务类型错误、缺少 `MODEL` 或非法 fallback 不再阻止后端启动，原规则/主模型流程继续可用。状态附带 `configurationError`，消息固定为“决策服务配置无效，已回退到原有指令流程。请检查地址、协议、服务类型和模型名称后重启。”；日志只记录 `decision.configuration_invalid` 事件，不回显 URL、凭据或异常正文。设置页据此显示配置无效并提示检查后重启，不能将此时的底层 Kev 状态误判为已正确配置决策服务，也不提供 Kev 下载/清理入口来处理 provider 配置错误。
+
 设置页在 provider 模式显示服务启停，隐藏 Kev 下载和缓存清理。`prepare` 不做模型操作；`clear` 只停用 provider。停用请求入口不会结束外部模型进程或释放它的显存。
 
 ## 配置与复现
 
 配置项：`VIVIC_DECISION_PROVIDER_URL`、`KIND=api|local`、`ENABLED=false`、`TIMEOUT_MS`、`PROTOCOL=adapter|local-chat`、`MODEL`、`TOKEN`，均以 `VIVIC_DECISION_PROVIDER_` 为完整前缀。可选 `FALLBACK_URL` 固定指向本地 **adapter** 协议桥；不能直接填写聊天端点。TOKEN 只用于已配置评分桥，不新增 StepFun/GPT 之外的通用对话 provider，不写入文件或浏览器。
 
-本机已有 MiniCPM 模型时，可在独立测试 PowerShell 进程运行：
+本机已有且校验过 MiniCPM 模型时，先启动外部模型服务，再启动 Vivic。以下是 **llama.cpp b9660 Vulkan + MiniCPM5-1B-Q8_0** 的已实测配置，其他引擎版本/设备需重新核对。将占位绝对路径替换为实际路径；确认 8790 空闲，不停止已有服务：
+
+```powershell
+$decisionRuntime = 'G:/YOUR_MODEL_RUNTIME/llama-server.exe'
+$decisionModel = 'G:/YOUR_MODELS/MiniCPM5-1B-Q8_0.gguf'
+& $decisionRuntime --list-devices
+# 仅当上一步确认目标 GPU 为 Vulkan1 时使用下列设备参数。
+& $decisionRuntime --model $decisionModel --alias MiniCPM5-1B `
+  --host 127.0.0.1 --port 8790 --ctx-size 4096 --parallel 1 `
+  --device Vulkan1 --gpu-layers 99 --no-webui `
+  --reasoning off --reasoning-budget 0
+```
+
+2026-10-21 同一句测试中，默认推理模式耗尽 128 个输出 token，得到 `finish_reason=length` 和空 `content`；只加 `--reasoning-budget 0` 仍失败，加上 `--reasoning off` 后才返回完整 `choice_id`。这组参数用于复现最终答案输出；健康端点成功和模型选对候选都不代表可执行。原始失败/成功记录保留在本机 `evidence/dec01-runtime-20261021-2119/`，五条诊断样例不是新的准确率基准。
+
+另开独立测试 PowerShell 进程启动 API：
 
 ```powershell
 $env:PORT='8788'
@@ -77,8 +96,10 @@ $env:VIVIC_DECISION_PROVIDER_ENABLED='false'
 pnpm --filter @vivic/local-api dev
 ```
 
-另开测试进程，设置 `VIVIC_LOCAL_API=http://127.0.0.1:8788`，运行 `pnpm --filter @vivic/web dev --port 5174 --strictPort`，访问 `/control`。需事先启动已校验模型服务；本配置不下载模型、不修改用户日常服务。退出上述进程即结束本次配置。
+另开测试进程，设置 `VIVIC_LOCAL_API=http://127.0.0.1:8788`，运行 `pnpm --filter @vivic/web dev --port 5174 --strictPort`，访问 `/control`。上述命令不下载模型、不修改用户日常服务；只关闭本次启动的进程即可结束测试。
 
 `local-chat` 只在 loopback 启用，用指定模型、temperature 0、128 tokens、非流式聊天协议读取最终 `choice_id`；拒绝工具调用、截断回答和生成式概率。它用于真实连通与安全回退验证，当前 MiniCPM choice-only 不会直接产生画布动作。真正使用候选评分执行的桥接路径已用合成 HTTP 服务验证，真实评分服务及远程 API 尚未验收。
+
+真实浏览器中的明确“展开便笺/收起便笺”由已有前端规则处理，不能作为新 provider 执行动作的证明。2026-10-21 测试“把便笺内容完整铺开”时，MiniCPM 虽返回 `expand`，仍按 `deferred/missing_scores` 回退；未连接主规划模型时返回 `unknown/rules-offline`，卡片保持收起。不能通过补造概率或放宽阈值把该结果改写为成功。
 
 JevHarness 未确认为具体可运行模型/项目，不是运行时依赖；xlz 的既有测试未收到。本次不据框架开源推断模型可用，也未引入 coding tools、任意代码执行、发布或部署。
