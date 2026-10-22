@@ -9,6 +9,8 @@ export interface RelayOptions {
   admissionSecret: string;
   allowedOrigins: string[];
   publicMode?: boolean;
+  /** Explicit exception for an installed desktop UI on loopback; transport still requires public TLS. */
+  allowLoopbackOrigins?: boolean;
   /** Exact upstream proxy IPs allowed to supply a single, overwritten X-Forwarded-For. Empty by default. */
   trustedProxyIps?: string[];
   pairTtlMs?: number;
@@ -74,7 +76,8 @@ export function createRelayServer(options: RelayOptions) {
   const origins = new Set(options.allowedOrigins);
   if (!origins.size || [...origins].some(origin => {
     try { const url = new URL(origin); return url.origin !== origin || !["http:", "https:"].includes(url.protocol)
-      || (options.publicMode && url.protocol !== "https:"); } catch { return true; }
+      || (options.publicMode && url.protocol !== "https:" && !(options.allowLoopbackOrigins
+        && url.protocol === "http:" && ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname))); } catch { return true; }
   })) throw new Error("Explicit exact HTTP(S) origins are required; public mode requires HTTPS origins.");
   const trustedProxies = new Set((options.trustedProxyIps ?? []).map(address => {
     const normalized = canonicalIp(address);

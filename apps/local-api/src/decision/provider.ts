@@ -2,13 +2,14 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { acceptedDecision, DECISION_ACTIONS } from "./intent.js";
 import { createBudget } from "../intent/budget.js";
+import type { DecisionRuntimeControls } from "../runtime/decisionRuntime.js";
 
 export type DecisionProviderState = "accepted" | "deferred" | "error" | "timeout" | "cancelled" | "disabled";
 export interface DecisionProviderResult {
   state: DecisionProviderState; probabilities?: number[]; choiceId?: string;
   provider?: "api" | "local"; reason?: string; latencyMs?: number;
 }
-export interface DecisionProvider { decide(text: string, signal?: AbortSignal): Promise<DecisionProviderResult> }
+export interface DecisionProvider { decide(text: string, signal?: AbortSignal): Promise<DecisionProviderResult>; readonly controls?: DecisionRuntimeControls }
 export type DecisionProtocol = "adapter" | "local-chat";
 export const decisionTimeout = (value?: number) => value !== undefined && Number.isFinite(value) && value >= 1
   ? Math.min(10_000, Math.floor(value)) : 2000;

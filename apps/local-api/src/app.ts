@@ -32,6 +32,10 @@ import { DecisionRouter, HttpDecisionProvider, decisionTimeout, type DecisionPro
 import type { PreferenceStore } from "./preferences.js";
 import { TravelQuerySchema } from "@vivic/contracts";
 import { buildTravelCard, demoTravelProvider, queryTravel, type TravelProvider } from "./providers/travel.js";
+import { ManagedDecisionRuntime } from "./runtime/decisionRuntime.js";
+import path from "node:path";
+import { homedir } from "node:os";
+import { MobileSessionBroker } from "./mobile/session.js";
 
 /**
  * Vivic local decision API. Loopback only, bearer-guarded, zod on every
@@ -54,6 +58,7 @@ export interface AppDeps {
   travel?: TravelProvider;
   /** Remembers the chosen connection across restarts; absent in tests. */
   preferences?: PreferenceStore;
+  mobileBroker?: MobileSessionBroker;
 }
 
 const tokenOk = (presented: string, expected: string): boolean => {
@@ -72,6 +77,7 @@ type AppContext = Context<{ Variables: { requestId: string } }>;
 
 export const createApp = (deps: AppDeps) => {
   const { config } = deps;
+  const mobileBroker = deps.mobileBroker ?? new MobileSessionBroker(path.join(homedir(), ".vivic", "mobile-relay.json"));
   const credentials = deps.credentials ?? new CredentialStore();
   const gpt = deps.gpt ?? new GptProvider({ fetchImpl: deps.fetchImpl });
   const data = deps.data ?? createDataClient({ fetchImpl: deps.fetchImpl });
@@ -97,7 +103,9 @@ export const createApp = (deps: AppDeps) => {
       return undefined;
     }
   })();
-  const decision = deps.decision ?? new DecisionManager(undefined, configuredProvider, {
+  const managed = !deps.decision && !configuredProvider && !decisionConfigurationError && config.managedDecisionEnabled === true
+    ? new ManagedDecisionRuntime(config.managedDecisionRoot ?? path.join(homedir(), ".vivic", "runtime", "qwen-decision")) : undefined;
+  const decision = deps.decision ?? new DecisionManager(undefined, configuredProvider ?? managed, {
     enabled: config.decisionProviderEnabled !== false,
     timeoutMs: 2 * decisionTimeout(config.decisionProviderTimeoutMs),
   });
@@ -357,6 +365,12 @@ export const createApp = (deps: AppDeps) => {
   app.post("/api/decision/stop", c => c.json(decisionStatus(decision.stop())));
   app.post("/api/decision/clear", c => c.json(decisionStatus(decision.clear())));
   app.post("/api/decision/enable", c => c.json(decisionStatus(decision.enable())));
+  app.get("/api/mobile/status", async c => { c.header("Cache-Control", "no-store"); return c.json(await mobileBroker.status()); });
+  app.post("/api/mobile/session", async c => {
+    c.header("Cache-Control", "no-store");
+    try { return c.json(await mobileBroker.create()); }
+    catch { return c.json({ error: "手机中继暂不可用，请稍后重试或检查本机中继配置。" }, 503); }
+  });
 
   app.post("/api/travel/refresh", async c => {
     const parsed = z.strictObject({ query: TravelQuerySchema }).safeParse(await readJson(c));
@@ -480,5 +494,5 @@ export const createApp = (deps: AppDeps) => {
   app.route("/api", createAsrRoutes({ config, credentials, fetchImpl: deps.fetchImpl }));
   if (search) app.route("/api", createSearchRoutes({ client: search }));
   else app.post("/api/search", c => c.json({ ok: false, error: "联网查询未启用。" }, 503));
-  return Object.assign(app, { dispose: () => decision.stop() });
+  return Object.assign(app, { dispose: () => { mobileBroker.dispose(); decision.stop(); } });
 };

@@ -1,6 +1,7 @@
 import { lazy, Suspense } from "react";
 const ControlApp = lazy(() => import("@/control/ControlApp").then(module => ({ default: module.ControlApp })));
 const DisplayApp = lazy(() => import("@/display/DisplayApp").then(module => ({ default: module.DisplayApp })));
+const MobileConsole = lazy(() => import("@/control/mobile/MobileConsole").then(module => ({ default: module.MobileConsole })));
 
 /**
  * One app, three pages (pathname routing, no router dependency):
@@ -21,11 +22,12 @@ if (/^\/landing(?:\/|$)/.test(window.location.pathname) && window.location.pathn
   // The landing is its own HTML entry; only /landing/ resolves to it. Any other
   // path under it (/landing, or a pasted link with trailing punctuation) lands there too.
   window.location.replace(`/landing/${window.location.search}${window.location.hash}`);
-} else if (rawPath !== "/display" && rawPath !== "/control" && rawPath !== "/" && !isPlayground) {
+} else if (rawPath !== "/display" && rawPath !== "/control" && rawPath !== "/mobile" && rawPath !== "/" && !isPlayground) {
   window.location.replace(`/${window.location.search}`);
 }
 
 function App() {
+  if (rawPath === "/mobile") return <Suspense fallback={null}><MobileConsole /></Suspense>;
   if (isPlayground && CardPlayground) return <Suspense fallback={null}><CardPlayground /></Suspense>;
   return <Suspense fallback={<div role="status" aria-label="正在载入画布" />}>{isDisplay ? <DisplayApp /> : <ControlApp />}</Suspense>;
 }

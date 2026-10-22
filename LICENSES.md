@@ -1,5 +1,7 @@
 # LICENSES.md — Vivic 组件、运行包、模型与数据归属
 
+2026-10-22 新增分发：Node 24.21.0 Windows x64 使用官方固定 SHA-256 发行包并随包保留完整 Node LICENSE；llama.cpp b9660（MIT）与 Qwen2.5-0.5B-Instruct-GGUF 固定 revision（Apache-2.0）在用户准备时从各自官方发行源下载，清单/哈希见 `apps/local-api/src/runtime/artifacts.ts`。`qrcode@1.5.4`（MIT）用于二维码，`ws`（MIT）用于独立中继，`fflate`（MIT）用于固定 ZIP 解压；精确解析版本由锁文件固定。本次没有再分发 Hark 字体、APK 或反编译实现。
+
 更新：2026-10-15。本轮新增包的 exact 版本与许可核对了 workspace package.json、`pnpm-lock.yaml` 及本机安装包 package.json；Recharts、Sherpaw、Sharp 同时读取了包内 LICENSE。Pi 1.2.0 的 MIT 依据安装包 license 元数据和本地 provenance，不声称其 npm 包根目录附带了本轮未找到的 LICENSE 文件。
 三种 registry 组件（Grainient / Siri Orb / styled Generative UI）以 shadcn CLI 复制源码方式安装，
 **无 npm 包版本**，源码即本仓库内文件；其余为 npm 依赖。

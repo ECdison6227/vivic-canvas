@@ -4,7 +4,7 @@
 
 ## 当前授权与基线
 
-维护者在 [PR #14 review](https://github.com/ECdison6227/vivic-canvas/pull/14#pullrequestreview-5601783741) 要求本轮不合并、保留 Draft，并暂停手机控制台与公网中继的产品集成。以下接线方案仅供后续讨论；须另用 Issue 明确目标、权限边界和验收，不进入 PLAT-01/02 或旅游卡片主线。此次反馈修订仅处理 workspace 安装边界、可信代理限流与可复现验证。
+原 [PR #14 review](https://github.com/ECdison6227/vivic-canvas/pull/14#pullrequestreview-5601783741) 暂停的是原型阶段自动集成。2026-10-22 用户已明确授权正式 owner/保存/文字接线和本人服务器中继，维护者另建集成分支并完成真实浏览器闭环，见 [本轮更新](../updates/2026-10-22-local-runtime-mobile.md)。PR #14 未自动合并。下面保留原先接口设计供追溯，待核定清单以本轮实现为准。
 
 本轮先交付独立手机界面、运行时协议、中继和电脑 connector，不改共享核心接线。Issue B.6 与“代码边界”要求**程佳锐在工单/PR 明确确认准确文件，再做共享接线**。本文件是待核定的最小方案，不能视作已批准。真实手机与跨网络验收仍需可访问的 WSS 测试环境和实体设备。
 

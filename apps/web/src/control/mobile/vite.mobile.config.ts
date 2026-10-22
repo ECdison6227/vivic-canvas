@@ -9,6 +9,7 @@ const repository = path.resolve(directory, "../../../../..");
 
 /** Separate mobile entry; never replaces the desktop App or its Vite config. */
 export default defineConfig({
+  base: "./",
   root: directory,
   plugins: [react(), tailwindcss()],
   resolve: { alias: { "@": path.resolve(directory, "../..") } },

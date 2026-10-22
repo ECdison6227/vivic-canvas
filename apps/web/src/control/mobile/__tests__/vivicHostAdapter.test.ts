@@ -34,11 +34,11 @@ describe("unmounted Vivic remote adapter with the actual owner and Display", () 
   it("pins through the sole owner, saves and updates Display without leaking card bodies", async () => {
     const { adapter, db, displayStore, canvasId } = await setup();
     expect(JSON.stringify(adapter.getSnapshot())).not.toContain("PRIVATE TEST CONTENT");
-    expect(adapter.setCardPinned("mobile-quote", true)).toEqual({ ok: true, message: "电脑已固定卡片。" });
+    expect(await adapter.setCardPinned("mobile-quote", true)).toEqual({ ok: true, message: "电脑已固定卡片。" });
     await flushChannel();
     expect(displayStore.getState().cards[0]!.record.layout.pinned).toBe(true);
     expect((await db.getCanvas(canvasId))!.cardsById["mobile-quote"]!.layout.pinned).toBe(true);
-    expect(adapter.setCardPinned("missing", true).ok).toBe(false);
+    expect((await adapter.setCardPinned("missing", true)).ok).toBe(false);
   });
 
   it("switches an existing canvas and Display; never creates a mobile canvas", async () => {
@@ -46,11 +46,11 @@ describe("unmounted Vivic remote adapter with the actual owner and Display", () 
     const target = host.createCanvas("TEST second canvas");
     host.switchCanvas(canvasId); await flushChannel();
     const count = (await db.getAllCanvases()).length;
-    expect(adapter.switchCanvas(target).ok).toBe(true);
+    expect((await adapter.switchCanvas(target)).ok).toBe(true);
     await flushChannel();
     expect(adapter.getSnapshot().activeCanvasId).toBe(target);
     expect(displayStore.getState().cards).toHaveLength(0);
-    expect(adapter.switchCanvas("foreign-canvas").ok).toBe(false);
+    expect((await adapter.switchCanvas("foreign-canvas")).ok).toBe(false);
     expect((await db.getAllCanvases()).length).toBe(count);
   });
 

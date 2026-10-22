@@ -6,8 +6,8 @@ export interface ComputerHostAdapter {
   subscribe(listener: () => void): () => void;
   /** Resolve only after owner execution. Honor signal/isCurrent immediately before every commit. */
   submitText(text: string, context: { requestId: string; signal: AbortSignal; isCurrent(): boolean }): Promise<{ ok: boolean; message: string }>;
-  switchCanvas(id: string): { ok: boolean; message: string };
-  setCardPinned(cardId: string, pinned: boolean): { ok: boolean; message: string };
+  switchCanvas(id: string, context?: { isCurrent(): boolean }): { ok: boolean; message: string } | Promise<{ ok: boolean; message: string }>;
+  setCardPinned(cardId: string, pinned: boolean): { ok: boolean; message: string } | Promise<{ ok: boolean; message: string }>;
 }
 export interface ConnectorState {
   status: "stopped" | "connecting" | "connected" | "offline" | "expired" | "error";
@@ -117,10 +117,10 @@ export function createComputerConnector(options: ComputerConnectorOptions) {
         outcome = await host.submitText(operation.text, { requestId: c.requestId, signal: entry.abort.signal, isCurrent: () => current(entry) });
       } else if (operation.kind === "canvas.switch") {
         if (!hostSnapshot().canvases.some(canvas => canvas.id === operation.targetCanvasId)) { answer(entry, "rejected", "目标画布不存在。"); return; }
-        outcome = host.switchCanvas(operation.targetCanvasId);
+        outcome = await host.switchCanvas(operation.targetCanvasId, { isCurrent: () => current(entry) });
       } else {
         if (!hostSnapshot().cards.some(card => card.id === operation.cardId)) { answer(entry, "rejected", "目标卡片不在当前画布。"); return; }
-        outcome = host.setCardPinned(operation.cardId, operation.pinned);
+        outcome = await host.setCardPinned(operation.cardId, operation.pinned);
       }
       // If the adapter committed before cancellation, report execution; cancellation never rolls it back.
       answer(entry, outcome.ok ? "succeeded" : entry.abort.signal.aborted ? "cancelled" : "rejected", outcome.message);

@@ -22,7 +22,7 @@ const operationLabel = (operation: Operation) => operation.kind === "text.submit
 export const defaultRelayUrl = () => {
   const configured = import.meta.env.VITE_MOBILE_RELAY_URL as string | undefined;
   if (configured) return configured;
-  if (window.location.protocol === "https:") return `wss://${window.location.host}/relay`;
+  if (window.location.protocol === "https:") return new URL("./relay", window.location.href).href.replace(/^https:/, "wss:");
   return "ws://127.0.0.1:8791/relay";
 };
 
@@ -31,6 +31,12 @@ export interface MobileConsoleProps {
   client?: MobileClient;
   initialRelayUrl?: string;
 }
+// Capture and erase once, outside React's repeatable render/initializer lifecycle.
+const scannedPairingCode = (() => {
+  const code = new URLSearchParams(window.location.hash.slice(1)).get("pair");
+  if (code) window.history.replaceState(null, "", window.location.pathname + window.location.search);
+  return code && /^[A-F0-9]{16}$/.test(code) ? code : null;
+})();
 
 /** A remote client only: no ControlHost, local API, canvas store or IndexedDB is opened here. */
 export function MobileConsole({ client: suppliedClient, initialRelayUrl }: MobileConsoleProps) {
@@ -38,6 +44,7 @@ export function MobileConsole({ client: suppliedClient, initialRelayUrl }: Mobil
   const state = useSyncExternalStore(client.subscribe, client.getSnapshot, client.getSnapshot);
   const [relayUrl, setRelayUrl] = useState(initialRelayUrl ?? defaultRelayUrl);
   const [pairCode, setPairCode] = useState("");
+  const scannedCode = scannedPairingCode;
   const [draft, setDraft] = useState("");
   const [settings, setSettings] = useState(false);
   const [theme, setTheme] = useState<"light" | "dark">("dark");
@@ -76,6 +83,9 @@ export function MobileConsole({ client: suppliedClient, initialRelayUrl }: Mobil
   }, [client, state.status]);
   useEffect(() => { contentEnd.current?.scrollIntoView?.({ block: "nearest", behavior: reducedMotion ? "instant" : "smooth" }); }, [state.requests, reducedMotion]);
   useEffect(() => () => client.disconnect(), [client]);
+  useEffect(() => {
+    if (scannedCode) { try { client.pair(initialRelayUrl ?? defaultRelayUrl(), scannedCode); } catch { setLocalError("配对码已过期或电脑不可用，请在电脑生成新码。"); } }
+  }, [client, scannedCode, initialRelayUrl]);
 
   const pair = async (event: FormEvent) => {
     event.preventDefault(); setLocalError(null);
@@ -152,7 +162,7 @@ export function MobileConsole({ client: suppliedClient, initialRelayUrl }: Mobil
               <Input id="mobile-pair-code" value={pairCode} onChange={event => setPairCode(event.target.value)} placeholder="输入配对码" maxLength={64} autoComplete="off" autoCapitalize="characters" spellCheck={false} required disabled={connecting} className="mobile-code-input" />
               <Button type="submit" className="mobile-primary" disabled={connecting || !pairCode.trim() || !relayUrl.trim()}>{connecting ? <LoaderCircle size={18} className="mobile-spin" /> : <Link2 size={18} />}{connecting ? "正在连接电脑" : "连接我的电脑"}</Button>
             </form>
-            <div className="mobile-pair-guidance"><span>01</span><p>先在已接入的电脑 connector 获取配对码；当前尚未接入电脑 Vivic 正式入口。</p><span>02</span><p>输入同一中继地址与配对码。配对码过期或已使用时，请在电脑重新获取。</p></div>
+            <div className="mobile-pair-guidance"><span>01</span><p>在电脑 Vivic 设置中开启手机控制，扫码或获取一次性配对码。</p><span>02</span><p>输入同一中继地址与配对码。配对码过期或已使用时，请在电脑重新获取。</p></div>
             <p className="mobile-footnote">电脑需保持运行并打开控制页。同局域网也需互联网与中继在线。</p>
           </section> : <>
             <section className="mobile-device mobile-panel" aria-labelledby="mobile-device-title">

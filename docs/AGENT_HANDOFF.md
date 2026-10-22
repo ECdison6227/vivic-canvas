@@ -1,5 +1,7 @@
 # 当前交接
 
+2026-10-22 后续集成：用户授权本地安装器、决策模型和手机正式接入，`feat/local-runtime-mobile-bridge` 在平台基线上合入 #13/#14 的本地修复，并择取 #18 状态提示。已实现 Windows 固定模型准备/预热/回收、可分发启动/安装包、手机扫码与真实 owner 保存确认，以及本人服务器独立 HTTPS/WSS 中继。全量 Web 616 / API 1178 / 手机 54 通过，3 项既有外部测试跳过；类型、契约、构建通过，真实公网中继 + 隔离 owner/Display/手机浏览器闭环通过。未合并/推送产品仓库分支。体验、真实小模型低覆盖限制和部署回退见 [本轮更新](updates/2026-10-22-local-runtime-mobile.md)、[验收](verification/local-runtime-mobile-20261022.md)。Hark Android 设计包由独立任务上传至 `ECdison6227/rea-ui-library`，不包含私人原包/字体/账号。
+
 2026-10-22 GitHub 交付：本轮新增、更改、体验步骤和边界汇总于 [更新说明](updates/2026-10-22-card-platform.md)，README 已补入口及功能表。[任务分支](https://github.com/ECdison6227/vivic-canvas/tree/feat/card-platform-runtime) 的推送/PR/检查状态以 GitHub 为准；下面各段“未推送”描述的是当时验收状态，不代表后续没有提交。本轮仅创建 PR，不自动合并或部署。
 
 2026-10-22 体验反馈补充：已加入用户页/展示页卡片传送门（同页拖入或点选双向传送）、可见聚焦/显示全部/恢复视图操作，以及 owner 确认与断开禁用。前端 595 项单元测试、78 项同步测试、3 项新增浏览器流程和2项既有画布交互分批通过，类型/lint/build 通过；传送门深色和窄屏截图已检查。当前 5176/8789 预览保留，平台分支仍未推送。详情见 [传送门验收](verification/card-portal-20261022.md)。

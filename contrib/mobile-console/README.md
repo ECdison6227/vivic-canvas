@@ -1,6 +1,6 @@
 # Vivic 手机控制台（MOB-01）
 
-关联 [Issue #12](https://github.com/ECdison6227/vivic-canvas/issues/12)，当前为保留 Draft 的独立原型。维护者要求暂停产品集成，后续须另用 Issue 明确目标、权限与验收。手机 UI 使用真实 WebSocket client；电脑正式 owner 的生命周期/文字请求尚未接线。DEMO 电脑不是用户画布，不能把本模块测试称作真实手机远程控制已交付。
+关联 [Issue #12](https://github.com/ECdison6227/vivic-canvas/issues/12)。2026-10-22 用户明确授权正式接线与本人服务器中继，维护者集成分支已连接真实 owner、文字执行、保存确认和 Display；[本轮更新](../../docs/updates/2026-10-22-local-runtime-mobile.md)与[验收](../../docs/verification/local-runtime-mobile-20261022.md)为最新状态。PR #14 原 Draft 状态与独立 DEMO 保留，未自动合并；下文 DEMO 测试仍不能冒充实体手机验收。
 
 2026-10-22 维护者继续修复：请求总期限不被 ACK 延长，未知结果不因迟到进度变成处理中；重连需新 owner 快照，撤销后旧回调失效。中继限制非法帧频率、32 KiB 单帧和 128 KiB 待发缓冲；大摘要按字节裁剪并保留当前画布。详细复现和检查见 [验证记录](../../docs/verification/mobile-console.md)。
 
@@ -70,4 +70,4 @@ pnpm --filter @vivic/web test:mobile:e2e
 
 connector 单次生命周期：stop/过期后新建实例与设备身份。已配对设备仅限三项白名单操作；文字 callback 必须遵守提交前 guard，并返回真实完成结果。512 条去重额度耗尽后结束旧会话再新建，不能清空旧记录后在同一会话重放。离线 stop 只证明本地不能执行，不能伪称已通知中继撤销。
 
-精确待批准文件和消息流见 [最小接线方案](../../docs/design/mobile-console.md)，协议见 [传输决策](../../docs/decisions/mobile-control-transport.md)，实际检查与未测项见 [验证记录](../../docs/verification/mobile-console.md)。PR #14 保持 Draft，尚未获准进入本地版主线；部分交付仅使用 `Refs #12`，不合并或部署。
+原型阶段接线记录见 [最小接线方案](../../docs/design/mobile-console.md)，协议见 [传输决策](../../docs/decisions/mobile-control-transport.md)。本次正式接线、扫码与服务器部署状态见顶部的新更新；原 PR 未合并，实体安卓与原生 App 仍需另行验收。

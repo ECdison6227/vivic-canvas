@@ -64,6 +64,18 @@ describe("ephemeral authenticated WebSocket relay", () => {
     await expect(connect(url, "https://attacker.invalid")).rejects.toThrow("403");
     await expect(connect(`${url}?token=must-not-be-accepted`)).rejects.toThrow("403");
   });
+  it("allows explicitly provisioned desktop loopback origins while public origins still require HTTPS", async () => {
+    const relay = createRelayServer({ admissionSecret, allowedOrigins: ["http://127.0.0.1:18787", "https://console.example.test"],
+      publicMode: true, allowLoopbackOrigins: true, trustedProxyIps: ["127.0.0.1"] });
+    resources.push(() => relay.close());
+    const address = await relay.listen(0);
+    const socket = new WebSocket(`ws://127.0.0.1:${address.port}/relay`, { origin: "http://127.0.0.1:18787",
+      headers: { "x-forwarded-for": "203.0.113.4", "x-forwarded-proto": "https" } });
+    await new Promise<void>((resolve, reject) => { socket.once("open", resolve); socket.once("error", reject); });
+    socket.close();
+    expect(() => createRelayServer({ admissionSecret, allowedOrigins: ["http://attacker.invalid"], publicMode: true,
+      allowLoopbackOrigins: true, trustedProxyIps: ["127.0.0.1"] })).toThrow("HTTPS");
+  });
   it("keeps plaintext upstream on loopback and requires the trusted TLS proxy header in public mode", async () => {
     const relay = createRelayServer({ admissionSecret, allowedOrigins: ["https://console.example.test"], publicMode: true, trustedProxyIps: ["127.0.0.1"] });
     resources.push(() => relay.close());

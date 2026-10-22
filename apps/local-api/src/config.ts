@@ -48,6 +48,8 @@ export interface LocalApiConfig {
   decisionProviderModel?: string;
   decisionProviderToken?: string;
   bodyLimitBytes: number;
+  managedDecisionEnabled?: boolean;
+  managedDecisionRoot?: string;
 }
 
 const ENV_FILE = ".env.local";
@@ -83,12 +85,14 @@ export const loadConfig = (
   return {
     publicDnsFallback: env.VIVIC_PUBLIC_DNS_FALLBACK !== "0",
     port: Number(env.PORT ?? 8787),
+    managedDecisionEnabled: env.VIVIC_MANAGED_DECISION !== "off" && process.platform === "win32" && process.arch === "x64",
+    managedDecisionRoot: env.VIVIC_RUNTIME_ROOT?.trim() || undefined,
     host: "127.0.0.1",
     token,
     tokenPath: path.join(dir, ENV_FILE),
     tokenGenerated: generated,
     allowedOrigins: (env.VIVIC_ALLOWED_ORIGINS ??
-      "http://localhost:5175,http://127.0.0.1:5175,http://localhost:5173,http://localhost:5174,http://127.0.0.1:5173,http://127.0.0.1:5174")
+      `http://localhost:5175,http://127.0.0.1:5175,http://localhost:5173,http://localhost:5174,http://127.0.0.1:5173,http://127.0.0.1:5174,http://localhost:${Number(env.PORT ?? 8787)},http://127.0.0.1:${Number(env.PORT ?? 8787)}`)
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean),

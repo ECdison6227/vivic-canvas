@@ -7,6 +7,7 @@ import { LocationSettings } from "./LocationSettings";
 import { cancelSpeech, speakText, subscribeSpeech, getSpeechSnapshot, speakShortFeedback, cancelShortFeedback } from "@/ai/speech";
 import { speechDisplayFrame, type SpeechRange } from "@/ai/speechTelemetry";
 import { LocalDecisionSettings } from "./LocalDecisionSettings";
+import { MobileControlSettings } from "./mobile/MobileControlSettings";
 import { ExtensionManager } from "@/extensions/ExtensionManager";
 import { clarifiedCardAction, fastLocalCommand, parseCommand, type CommandResult } from "@/commands/parse";
 import { choiceNumber } from "@/commands/choice";
@@ -556,6 +557,7 @@ export const ControlApp = () => {
   return (
     <ControlShell
       host={host}
+      desktopBusy={() => Boolean(pending.current)}
       view={view}
       onNavigate={navigate}
       clarify={clarify}
@@ -574,6 +576,7 @@ export const ControlApp = () => {
 
 interface ShellProps {
   host: ControlHost;
+  desktopBusy(): boolean;
   view: ControlView;
   onNavigate: (view: ControlView) => void;
   clarify: ClarifyState | null;
@@ -707,6 +710,7 @@ const ControlShell = (props: ShellProps) => {
           <LocationSettings disabled={readonly} />
           <CardSubcardsSection key={`${snap.activeCanvasId}:${snap.ownerMode}:${snap.ownerId}:${snap.ready}`} host={props.host} />
           <LocalDecisionSettings disabled={readonly || !snap.ready} />
+          <MobileControlSettings host={props.host} disabled={readonly || !snap.ready} desktopBusy={props.desktopBusy} />
           <ExtensionManager host={props.host} disabled={readonly || !snap.ready} />
 
           <RemindersSection host={props.host} readonly={readonly} />

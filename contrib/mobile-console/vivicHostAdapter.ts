@@ -11,6 +11,7 @@ export interface ExistingHost {
   subscribe(listener: () => void): () => void;
   switchCanvas(id: string): void;
   setCardPinned(cardId: string, pinned: boolean, canvasId?: string): { ok: boolean };
+  flush?(canvasId: string, version: number): Promise<void>;
 }
 export interface ExistingCard {
   record: { id: string; type: string; layout: { pinned: boolean }; displayProps?: unknown };
@@ -70,22 +71,28 @@ export function createVivicHostAdapter(options: VivicHostAdapterOptions): Comput
       if (!isCurrent()) return { ok: false, message: "电脑控制权或目标画布已变化，请同步后重试。" };
       return options.submitText(text, { ...context, isCurrent });
     },
-    switchCanvas: id => {
+    switchCanvas: async (id, context) => {
       const snapshot = getSnapshot();
       if (!snapshot.ownerAvailable || !snapshot.canvases.some(canvas => canvas.id === id)) {
         return { ok: false, message: "画布不存在或电脑 owner 不可用。" };
       }
+      if (snapshot.activeCanvasId) await host.flush?.(snapshot.activeCanvasId, snapshot.version);
+      const current = getSnapshot();
+      if (context && !context.isCurrent() || !current.ownerAvailable || current.ownerEpoch !== snapshot.ownerEpoch
+        || current.activeCanvasId !== snapshot.activeCanvasId || current.version !== snapshot.version) return { ok: false, message: "控制会话或画布已变化，请同步后重试。" };
       host.switchCanvas(id);
+      await host.flush?.(id, getSnapshot().version);
       return getSnapshot().activeCanvasId === id
         ? { ok: true, message: "电脑已切换画布。" }
         : { ok: false, message: "电脑没有确认画布切换。" };
     },
-    setCardPinned: (cardId, pinned) => {
+    setCardPinned: async (cardId, pinned) => {
       const snapshot = getSnapshot();
       if (!snapshot.ownerAvailable || !snapshot.activeCanvasId || !snapshot.cards.some(card => card.id === cardId)) {
         return { ok: false, message: "卡片不存在或电脑 owner 不可用。" };
       }
       const result = host.setCardPinned(cardId, pinned, snapshot.activeCanvasId);
+      if (result.ok) await host.flush?.(snapshot.activeCanvasId, getSnapshot().version);
       return { ok: result.ok, message: result.ok ? (pinned ? "电脑已固定卡片。" : "电脑已取消固定卡片。") : "电脑未提交卡片操作。" };
     },
   };

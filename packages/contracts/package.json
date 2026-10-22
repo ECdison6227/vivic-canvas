@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.6.0",
   "type": "module",
+  "files": ["src"],
   "exports": {
     ".": "./src/index.ts",
     "./json-schema": "./src/wireJsonSchema.ts"

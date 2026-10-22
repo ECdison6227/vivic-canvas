@@ -90,6 +90,8 @@ export interface ControlHost {
   start: () => Promise<void>;
   stop: () => void;
   dispatch: (raw: unknown) => DispatchResult;
+  /** Confirm an active canvas version has reached the local database. Throws on uncertain ownership/save. */
+  flush: (canvasId: string, version: number) => Promise<void>;
   setCardPinned: (cardId: string, pinned: boolean, canvasId?: string) => DispatchResult;
   moveCard: (cardId: string, x: number, y: number, canvasId?: string) => DispatchResult;
   /** Move a card to the user page, or back onto the Display canvas (auto-placed). */
@@ -1070,6 +1072,14 @@ export const createControlHost = (deps: ControlHostDeps): ControlHost => {
     start,
     stop,
     dispatch: raw => dispatch(raw),
+    flush: async (canvasId, version) => {
+      const epoch = sessionEpoch;
+      if (!canPersist() || activeCanvasId !== canvasId) throw new Error("save_scope_changed");
+      await saveActiveNow();
+      await persistence;
+      if (!canPersist() || sessionEpoch !== epoch || activeCanvasId !== canvasId
+        || (persistedVersions.get(canvasId) ?? -1) < version) throw new Error("save_unconfirmed");
+    },
     refreshTravelCard,
     setCardPinned: (cardId, pinned, canvasId) => localInteraction(cardId, { kind: "card.pin", pinned }, canvasId),
     moveCard: (cardId, x, y, canvasId) => localInteraction(cardId, { kind: "card.move", x, y }, canvasId),

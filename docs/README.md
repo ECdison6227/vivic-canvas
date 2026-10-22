@@ -10,6 +10,7 @@
 | [贡献指南](../CONTRIBUTING.md) | 安装、启动、GitHub Desktop |
 | [当前交接](AGENT_HANDOFF.md) | 当前任务与运行边界 |
 | [2026-10-22 更新说明](updates/2026-10-22-card-platform.md) | 本轮新增、更改、体验步骤与兼容性 |
+| [Windows 运行与扫码控制](updates/2026-10-22-local-runtime-mobile.md) | 本地分发包、真实模型质量、正式 owner 远控、部署与体验 |
 | [Git 约定](GIT_WORKFLOW.md) | 主仓库、fork、PR 与合入 |
 | [团队任务边界](TEAM_TASKS.md) | 按核心依赖分工、接口和代码范围 |
 | [会议后的正式分工草案](team/README.md) | 程佳锐/xlz/马泽瑜的8项可建立 Issue 的工单 |

@@ -8,7 +8,7 @@ import { acceptedDecision } from "./intent.js";
 import { createBudget } from "../intent/budget.js";
 const root = fileURLToPath(new URL("../../../../", import.meta.url));
 const replySchema = z.object({ id: z.number().int(), probabilities: z.array(z.number().finite().min(0).max(1)).length(7), ms: z.number().finite().min(0).max(30000) });
-export interface DecisionStatus { phase: "absent" | "downloading" | "installing" | "cached" | "loading" | "ready" | "error"; enabled: boolean; model: string; bytes: number; gpuBytes: number; lastMs: number | null; error: string | null; mode?: "provider"; lastState?: DecisionProviderState }
+export interface DecisionStatus { phase: "absent" | "downloading" | "installing" | "cached" | "loading" | "ready" | "error"; enabled: boolean; model: string; bytes: number; gpuBytes: number; lastMs: number | null; error: string | null; mode?: "provider" | "managed"; lastState?: DecisionProviderState; downloadedBytes?: number; totalBytes?: number; scoreSource?: string }
 export class DecisionManager {
   private worker: ChildProcess | undefined;
   private preparing: ChildProcess | undefined;
@@ -29,15 +29,23 @@ export class DecisionManager {
     this.failureCooldownMs = options.failureCooldownMs ?? 30_000;
     if (provider) this.state = { ...this.state, mode: "provider", enabled: options.enabled !== false,
       phase: options.enabled === false ? "cached" : "ready", model: "DEC-01 决策服务", bytes: 0 };
+    if (provider?.controls) this.state = { ...this.state, ...provider.controls.status() };
   }
   private cached() { return fs.existsSync(path.join(this.cache, "venv/bin/python")) && fs.existsSync(path.join(this.cache, "model/base/model.safetensors-00001-of-00001.safetensors")); }
   status(): DecisionStatus {
+    if (this.provider?.controls) {
+      const runtime = this.provider.controls.status();
+      return { ...this.state, ...runtime, enabled: this.state.enabled && runtime.enabled,
+        phase: runtime.phase === "ready" && this.state.phase === "error" ? "error" : runtime.phase,
+        error: this.state.error ?? runtime.error };
+    }
     if (!this.provider && ["absent", "cached"].includes(this.state.phase)) this.state.phase = this.cached() ? "cached" : "absent";
     return { ...this.state };
   }
   private env() { return { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: process.env.HOME ?? "", TMPDIR: process.env.TMPDIR ?? "/tmp", LANG: "en_US.UTF-8" }; }
   private terminate(child: ChildProcess | undefined) { if (child?.pid) { try { process.kill(-child.pid, "SIGTERM"); } catch { /* Already closed. */ } } }
   prepare() {
+    if (this.provider?.controls) { this.state.error = null; this.provider.controls.prepare(); return this.status(); }
     if (this.provider) return this.status();
     if (this.preparing || this.worker) return this.status();
     this.state = { ...this.state, phase: "downloading", error: null };
@@ -60,6 +68,7 @@ export class DecisionManager {
     if (this.provider) {
       this.providerRetryAt = 0;
       this.state = { ...this.state, enabled: true, phase: "ready", error: null };
+      this.provider.controls?.enable();
       return this.status();
     }
     if (this.worker || this.preparing) return this.status();
@@ -95,6 +104,7 @@ export class DecisionManager {
     return this.scoreLocal(text, signal);
   }
   private async scoreWithProvider(text: string, signal?: AbortSignal): Promise<number[] | null> {
+    if (this.provider?.controls && this.provider.controls.status().phase !== "ready") return null;
     if (!this.state.enabled || signal?.aborted || !text.trim() || text.length > 500 || this.providerRequests.size || Date.now() < this.providerRetryAt) return null;
     const revision = this.providerRevision, controller = new AbortController(), started = performance.now();
     const budget = createBudget(this.providerTimeoutMs, [signal, controller.signal]);
@@ -137,6 +147,7 @@ export class DecisionManager {
     this.providerRevision++;
     for (const request of this.providerRequests) request.abort();
     if (this.provider) {
+      this.provider.controls?.stop();
       this.state = { ...this.state, enabled: false, phase: "cached", error: null, lastState: "disabled" };
       return this.status();
     }
@@ -146,5 +157,5 @@ export class DecisionManager {
     this.state = { ...this.state, enabled: false, phase: this.cached() ? "cached" : "absent", gpuBytes: 0 };
     return this.status();
   }
-  clear() { this.stop(); if (this.provider) return this.status(); fs.rmSync(path.join(this.cache, "model"), { recursive: true, force: true }); this.state.phase = "absent"; return this.status(); }
+  clear() { this.stop(); if (this.provider) { this.provider.controls?.clear(); return this.status(); } fs.rmSync(path.join(this.cache, "model"), { recursive: true, force: true }); this.state.phase = "absent"; return this.status(); }
 }
