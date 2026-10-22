@@ -11,6 +11,7 @@ py -3 contrib/local-connector/connector.py serve --port 8791
 ```
 
 macOS/Linux 使用 `python3` 代替 `py -3`。
+Windows 若未安装 `py` 启动器，可改用已安装的 Python 3.10+ 的 `python` 命令或其绝对路径；Windows Store 占位别名不等于已安装可用的解释器。
 
 启动器的首行 stdout 是本次进程会话的 JSON（包含 `sessionId`、端口和 bearer token）。该 token 在同一连接器进程内可重复使用，重启后重新生成，并非一次性请求凭据。受控本机后端应启动连接器并在内存中捕获这行 JSON，不把它转发给浏览器、持久化或记录到日志。手工终端运行仅用于本机协议调试；不要复制 token 到 issue、浏览器存储或仓库文件。
 
@@ -28,6 +29,8 @@ curl -X POST -H "Authorization: Bearer <token>" -H "Content-Type: application/js
 
 可用 `--write-timeout`、`--startup-timeout`、`--inference-timeout` 设置正数秒数，默认分别为 2、15、30 秒。写入、启动或推理超时会把本次受管服务设为错误、结束未完成请求并回收进程，随后需显式重连。待发送消息队列最多 16 项，队列已满时新请求返回 `503/BACKPRESSURE`。
 
+HTTP 每次响应关闭连接；请求体最多 64 KiB，并有 5 秒总读取期限。客户端应发送单个有效 `Content-Length`，不发送 chunked 请求；慢速或不完整请求会被结束，不能持续占住处理线程。
+
 ## 接入真实适配器
 
 用 `--provider-command` 指定实现上述 JSONL 子进程协议的适配器：
@@ -41,6 +44,8 @@ python3 contrib/local-connector/connector.py serve --provider-command python3 pa
 ## 模型下载
 
 `GET /v1/models` 只显示模型大小、受控相对路径和是否配置下载源。当前“下载”仅指从受控本地目录复制文件，尚无网络下载适配；默认目录只有 fixture，未配置真实模型源。只有用户明确调用 `/v1/models/download` 才会复制模型文件，支持进度查询和取消；没有下载源时返回 `MODEL_SOURCE_UNCONFIGURED`，不会静默下载全部模型。
+
+取消在最终替换前生效时保留原目标文件。正常关闭整个连接器也会取消在途复制；单独停止决策服务不会取消复制。强杀连接器时可能留下 `.part` 文件，当前原型不提供崩溃恢复或真实权重完整性校验。
 
 ## 平台边界
 

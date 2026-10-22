@@ -77,6 +77,7 @@ class Download:
     completed: int = 0
     error: Optional[str] = None
     cancel_event: threading.Event = field(default_factory=threading.Event)
+    worker: Optional[threading.Thread] = None
 
     def as_dict(self, root: Path) -> dict[str, Any]:
         try:
@@ -109,6 +110,7 @@ class ConnectorState:
         inference_timeout: float = 30.0,
     ) -> None:
         self.lock = threading.RLock()
+        self.closed = False
         # Serialize lifecycle changes, but never hold the state lock during I/O.
         self.lifecycle_lock = threading.RLock()
         self.write_timeout = write_timeout
@@ -167,6 +169,8 @@ class ConnectorState:
 
     def start(self) -> tuple[bool, dict[str, Any]]:
         with self.lifecycle_lock, self.lock:
+            if self.closed:
+                return False, error_body("CONNECTOR_CLOSED", "连接器已关闭", retryable=False)
             if self.process is not None and self.process.poll() is None:
                 return False, error_body("ALREADY_RUNNING", "该连接器只允许一个由本会话启动的决策服务", retryable=False)
             # The exit monitor may still be waiting for this lock. Finalize the
@@ -435,6 +439,24 @@ class ConnectorState:
             self.stop()
             return self.start()
 
+    def close(self) -> None:
+        # Provider stop alone deliberately does not cancel user-selected file
+        # copies. Closing the whole connector owns both kinds of work.
+        with self.lifecycle_lock:
+            with self.lock:
+                self.closed = True
+                workers = []
+                for task in self.downloads.values():
+                    if task.status in {"queued", "downloading"}:
+                        task.cancel_event.set()
+                        if task.worker is not None:
+                            workers.append(task.worker)
+            self.stop()
+        # Never join while holding a lock used by progress/commit/cleanup.
+        deadline = time.monotonic() + 1.0
+        for worker in workers:
+            worker.join(timeout=max(0.0, deadline - time.monotonic()))
+
     def decide(self, text: str) -> tuple[bool, dict[str, Any]]:
         if not isinstance(text, str) or not text.strip() or len(text) > 4000:
             return False, error_body("INVALID_INPUT", "text 必须是 1–4000 字符", retryable=False)
@@ -519,6 +541,8 @@ class ConnectorState:
         if not source.is_file():
             return False, error_body("MODEL_SOURCE_MISSING", "模型下载源不存在", retryable=True)
         with self.lock:
+            if self.closed:
+                return False, error_body("CONNECTOR_CLOSED", "连接器已关闭", retryable=False)
             if any(task.model_id == model_id and task.status in {"queued", "downloading"} for task in self.downloads.values()):
                 return False, error_body("DOWNLOAD_ALREADY_RUNNING", "该模型已有下载任务", retryable=False)
             destination = (self.data_dir / str(item.get("path", f"models/{model_id}"))).resolve()
@@ -529,7 +553,8 @@ class ConnectorState:
             destination.parent.mkdir(parents=True, exist_ok=True)
             task = Download(uuid.uuid4().hex, model_id, source.stat().st_size, destination)
             self.downloads[task.task_id] = task
-            threading.Thread(target=self._copy_model, args=(task, source), daemon=True).start()
+            task.worker = threading.Thread(target=self._copy_model, args=(task, source), daemon=True)
+            task.worker.start()
             return True, {"download": task.as_dict(self.data_dir)}
 
     def _copy_model(self, task: Download, source: Path) -> None:
@@ -548,8 +573,13 @@ class ConnectorState:
                     with self.lock:
                         task.completed += len(chunk)
                     time.sleep(0.001)
-            temporary.replace(task.path)
             with self.lock:
+                # Cancellation and the final commit share a lock. A cancel
+                # accepted after the last read must not overwrite an installed
+                # file, including when the final chunk was empty.
+                if task.cancel_event.is_set():
+                    raise InterruptedError
+                temporary.replace(task.path)
                 task.status = "completed"
         except InterruptedError:
             temporary.unlink(missing_ok=True)
@@ -575,6 +605,11 @@ class ConnectorHandler(BaseHTTPRequestHandler):
     server: "ConnectorHTTPServer"
     protocol_version = "HTTP/1.1"
 
+    def setup(self) -> None:
+        super().setup()
+        # Also bound idle request/header reads before do_POST is entered.
+        self.connection.settimeout(self.server.request_timeout)
+
     def log_message(self, format: str, *args: Any) -> None:  # noqa: A003
         # Do not log authorization headers, request bodies, or user text.
         return
@@ -585,25 +620,60 @@ class ConnectorHandler(BaseHTTPRequestHandler):
 
     def _send(self, status: int, body: dict[str, Any]) -> None:
         payload = json_bytes(body)
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(payload)))
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        self.wfile.write(payload)
+        # One request per connection also discards unread rejected/unauthorized
+        # bodies instead of interpreting their bytes as a second HTTP request.
+        self.close_connection = True
+        try:
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(payload)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Connection", "close")
+            self.end_headers()
+            self.wfile.write(payload)
+        except OSError:
+            # A client may disconnect while a bounded request is completing.
+            pass
 
     def _read_json(self) -> tuple[Optional[dict[str, Any]], Optional[dict[str, Any]]]:
-        try:
-            length = int(self.headers.get("Content-Length", "0"))
-        except ValueError:
+        lengths = self.headers.get_all("Content-Length", [])
+        if self.headers.get_all("Transfer-Encoding") or len(lengths) > 1:
+            return None, error_body("INVALID_BODY", "不支持重复长度或 Transfer-Encoding", retryable=False)
+        length_text = lengths[0] if lengths else "0"
+        if not length_text.isascii() or not length_text.isdecimal():
             return None, error_body("INVALID_BODY", "Content-Length 无效", retryable=False)
+        # Compare before int() so even an excessively long decimal header
+        # cannot raise the interpreter's integer-conversion length error.
+        normalized_length = length_text.lstrip("0") or "0"
+        if len(normalized_length) > len(str(MAX_BODY_BYTES)):
+            return None, error_body("BODY_TOO_LARGE", "请求体过大", retryable=False)
+        length = int(normalized_length)
         if length > MAX_BODY_BYTES:
             return None, error_body("BODY_TOO_LARGE", "请求体过大", retryable=False)
         try:
-            raw = self.rfile.read(length)
+            # An absolute deadline prevents a trickling client from renewing
+            # an inactivity timeout indefinitely. read1 returns available
+            # bytes after at most one socket read, unlike read(length).
+            deadline = time.monotonic() + self.server.request_timeout
+            raw = bytearray()
+            while len(raw) < length:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError
+                self.connection.settimeout(remaining)
+                chunk = self.rfile.read1(length - len(raw))
+                if not chunk:
+                    return None, error_body("INVALID_BODY", "请求体长度不足", retryable=False)
+                raw.extend(chunk)
             value = json.loads(raw.decode("utf-8")) if raw else {}
+        except TimeoutError:
+            return None, error_body("REQUEST_TIMEOUT", "读取请求体超时", retryable=True)
+        except OSError:
+            return None, error_body("INVALID_BODY", "请求体读取中断", retryable=False)
         except (UnicodeDecodeError, json.JSONDecodeError):
             return None, error_body("INVALID_JSON", "请求体必须是 JSON", retryable=False)
+        finally:
+            self.connection.settimeout(self.server.request_timeout)
         if not isinstance(value, dict):
             return None, error_body("INVALID_JSON", "请求体必须是 JSON 对象", retryable=False)
         return value, None
@@ -642,7 +712,8 @@ class ConnectorHandler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         body, body_error = self._read_json()
         if body_error:
-            self._send(HTTPStatus.BAD_REQUEST, body_error)
+            status = HTTPStatus.REQUEST_TIMEOUT if body_error["error"]["code"] == "REQUEST_TIMEOUT" else HTTPStatus.BAD_REQUEST
+            self._send(status, body_error)
             return
         assert body is not None
         if path == "/v1/service/start":
@@ -673,6 +744,7 @@ class ConnectorHandler(BaseHTTPRequestHandler):
 class ConnectorHTTPServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = False
+    request_timeout = 5.0
 
     def __init__(self, address: tuple[str, int], state: ConnectorState):
         super().__init__(address, ConnectorHandler)
@@ -683,7 +755,7 @@ class ConnectorHTTPServer(ThreadingHTTPServer):
         # provider from surviving a test runner or embedding host shutdown.
         state = getattr(self, "state", None)
         if state is not None:
-            state.stop()
+            state.close()
         super().server_close()
 
 
@@ -709,7 +781,6 @@ def run_server(args: argparse.Namespace) -> int:
     except KeyboardInterrupt:
         pass
     finally:
-        state.stop()
         server.server_close()
     return 0
 
