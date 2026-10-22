@@ -6,6 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:mobile": "vite build --config src/control/mobile/vite.mobile.config.ts",
+    "dev:mobile": "vite --config src/control/mobile/vite.mobile.config.ts",
+    "test:mobile:e2e": "playwright test --config src/control/mobile/playwright.mobile.config.ts",
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "vitest run",
@@ -22,6 +25,7 @@
     "@tailwindcss/vite": "^4.3.3",
     "@vivic/contracts": "workspace:*",
     "@vivic/card-runtime": "workspace:*",
+    "@vivic/mobile-console-prototype": "workspace:*",
     "@xyflow/react": "^12.12.0",
     "beautiful-mermaid": "^1.1.3",
     "class-variance-authority": "^0.7.1",
