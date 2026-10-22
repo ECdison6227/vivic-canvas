@@ -2,6 +2,8 @@
 
 本目录的 Python 模块是与 Vivic 核心解耦的 API/本地决策 provider 薄适配层。它只接收有限候选并返回候选 ID，不执行 Action、不访问画布、不发送答案给模型。本次 PR 另提供 TypeScript 核心接线与 `live-integration.ts` 冒烟脚本，范围和安全门控见 [接口说明](../../docs/decisions/decision-provider.md)。
 
+2026-10-22 反馈补充：核心接线已随 PR #15 合入，配置错误会通过 `configurationError` 明示并保留原指令流程；这不表示真实模型已通过执行质量验收。
+
 ## 运行
 
 ```text
@@ -19,5 +21,7 @@ py -3 -X utf8 -m unittest discover -s contrib/decision-evaluation -p 'test_*.py'
 `DecisionRouter(primary, fallback, enabled=True)` 的行为固定为：显式关闭返回 `disabled`；只有主 provider 的 `error` 或 `timeout` 才尝试回退；成功、不确定（`deferred`）、取消和关闭均直接终止。provider 抛出的异常转换为固定 `provider_error`，不复制异常正文。回退结果会保留 `fallback_after:<state>` 原因。接入核心时仍必须重新校验 Action、目标和权限。
 
 `contract-fixtures.json` 是 Python 与 TypeScript 共用的 wire 样例；测试逐条核对请求形状及响应合法性。`choice_only` 在离线 Python 中可评分，在产品核心中应为 `deferred`，不能误当概率已经通过门控。
+
+`live-integration.ts` 需要先启动已有本地模型服务，并确保隔离 API 端口 8788 空闲。2026-10-21 实测的 llama.cpp b9660 Vulkan + MiniCPM5-1B-Q8_0 需要 `--reasoning off --reasoning-budget 0` 才能在 128-token 请求内返回完整答案；只设置 reasoning budget 仍出现截断。完整启动命令、设备核对和 Vivic 环境配置见 [配置与复现](../../docs/decisions/decision-provider.md#配置与复现)。模型服务响应成功、冒烟脚本通过，均只证明连通与安全回退；当前 `local-chat` choice-only 保持 `deferred/missing_scores`，不能据此宣称模型已自动操作画布。
 
 `urllib` 是同步传输：取消会在发请求前和读取/解析结果后检查，迟到的成功结果会丢弃，但不能即时中断正在阻塞的 socket。默认 socket 超时 2 秒，可配置为大于 0 且不超过 30 秒；该值约束单次阻塞 I/O，不是严格的总墙钟时限。读取结束后还会拒绝超过时限的响应。要求即时取消和绝对期限的产品链路使用核心异步适配器，不能把本模块的隔离测试当成真实模型或产品验收。
