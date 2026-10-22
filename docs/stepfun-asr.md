@@ -139,4 +139,4 @@ pnpm --filter @vivic/local-api typecheck
 
 适配器子任务阶段：ASR单文件55/55通过；当时搜索子任务尚在编写，因此曾有范围外测试/类型错误。主线程集成后已解决，最终API397/397、web101/101通过，类型检查与构建通过。
 
-后续真实验证也已完成：当前Plan Key实际识别合成中文录音，HTTP200、556ms，返回「十分钟后提醒我喝水。」；独立浏览器原生AudioWorklet采集合成麦克风并调用真实ASR，转写检查后成功创建600秒喝水提醒。原始硬件麦克风和现场人声没有采集。完整记录见 `evidence/phase2-voice-input/REPORT.md` 与 `live*.json`，不是mock成功。默认检查后发送；可由用户显式开启自动发送，ASR模块本身仍只返回文字。
+后续真实验证也已完成：当前Plan Key实际识别合成中文录音，HTTP200、556ms，返回「十分钟后提醒我喝水。」；独立浏览器原生AudioWorklet采集合成麦克风并调用真实ASR，转写检查后成功创建600秒喝水提醒。原始硬件麦克风和现场人声没有采集。完整记录见 `evidence/phase2-voice-input/REPORT.md` 与 `live*.json`，不是mock成功。2026-10-21 起默认自动发送，用户可关闭后检查文字再发送；ASR 模块本身仍只返回文字。

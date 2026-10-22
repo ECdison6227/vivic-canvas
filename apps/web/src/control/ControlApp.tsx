@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { buildCanvasContext, fetchWeatherHere, postIntent } from "@/ai/api";
-import { fixForRequest, freshFix, looksLikeWeather, resumeLocation, subscribeLocation } from "@/location/deviceLocation";
+import { fixForRequest, freshFix, looksLikeWeather, subscribeLocation } from "@/location/deviceLocation";
+import { requestStartupPermissions } from "@/permissions/devicePermissions";
 import { startLiveWeather } from "@/location/liveWeather";
 import { LocationSettings } from "./LocationSettings";
 import { cancelSpeech, speakText, subscribeSpeech, getSpeechSnapshot, speakShortFeedback, cancelShortFeedback } from "@/ai/speech";
@@ -106,7 +107,6 @@ export const ControlApp = () => {
   // "Where I am" weather cards follow the device while this owner page is open.
   useEffect(() => {
     if (!host) return;
-    void resumeLocation();
     return startLiveWeather({
       cards: () => host.getSnapshot().ownerMode === "owner"
         ? canvasStore.getState().cards.filter(entry => !entry.exitingRequestId).map(entry => entry.record) : [],
@@ -590,9 +590,18 @@ const ControlShell = (props: ShellProps) => {
   const preferences = useDisplayPreferences();
   const reduced = useReducedMotion() || preferences.reducedMotion;
 
+  useEffect(() => {
+    if (readonly || !snap.ready) return;
+    requestStartupPermissions();
+    document.addEventListener("visibilitychange", requestStartupPermissions);
+    return () => document.removeEventListener("visibilitychange", requestStartupPermissions);
+  }, [readonly, snap.ready]);
+
   const openDisplay = () => {
     const id = snap.activeCanvasId ?? "";
-    window.open(`/display?canvasId=${encodeURIComponent(id)}`, "_blank");
+    const width = window.screen.availWidth || window.innerWidth;
+    const height = window.screen.availHeight || window.innerHeight;
+    window.open(`/display?canvasId=${encodeURIComponent(id)}`, "_blank", `popup,noopener,width=${width},height=${height}`);
   };
   const readonlyNotice = readonly && (
     <div className="vivic-readonly-notice" data-vivic-readonly-notice>
@@ -672,7 +681,7 @@ const ControlShell = (props: ShellProps) => {
                 打开 Vivic 展示窗口
               </button>
               <p className="text-xs text-neutral-500">
-                把打开的窗口拖到第二屏，按 F11 或 ⌃⌘F 全屏；文字和语音输入在聊天页，本页负责设置。
+                把打开的窗口拖到第二屏，点击“隐藏顶部栏”提示进入全屏；文字和语音输入在聊天页，本页负责设置。
               </p>
             </div>
           </section>

@@ -38,6 +38,15 @@ export interface LocalApiConfig {
   publicDnsFallback?: boolean;
   /** Keyless search egress: `auto` (env > OS proxy), `direct`, or a proxy URL. Unset = direct. */
   searchProxy?: string;
+  /** Optional independent DEC-01 provider; unset preserves Kev-only behavior. */
+  decisionProviderUrl?: string;
+  decisionProviderFallbackUrl?: string;
+  decisionProviderKind?: "api" | "local";
+  decisionProviderEnabled?: boolean;
+  decisionProviderTimeoutMs?: number;
+  decisionProviderProtocol?: "adapter" | "local-chat";
+  decisionProviderModel?: string;
+  decisionProviderToken?: string;
   bodyLimitBytes: number;
 }
 
@@ -90,6 +99,14 @@ export const loadConfig = (
     asrTimeoutMs: boundedTimeout(env.VIVIC_ASR_TIMEOUT_MS, 30000),
     searchEnabled: env.VIVIC_SEARCH_ENABLED !== "false",
     searchProxy: env.VIVIC_SEARCH_PROXY?.trim() || "auto",
+    decisionProviderUrl: env.VIVIC_DECISION_PROVIDER_URL?.trim() || undefined,
+    decisionProviderFallbackUrl: env.VIVIC_DECISION_PROVIDER_FALLBACK_URL?.trim() || undefined,
+    decisionProviderKind: env.VIVIC_DECISION_PROVIDER_KIND === "local" ? "local" : "api",
+    decisionProviderEnabled: env.VIVIC_DECISION_PROVIDER_ENABLED !== "false",
+    decisionProviderTimeoutMs: boundedTimeout(env.VIVIC_DECISION_PROVIDER_TIMEOUT_MS, 2000),
+    decisionProviderProtocol: env.VIVIC_DECISION_PROVIDER_PROTOCOL === "local-chat" ? "local-chat" : "adapter",
+    decisionProviderModel: env.VIVIC_DECISION_PROVIDER_MODEL?.trim() || undefined,
+    decisionProviderToken: env.VIVIC_DECISION_PROVIDER_TOKEN || undefined,
     bodyLimitBytes: 64 * 1024,
   };
 };
