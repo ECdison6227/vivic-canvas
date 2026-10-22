@@ -4,8 +4,8 @@ import { AtmosphereBackground } from "@/components/atmosphere/AtmosphereBackgrou
 import { ATMOSPHERE_PALETTES, DARK_PALETTE_IDS, LIGHT_PALETTE_IDS, type PaletteId } from "@/components/atmosphere/palettes";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { createMobileClient, type MobileClient, type MobileState } from "../../../../../contrib/mobile-console/client";
-import type { Operation } from "../../../../../contrib/mobile-console/protocol";
+import { createMobileClient, type MobileClient, type MobileState } from "@vivic/mobile-console-prototype/client";
+import type { Operation } from "@vivic/mobile-console-prototype/protocol";
 import "./mobile.css";
 
 const connectionLabels: Record<MobileState["status"], string> = {

@@ -31,8 +31,8 @@ async function setup(extra: Partial<RelayOptions> = {}) {
   resources.push(() => relay.close());
   const address = await relay.listen(0);
   const url = `ws://127.0.0.1:${address.port}/relay`;
-  const connect = async (target = url, requestOrigin = origin) => {
-    const ws = new WebSocket(target, { origin: requestOrigin });
+  const connect = async (target = url, requestOrigin = origin, headers: Record<string, string> = {}) => {
+    const ws = new WebSocket(target, { origin: requestOrigin, headers });
     const socket = new Socket(ws);
     await new Promise<void>((resolve, reject) => { ws.once("open", resolve); ws.once("error", reject); });
     return socket;
@@ -56,6 +56,8 @@ describe("ephemeral authenticated WebSocket relay", () => {
     expect(() => createRelayServer({ admissionSecret: "short", allowedOrigins: [origin] })).toThrow("32");
     expect(() => createRelayServer({ admissionSecret, allowedOrigins: ["*"] })).toThrow("origins");
     expect(() => createRelayServer({ admissionSecret, allowedOrigins: [origin], publicMode: true })).toThrow("HTTPS");
+    expect(() => createRelayServer({ admissionSecret, allowedOrigins: ["https://console.example.test"], publicMode: true })).toThrow("trusted proxy");
+    expect(() => createRelayServer({ admissionSecret, allowedOrigins: [origin], trustedProxyIps: ["127.0.0.0/8"] })).toThrow("exact IP");
   });
   it("rejects foreign origins and query-string credentials before upgrading", async () => {
     const { connect, url } = await setup();
@@ -63,16 +65,49 @@ describe("ephemeral authenticated WebSocket relay", () => {
     await expect(connect(`${url}?token=must-not-be-accepted`)).rejects.toThrow("403");
   });
   it("keeps plaintext upstream on loopback and requires the trusted TLS proxy header in public mode", async () => {
-    const relay = createRelayServer({ admissionSecret, allowedOrigins: ["https://console.example.test"], publicMode: true });
+    const relay = createRelayServer({ admissionSecret, allowedOrigins: ["https://console.example.test"], publicMode: true, trustedProxyIps: ["127.0.0.1"] });
     resources.push(() => relay.close());
     await expect(relay.listen(0, "0.0.0.0")).rejects.toThrow("loopback");
     const address = await relay.listen(0); const url = `ws://127.0.0.1:${address.port}/relay`;
-    const insecure = new WebSocket(url, { origin: "https://console.example.test" });
-    await expect(new Promise((resolve, reject) => { insecure.once("open", resolve); insecure.once("error", reject); })).rejects.toThrow("403");
+    for (const proto of [undefined, "http", "https, http"]) {
+      const insecure = new WebSocket(url, { origin: "https://console.example.test", headers: {
+        "X-Forwarded-For": "198.51.100.1", ...(proto ? { "X-Forwarded-Proto": proto } : {}),
+      } });
+      await expect(new Promise((resolve, reject) => { insecure.once("open", resolve); insecure.once("error", reject); })).rejects.toThrow("403");
+    }
     // A reverse-proxy upstream simulation; this test does not claim an actual TLS deployment.
-    const trusted = new WebSocket(url, { origin: "https://console.example.test", headers: { "X-Forwarded-Proto": "https" } });
+    const trusted = new WebSocket(url, { origin: "https://console.example.test", headers: { "X-Forwarded-Proto": "https", "X-Forwarded-For": "198.51.100.1" } });
     await new Promise<void>((resolve, reject) => { trusted.once("open", resolve); trusted.once("error", reject); });
     trusted.close();
+  });
+  it("rejects spoofed public proxy headers from an untrusted peer", async () => {
+    const httpsOrigin = "https://console.example.test";
+    const { connect, url } = await setup({ allowedOrigins: [httpsOrigin], publicMode: true, trustedProxyIps: ["127.0.0.2"] });
+    await expect(connect(url, httpsOrigin, { "X-Forwarded-Proto": "https", "X-Forwarded-For": "198.51.100.1" })).rejects.toThrow("403");
+  });
+  it("rejects missing, malformed, or chained client identities from a trusted proxy", async () => {
+    const { connect, url } = await setup({ trustedProxyIps: ["127.0.0.1"] });
+    for (const forwarded of [undefined, "not-an-ip", "198.51.100.1, 198.51.100.2", "198.51.100.1:443"]) {
+      await expect(connect(url, origin, forwarded ? { "X-Forwarded-For": forwarded } : {})).rejects.toThrow("403");
+    }
+  });
+  it("ignores untrusted forwarded identities so rotating spoofed headers cannot bypass authentication limits", async () => {
+    const { connect, url } = await setup();
+    const first = await connect(url, origin, { "X-Forwarded-For": "198.51.100.1" });
+    const hello = { v: 1, type: "hello", role: "mobile", deviceId: "mobile", deviceName: "手机", pairCode: "WRONGCODE" };
+    for (let i = 0; i < 20; i++) { first.send(hello); expect((await first.take("error")).code).toBe("invalid-pairing"); }
+    const spoofed = await connect(url, origin, { "X-Forwarded-For": "198.51.100.2" });
+    spoofed.send(hello); expect((await spoofed.take("error")).code).toBe("rate-limit");
+  });
+  it("limits each proxied client separately and preserves its bucket across connections and mapped IP spellings", async () => {
+    const { connect, url } = await setup({ trustedProxyIps: ["::ffff:127.0.0.1"] });
+    const first = await connect(url, origin, { "X-Forwarded-For": "198.51.100.1" });
+    const hello = { v: 1, type: "hello", role: "mobile", deviceId: "mobile", deviceName: "手机", pairCode: "WRONGCODE" };
+    for (let i = 0; i < 20; i++) { first.send(hello); expect((await first.take("error")).code).toBe("invalid-pairing"); }
+    const sameClient = await connect(url, origin, { "X-Forwarded-For": "::ffff:198.51.100.1" });
+    sameClient.send(hello); expect((await sameClient.take("error")).code).toBe("rate-limit");
+    const secondClient = await connect(url, origin, { "X-Forwarded-For": "198.51.100.2" });
+    secondClient.send(hello); expect((await secondClient.take("error")).code).toBe("invalid-pairing");
   });
   it("does not register a computer with a wrong admission secret or unauthenticated command", async () => {
     const { connect } = await setup(); const s = await connect();

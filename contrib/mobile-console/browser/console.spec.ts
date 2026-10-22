@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { test, expect, type Page } from "../../../apps/web/node_modules/@playwright/test/index.mjs";
+import { test, expect, type Page } from "@playwright/test";
 import { WebSocket } from "ws";
 import { createRelayServer } from "../relay";
 import { createComputerConnector, type ComputerHostAdapter } from "../connector";
@@ -12,7 +12,7 @@ import type { CanvasSnapshot } from "../protocol";
 const evidence = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../evidence/mobile-console");
 fs.mkdirSync(evidence, { recursive: true });
 const entry = "/src/control/mobile/index.html";
-const origin = "http://127.0.0.1:5174";
+const origin = `http://${process.env.VIVIC_MOBILE_TEST_HOST ?? "127.0.0.1"}:5174`;
 
 /** Explicit DEMO computer adapter: actual WS relay/connector, simulated actions, no production owner. */
 async function setupComputer() {

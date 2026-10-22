@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { createVivicHostAdapter, type TextExecutionContext } from "../../../../../../contrib/mobile-console/vivicHostAdapter";
+import { createVivicHostAdapter, type TextExecutionContext } from "@vivic/mobile-console-prototype/vivicHostAdapter";
 import { createMemoryDB } from "@/persistence/db";
 import { createCanvasStore } from "@/state/canvasStore";
 import { createMemoryHub, flushChannel } from "@/sync/channel";

@@ -3,9 +3,9 @@ import { Laptop, Link2, Pin, RefreshCw, ShieldCheck, Smartphone, Square } from "
 import { AtmosphereBackground } from "@/components/atmosphere/AtmosphereBackground";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { createComputerConnector, type ComputerHostAdapter, type ConnectorState } from "../../../../../contrib/mobile-console/connector";
-import { createWebSocketTransport } from "../../../../../contrib/mobile-console/transport";
-import type { CanvasSnapshot } from "../../../../../contrib/mobile-console/protocol";
+import { createComputerConnector, type ComputerHostAdapter, type ConnectorState } from "@vivic/mobile-console-prototype/connector";
+import { createWebSocketTransport } from "@vivic/mobile-console-prototype/transport";
+import type { CanvasSnapshot } from "@vivic/mobile-console-prototype/protocol";
 import { defaultRelayUrl } from "./MobileConsole";
 import "./mobile.css";
 

@@ -1,6 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { createServer, type Server } from "node:http";
-import type { AddressInfo } from "node:net";
+import { isIP, type AddressInfo } from "node:net";
 import { WebSocket, WebSocketServer } from "ws";
 import { MAX_FRAME_BYTES, PERMISSIONS, parseFrame, type Frame, type Hello, type Permission } from "./protocol.js";
 
@@ -9,6 +9,8 @@ export interface RelayOptions {
   admissionSecret: string;
   allowedOrigins: string[];
   publicMode?: boolean;
+  /** Exact upstream proxy IPs allowed to supply a single, overwritten X-Forwarded-For. Empty by default. */
+  trustedProxyIps?: string[];
   pairTtlMs?: number;
   sessionTtlMs?: number;
   heartbeatMs?: number;
@@ -44,6 +46,20 @@ const emit = (socket: WebSocket | undefined, frame: Frame) => {
   if (open(socket)) socket.send(JSON.stringify(frame));
 };
 const scope = (s: Session, deviceId: string) => ({ v: 1 as const, sessionId: s.id, epoch: s.epoch, deviceId });
+const canonicalIp = (address: string): string | undefined => {
+  if (isIP(address) === 4) return address;
+  if (isIP(address) !== 6) return undefined;
+  try {
+    const normalized = new URL(`http://[${address}]/`).hostname.slice(1, -1);
+    // IPv4 and its mapped IPv6 spelling must share one rate-limit bucket.
+    const mapped = /^::ffff:([\da-f]+):([\da-f]+)$/.exec(normalized);
+    if (mapped) {
+      const high = parseInt(mapped[1]!, 16), low = parseInt(mapped[2]!, 16);
+      return `${high >> 8}.${high & 255}.${low >> 8}.${low & 255}`;
+    }
+    return normalized;
+  } catch { return undefined; }
+};
 
 /** Ephemeral, inspectable relay. It never stores canvas contents or executes actions. */
 export function createRelayServer(options: RelayOptions) {
@@ -53,6 +69,12 @@ export function createRelayServer(options: RelayOptions) {
     try { const url = new URL(origin); return url.origin !== origin || !["http:", "https:"].includes(url.protocol)
       || (options.publicMode && url.protocol !== "https:"); } catch { return true; }
   })) throw new Error("Explicit exact HTTP(S) origins are required; public mode requires HTTPS origins.");
+  const trustedProxies = new Set((options.trustedProxyIps ?? []).map(address => {
+    const normalized = canonicalIp(address);
+    if (!normalized) throw new Error("Trusted proxy addresses must be exact IP addresses, without CIDR ranges or wildcards.");
+    return normalized;
+  }));
+  if (options.publicMode && !trustedProxies.size) throw new Error("Public mode requires explicit trusted proxy IP addresses.");
   const now = options.now ?? Date.now;
   const sessions = new Map<string, Session>();
   const pairings = new Map<string, Session>();
@@ -60,6 +82,7 @@ export function createRelayServer(options: RelayOptions) {
   const attempts = new Map<string, { start: number; count: number }>();
   const rates = new WeakMap<WebSocket, { start: number; count: number }>();
   const alive = new WeakSet<WebSocket>();
+  const clientIps = new WeakMap<WebSocket, string>();
   const rejected = (ws: WebSocket, code: string, message: string, requestId?: string) =>
     emit(ws, { v: 1, type: "error", code, message, ...(requestId ? { requestId } : {}) });
   const status = (s: Session) => {
@@ -119,7 +142,7 @@ export function createRelayServer(options: RelayOptions) {
   };
   const authenticate = (ws: WebSocket, hello: Hello, ip: string) => {
     prune();
-    // The socket's real peer address is used; untrusted X-Forwarded-For never bypasses limits.
+    // Upgrade validated this identity against the explicit proxy boundary; it is fixed for this connection.
     let record = attempts.get(ip);
     if (!record) {
       if (attempts.size >= 2048) return rejected(ws, "rate-limit", "连接请求过多，请稍后重试。");
@@ -163,12 +186,18 @@ export function createRelayServer(options: RelayOptions) {
   const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_FRAME_BYTES, perMessageDeflate: false });
   server.on("upgrade", (req, socket, head) => {
     const rejectUpgrade = () => { socket.write("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n"); socket.destroy(); };
+    const peerIp = canonicalIp(req.socket.remoteAddress ?? "");
+    const fromTrustedProxy = !!peerIp && trustedProxies.has(peerIp);
+    const forwardedIp = req.headers["x-forwarded-for"];
+    // A trusted proxy must overwrite this with one IP, never append a client-controlled chain.
+    const clientIp = fromTrustedProxy ? (typeof forwardedIp === "string" ? canonicalIp(forwardedIp) : undefined) : peerIp;
     // No query parameters: credentials must travel only in validated first frames.
     if (req.url !== "/relay" || !req.headers.origin || !origins.has(req.headers.origin)
-      || (options.publicMode && req.headers["x-forwarded-proto"] !== "https") || wss.clients.size >= 256) return rejectUpgrade();
-    wss.handleUpgrade(req, socket, head, ws => wss.emit("connection", ws, req));
+      || !clientIp || (options.publicMode && (!fromTrustedProxy || req.headers["x-forwarded-proto"] !== "https"))
+      || wss.clients.size >= 256) return rejectUpgrade();
+    wss.handleUpgrade(req, socket, head, ws => { clientIps.set(ws, clientIp); wss.emit("connection", ws, req); });
   });
-  wss.on("connection", (ws, req) => {
+  wss.on("connection", ws => {
     alive.add(ws);
     const timer = setTimeout(() => { if (!auth.has(ws)) ws.close(4000, "Authentication timeout"); }, 5000);
     timer.unref();
@@ -184,7 +213,7 @@ export function createRelayServer(options: RelayOptions) {
       const a = auth.get(ws);
       if (!a) {
         if (frame.type !== "hello") { rejected(ws, "unauthorized", "请先完成配对或重连。"); return; }
-        authenticate(ws, frame, req.socket.remoteAddress ?? "unknown"); return;
+        authenticate(ws, frame, clientIps.get(ws)!); return;
       }
       const { session: s, peer: p, role } = a;
       if (s.expiresAt <= now() || !sessions.has(s.id)) { revokeSession(s, "控制会话已过期，请重新配对。"); return; }

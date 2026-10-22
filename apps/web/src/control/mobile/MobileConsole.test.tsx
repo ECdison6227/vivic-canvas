@@ -3,7 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MobileConsole } from "./MobileConsole";
-import type { MobileClient, MobileState } from "../../../../../contrib/mobile-console/client";
+import type { MobileClient, MobileState } from "@vivic/mobile-console-prototype/client";
 
 vi.mock("@/components/atmosphere/AtmosphereBackground", () => ({ AtmosphereBackground: () => <div data-atmosphere /> }));
 

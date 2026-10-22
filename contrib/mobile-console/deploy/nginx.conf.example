@@ -20,7 +20,11 @@ server {
         proxy_set_header Connection "upgrade";
         proxy_set_header Host $host;
         proxy_set_header Origin $http_origin;
-        # Overwrite client input. Public relay mode requires this exact value.
+        # Trust only this nginx upstream IP in VIVIC_RELAY_TRUSTED_PROXY_IPS=127.0.0.1.
+        # Overwrite client input with the directly connected client IP; never append XFF.
+        # Do not add real_ip_header without a separately reviewed upstream trust boundary.
+        proxy_set_header X-Forwarded-For $remote_addr;
+        # Public relay mode requires this exact value from a configured trusted proxy.
         proxy_set_header X-Forwarded-Proto https;
         proxy_read_timeout 45s;
         proxy_send_timeout 45s;
