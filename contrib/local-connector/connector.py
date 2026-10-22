@@ -11,8 +11,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import queue
 import secrets
-import shutil
 import signal
 import socket
 import subprocess
@@ -25,7 +25,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Optional
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import urlparse
 
 
 PROTOCOL_VERSION = "0.1"
@@ -50,6 +50,7 @@ class Run:
     error: Optional[dict[str, Any]] = None
     created_at: float = field(default_factory=time.time)
     finished_at: Optional[float] = None
+    submitted_at: float = field(default_factory=time.monotonic)
 
     def as_dict(self) -> dict[str, Any]:
         value: dict[str, Any] = {
@@ -103,12 +104,25 @@ class ConnectorState:
         provider_port: Optional[int] = None,
         model_source_dir: Optional[Path] = None,
         model_catalog: Optional[list[dict[str, Any]]] = None,
+        write_timeout: float = 2.0,
+        startup_timeout: float = 15.0,
+        inference_timeout: float = 30.0,
     ) -> None:
         self.lock = threading.RLock()
+        # Serialize lifecycle changes, but never hold the state lock during I/O.
+        self.lifecycle_lock = threading.RLock()
+        self.write_timeout = write_timeout
+        self.startup_timeout = startup_timeout
+        self.inference_timeout = inference_timeout
+        if any(not 0 < value < float("inf") for value in (write_timeout, startup_timeout, inference_timeout)):
+            raise ValueError("timeouts must be positive finite seconds")
+        self.outgoing: queue.Queue[dict[str, Any]] = queue.Queue(maxsize=16)
+        self.write_started: Optional[float] = None
+        self.start_deadline: Optional[float] = None
         self.data_dir = data_dir.resolve()
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.model_source_dir = (model_source_dir or self.data_dir / "sources").resolve()
-        self.provider_command = provider_command or [sys.executable, str(Path(__file__).with_name("mock_provider.py"))]
+        self.provider_command = provider_command or [sys.executable, str(Path(__file__).resolve().with_name("mock_provider.py"))]
         self.provider_port = provider_port
         self.session_id = uuid.uuid4().hex
         self.token = secrets.token_urlsafe(32)
@@ -133,7 +147,9 @@ class ConnectorState:
     def _provider_env(self) -> dict[str, str]:
         # Do not pass the caller's environment wholesale.  In particular this
         # prevents API keys and OAuth tokens from reaching a child by accident.
-        env = {"PATH": os.environ.get("PATH", ""), "PYTHONIOENCODING": "utf-8"}
+        allowed = {"PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP", "USERPROFILE", "APPDATA", "LOCALAPPDATA"}
+        env = {key: value for key, value in os.environ.items() if key.upper() in allowed}
+        env["PYTHONIOENCODING"] = "utf-8"
         if self.provider_port is not None:
             env["VIVIC_PROVIDER_PORT"] = str(self.provider_port)
         return env
@@ -150,9 +166,16 @@ class ConnectorState:
         self.provider_error = {"code": code, "message": message, "retryable": retryable}
 
     def start(self) -> tuple[bool, dict[str, Any]]:
-        with self.lock:
+        with self.lifecycle_lock, self.lock:
             if self.process is not None and self.process.poll() is None:
                 return False, error_body("ALREADY_RUNNING", "该连接器只允许一个由本会话启动的决策服务", retryable=False)
+            # The exit monitor may still be waiting for this lock. Finalize the
+            # previous generation before its identity is replaced by a restart.
+            for run in self.runs.values():
+                if run.status in {"queued", "running"}:
+                    run.status = "failed"
+                    run.error = {"code": "PROVIDER_EXITED", "message": "本地决策服务异常退出"}
+                    run.finished_at = time.time()
             if not self._port_is_free():
                 self._set_provider_error("PORT_OCCUPIED", "决策服务端口已被其他程序占用", retryable=True)
                 return False, error_body("PORT_OCCUPIED", "决策服务端口已被其他程序占用", retryable=True, port=self.provider_port)
@@ -170,7 +193,11 @@ class ConnectorState:
                     kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
                 else:
                     kwargs["start_new_session"] = True
-                self.process = subprocess.Popen(self.provider_command, **kwargs)
+                # The guardian establishes ownership before the adapter can
+                # spawn descendants, and watches this connector's lifetime.
+                command = [sys.executable, str(Path(__file__).resolve().with_name("provider_guard.py")),
+                           str(os.getpid()), *self.provider_command]
+                self.process = subprocess.Popen(command, **kwargs)
             except (OSError, ValueError) as exc:
                 self.process = None
                 self._set_provider_error("PROVIDER_START_FAILED", "无法启动本地决策服务", retryable=True)
@@ -178,13 +205,91 @@ class ConnectorState:
             self.provider_state = "starting"
             self.provider_error = None
             self.started_at = time.time()
+            self.start_deadline = time.monotonic() + self.startup_timeout
+            self.write_started = None
+            outgoing: queue.Queue[dict[str, Any]] = queue.Queue(maxsize=16)
+            self.outgoing = outgoing
             process = self.process
             self.reader_thread = threading.Thread(target=self._read_provider, args=(process,), daemon=True)
             self.reader_thread.start()
             threading.Thread(target=self._drain_stderr, args=(process,), daemon=True).start()
             self.monitor_thread = threading.Thread(target=self._monitor_provider, args=(process,), daemon=True)
             self.monitor_thread.start()
+            threading.Thread(target=self._write_provider, args=(process, outgoing), daemon=True).start()
+            threading.Thread(target=self._watch_deadlines, args=(process,), daemon=True).start()
             return True, self.health()
+
+    def _fail_provider(self, process: subprocess.Popen[str], code: str, message: str) -> None:
+        with self.lifecycle_lock:
+            with self.lock:
+                if process is not self.process or self.provider_state in {"error", "stopping", "offline"}:
+                    return
+                self._set_provider_error(code, message)
+                self.provider_state = "stopping"
+                for run in self.runs.values():
+                    if run.status in {"queued", "running"}:
+                        run.status = "failed"
+                        run.error = {"code": code, "message": message}
+                        run.finished_at = time.time()
+            self._terminate_owned(process)
+            with self.lock:
+                if process is self.process or self.process is None:
+                    self.process = None
+                    self._set_provider_error(code, message)
+
+    def _write_provider(self, process: subprocess.Popen[str], outgoing: queue.Queue[dict[str, Any]]) -> None:
+        # Only this thread owns stdin. Killing the owned process on deadline
+        # unblocks a full pipe; closing a blocked TextIO stream under a lock
+        # would deadlock the stop/health request handlers again.
+        assert process.stdin is not None
+        try:
+            while process.poll() is None:
+                try:
+                    message = outgoing.get(timeout=0.05)
+                except queue.Empty:
+                    continue
+                with self.lock:
+                    if process is not self.process or self.provider_state != "ready":
+                        return
+                    run = self.runs.get(message["runId"])
+                    if message["op"] == "decide":
+                        if run is None or run.status == "canceled":
+                            continue
+                        run.status = "running"
+                    self.write_started = time.monotonic()
+                try:
+                    process.stdin.write(json.dumps(message, ensure_ascii=False) + "\n")
+                    process.stdin.flush()
+                finally:
+                    with self.lock:
+                        if process is self.process:
+                            self.write_started = None
+        except (OSError, ValueError):
+            self._fail_provider(process, "PROVIDER_UNAVAILABLE", "本地决策服务连接已断开")
+        finally:
+            try:
+                process.stdin.close()
+            except (OSError, ValueError):
+                pass
+
+    def _watch_deadlines(self, process: subprocess.Popen[str]) -> None:
+        while process.poll() is None:
+            code = None
+            with self.lock:
+                if process is not self.process or self.provider_state in {"error", "offline", "stopping"}:
+                    return
+                now = time.monotonic()
+                if self.provider_state == "starting" and self.start_deadline is not None and now >= self.start_deadline:
+                    code = "STARTUP_TIMEOUT"
+                elif self.write_started is not None and now - self.write_started >= self.write_timeout:
+                    code = "WRITE_TIMEOUT"
+                elif any(run.status in {"queued", "running"} and now - run.submitted_at >= self.inference_timeout
+                         for run in self.runs.values()):
+                    code = "INFERENCE_TIMEOUT"
+            if code:
+                self._fail_provider(process, code, "本地决策服务操作超时；请重连后重试")
+                return
+            time.sleep(0.02)
 
     @staticmethod
     def _drain_stderr(process: subprocess.Popen[str]) -> None:
@@ -205,20 +310,48 @@ class ConnectorState:
     def _read_provider(self, process: subprocess.Popen[str]) -> None:
         assert process.stdout is not None
         try:
-            for line in process.stdout:
+            while True:
+                line = process.stdout.readline(MAX_BODY_BYTES + 1)
+                if not line:
+                    break
+                if len(line) > MAX_BODY_BYTES or not line.endswith("\n"):
+                    self._fail_provider(process, "PROVIDER_PROTOCOL_ERROR", "决策服务消息过大或不是完整 JSONL")
+                    return
                 try:
                     message = json.loads(line)
                 except json.JSONDecodeError:
-                    continue
+                    self._fail_provider(process, "PROVIDER_PROTOCOL_ERROR", "决策服务返回了无效 JSON")
+                    return
+                if not isinstance(message, dict) or not isinstance(message.get("event"), str):
+                    self._fail_provider(process, "PROVIDER_PROTOCOL_ERROR", "决策服务消息必须是带 event 的 JSON 对象")
+                    return
+                event = message["event"]
+                valid = (event == "ready" and message.get("protocolVersion") == PROTOCOL_VERSION) or (
+                    event in {"result", "error"} and isinstance(message.get("runId"), str) and (
+                        (event == "result" and isinstance(message.get("result"), dict)
+                         and set(message["result"]) == {"action", "source"}
+                         and isinstance(message["result"]["action"], str)
+                         and message["result"]["action"] in {"fit", "restore", "expand", "collapse", "other"}
+                         and isinstance(message["result"]["source"], str)) or
+                        (event == "error" and isinstance(message.get("code"), str)
+                         and isinstance(message.get("message"), str))))
+                if not valid:
+                    self._fail_provider(process, "PROVIDER_PROTOCOL_ERROR", "决策服务消息不符合协议")
+                    return
                 with self.lock:
-                    if message.get("event") == "ready" and process is self.process:
-                        self.provider_state = "ready"
+                    if process is not self.process or self.provider_state not in {"starting", "ready"}:
+                        continue
+                    if event == "ready":
+                        if self.provider_state == "starting":
+                            self.provider_state = "ready"
                         continue
                     run_id = message.get("runId")
                     run = self.runs.get(run_id)
                     if run is None or process is not self.process or run.status == "canceled":
                         continue
-                    if message.get("event") == "result":
+                    if run.status not in {"queued", "running"}:
+                        continue
+                    if event == "result":
                         run.status = "completed"
                         run.result = message.get("result")
                         run.finished_at = time.time()
@@ -230,6 +363,10 @@ class ConnectorState:
             # The owner may close the pipe while stopping the child.
             pass
         finally:
+            with self.lock:
+                unexpected = process is self.process and self.provider_state in {"starting", "ready"} and process.poll() is None
+            if unexpected:
+                self._fail_provider(process, "PROVIDER_EXITED", "决策服务输出通道已关闭")
             try:
                 process.stdout.close()
             except OSError:
@@ -237,13 +374,6 @@ class ConnectorState:
 
     def _monitor_provider(self, process: subprocess.Popen[str]) -> None:
         code = process.wait()
-        # stdout/stderr are closed by their reader threads; close stdin here
-        # after the child has exited so no pipe remains open on abnormal exit.
-        if process.stdin is not None:
-            try:
-                process.stdin.close()
-            except OSError:
-                pass
         with self.lock:
             if process is not self.process:
                 return
@@ -253,71 +383,57 @@ class ConnectorState:
                     run.status = "failed"
                     run.error = {"code": "PROVIDER_EXITED", "message": "本地决策服务异常退出", "exitCode": code}
                     run.finished_at = time.time()
-            if self.provider_state not in {"stopping", "offline"}:
+            if self.provider_state not in {"stopping", "offline", "error"}:
                 self._set_provider_error("PROVIDER_EXITED", "本地决策服务异常退出", retryable=True)
-            else:
+            elif self.provider_state != "error":
                 self.provider_state = "offline"
 
     def stop(self) -> tuple[bool, dict[str, Any]]:
-        with self.lock:
-            process = self.process
-            if process is None or process.poll() is not None:
+        with self.lifecycle_lock:
+            with self.lock:
+                process = self.process
+                if process is None or process.poll() is not None:
+                    for run in self.runs.values():
+                        if run.status in {"queued", "running"}:
+                            run.status = "canceled"
+                            run.finished_at = time.time()
+                    self.process = None
+                    self.provider_state = "offline"
+                    return False, error_body("NOT_RUNNING", "没有由本会话启动的决策服务", retryable=False)
+                self.provider_state = "stopping"
+                for run in self.runs.values():
+                    if run.status in {"queued", "running"}:
+                        run.status = "canceled"
+                        run.finished_at = time.time()
+            self._terminate_owned(process)
+            with self.lock:
                 self.process = None
                 self.provider_state = "offline"
-                return False, error_body("NOT_RUNNING", "没有由本会话启动的决策服务", retryable=False)
-            self.provider_state = "stopping"
-            for run in self.runs.values():
-                if run.status in {"queued", "running"}:
-                    run.status = "canceled"
-                    run.finished_at = time.time()
-            self._terminate_owned(process)
-            self.process = None
-            self.provider_state = "offline"
             return True, self.health()
-
-    @staticmethod
-    def _close_streams(process: subprocess.Popen[str]) -> None:
-        for stream in (process.stdin, process.stdout, process.stderr):
-            if stream is not None:
-                try:
-                    stream.close()
-                except OSError:
-                    pass
 
     @staticmethod
     def _terminate_owned(process: subprocess.Popen[str]) -> None:
         # The Popen handle is the ownership proof; no name/port based kill is used.
         try:
             if os.name == "nt":
-                # /T is limited to this Popen PID's process tree.  It avoids
-                # leaving a provider grandchild behind while never selecting
-                # an unrelated process by name or by port.
-                try:
-                    subprocess.run(
-                        ["taskkill", "/PID", str(process.pid), "/T", "/F"],
-                        check=False,
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                    )
-                except OSError:
-                    process.terminate()
+                # Terminate the guardian by its retained process handle. Its
+                # private Job handle closes and reclaims all descendants; no
+                # PID lookup or external taskkill process is necessary.
+                process.kill()
             else:
-                os.killpg(process.pid, signal.SIGTERM)
-            process.wait(timeout=2)
+                os.killpg(process.pid, signal.SIGKILL)
+            process.wait(timeout=0.5)
         except (OSError, subprocess.TimeoutExpired):
             try:
                 process.kill()
                 process.wait(timeout=1)
             except (OSError, subprocess.TimeoutExpired):
                 pass
-        ConnectorState._close_streams(process)
 
     def reconnect(self) -> tuple[bool, dict[str, Any]]:
-        with self.lock:
-            process = self.process
-        if process is not None and process.poll() is None:
+        with self.lifecycle_lock:
             self.stop()
-        return self.start()
+            return self.start()
 
     def decide(self, text: str) -> tuple[bool, dict[str, Any]]:
         if not isinstance(text, str) or not text.strip() or len(text) > 4000:
@@ -326,17 +442,13 @@ class ConnectorState:
             process = self.process
             if process is None or process.poll() is not None or self.provider_state != "ready":
                 return False, error_body("OFFLINE", "本地决策服务不可用；文字主链路可以继续使用 LLM", retryable=True, textPathAvailable=True)
-            run = Run(run_id=uuid.uuid4().hex, text=text, status="running")
+            run = Run(run_id=uuid.uuid4().hex, text=text)
             self.runs[run.run_id] = run
             try:
-                assert process.stdin is not None
-                process.stdin.write(json.dumps({"op": "decide", "runId": run.run_id, "text": text}, ensure_ascii=False) + "\n")
-                process.stdin.flush()
-            except (BrokenPipeError, OSError):
-                run.status = "failed"
-                run.error = {"code": "PROVIDER_UNAVAILABLE", "message": "本地决策服务连接已断开"}
-                run.finished_at = time.time()
-                return False, error_body("PROVIDER_UNAVAILABLE", "本地决策服务连接已断开", retryable=True, textPathAvailable=True)
+                self.outgoing.put_nowait({"op": "decide", "runId": run.run_id, "text": text})
+            except queue.Full:
+                del self.runs[run.run_id]
+                return False, error_body("BACKPRESSURE", "本地决策服务写入队列已满", retryable=True, textPathAvailable=True)
             return True, {"run": run.as_dict()}
 
     def cancel(self, run_id: str) -> tuple[bool, dict[str, Any]]:
@@ -348,11 +460,10 @@ class ConnectorState:
                 return True, {"run": run.as_dict()}
             run.status = "canceled"
             run.finished_at = time.time()
-            if self.process is not None and self.process.stdin is not None:
+            if self.process is not None and self.provider_state == "ready":
                 try:
-                    self.process.stdin.write(json.dumps({"op": "cancel", "runId": run_id}) + "\n")
-                    self.process.stdin.flush()
-                except OSError:
+                    self.outgoing.put_nowait({"op": "cancel", "runId": run_id})
+                except queue.Full:
                     pass
             return True, {"run": run.as_dict()}
 
@@ -545,7 +656,7 @@ class ConnectorHandler(BaseHTTPRequestHandler):
             self._send(HTTPStatus.OK if ok else HTTPStatus.CONFLICT, response)
         elif path == "/v1/decide":
             ok, response = self.state.decide(body.get("text"))
-            self._send(HTTPStatus.ACCEPTED if ok else (HTTPStatus.SERVICE_UNAVAILABLE if response.get("error", {}).get("code") in {"OFFLINE", "PROVIDER_UNAVAILABLE"} else HTTPStatus.BAD_REQUEST), response)
+            self._send(HTTPStatus.ACCEPTED if ok else (HTTPStatus.SERVICE_UNAVAILABLE if response.get("error", {}).get("code") in {"OFFLINE", "PROVIDER_UNAVAILABLE", "BACKPRESSURE"} else HTTPStatus.BAD_REQUEST), response)
         elif path.startswith("/v1/runs/") and path.endswith("/cancel"):
             ok, response = self.state.cancel(path.split("/")[-2])
             self._send(HTTPStatus.OK if ok else HTTPStatus.NOT_FOUND, response)
@@ -583,6 +694,9 @@ def run_server(args: argparse.Namespace) -> int:
         provider_command=provider_command,
         provider_port=args.provider_port,
         model_source_dir=Path(args.model_source_dir) if args.model_source_dir else None,
+        write_timeout=args.write_timeout,
+        startup_timeout=args.startup_timeout,
+        inference_timeout=args.inference_timeout,
     )
     try:
         server = ConnectorHTTPServer(("127.0.0.1", args.port), state)
@@ -608,6 +722,15 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     serve.add_argument("--data-dir", default=str(Path.home() / ".vivic" / "connector"))
     serve.add_argument("--model-source-dir")
     serve.add_argument("--provider-port", type=int)
+    def positive_seconds(value: str) -> float:
+        seconds = float(value)
+        if not 0 < seconds < float("inf"):
+            raise argparse.ArgumentTypeError("must be positive finite seconds")
+        return seconds
+
+    serve.add_argument("--write-timeout", type=positive_seconds, default=2.0)
+    serve.add_argument("--startup-timeout", type=positive_seconds, default=15.0)
+    serve.add_argument("--inference-timeout", type=positive_seconds, default=30.0)
     serve.add_argument("--provider-command", nargs=argparse.REMAINDER, help="command after --provider-command")
     return parser.parse_args(argv)
 

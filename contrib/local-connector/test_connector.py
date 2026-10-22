@@ -11,18 +11,20 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from connector import ConnectorHTTPServer, ConnectorState  # noqa: E402
 
 
-MOCK = str(Path(__file__).with_name("mock_provider.py"))
+MOCK = str(Path(__file__).resolve().with_name("mock_provider.py"))
 
 
 class ConnectorTest(unittest.TestCase):
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
+        # tempfile may return an 8.3 alias on Windows; compare canonical roots.
+        self.temp_root = Path(self.temp.name).resolve()
         self.state = ConnectorState(
-            Path(self.temp.name) / "data",
+            self.temp_root / "data",
             provider_command=[sys.executable, MOCK, "--delay", "0.15"],
         )
         self.server = ConnectorHTTPServer(("127.0.0.1", 0), self.state)
@@ -55,11 +57,15 @@ class ConnectorTest(unittest.TestCase):
                 exc.close()
 
     def wait_ready(self) -> None:
-        for _ in range(40):
-            if self.state.health()["provider"]["state"] == "ready":
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            health = self.state.health()
+            if health["provider"]["state"] == "ready":
                 return
+            if health["provider"]["state"] == "error":
+                self.fail(f"provider startup failed: {health['provider']['error']}")
             time.sleep(0.01)
-        self.fail("provider did not become ready")
+        self.fail(f"provider did not become ready: {self.state.health()['provider']}")
 
     def test_liveness_is_public_but_capabilities_are_session_bound(self) -> None:
         status, body = self.request("GET", "/healthz", auth=False)
@@ -116,7 +122,7 @@ class ConnectorTest(unittest.TestCase):
             occupied.bind(("127.0.0.1", 0))
             occupied.listen(1)
             port = occupied.getsockname()[1]
-            state = ConnectorState(Path(self.temp.name) / "other", provider_port=port)
+            state = ConnectorState(self.temp_root / "other", provider_port=port)
             ok, body = state.start()
             self.assertFalse(ok)
             self.assertEqual(body["error"]["code"], "PORT_OCCUPIED")
@@ -126,18 +132,18 @@ class ConnectorTest(unittest.TestCase):
         with socket.socket() as occupied:
             occupied.bind(("127.0.0.1", 0))
             occupied.listen(1)
-            state = ConnectorState(Path(self.temp.name) / "occupied")
+            state = ConnectorState(self.temp_root / "occupied")
             with self.assertRaises(OSError):
                 ConnectorHTTPServer(("127.0.0.1", occupied.getsockname()[1]), state)
             self.assertIsNone(state.process)
 
     def test_provider_abnormal_exit_is_reported_and_not_restarted_implicitly(self) -> None:
-        crash = Path(self.temp.name) / "crash_provider.py"
+        crash = self.temp_root / "crash_provider.py"
         crash.write_text(
             "import json; print(json.dumps({'event':'ready','protocolVersion':'0.1'}), flush=True)",
             encoding="utf-8",
         )
-        state = ConnectorState(Path(self.temp.name) / "crash", provider_command=[sys.executable, str(crash)])
+        state = ConnectorState(self.temp_root / "crash", provider_command=[sys.executable, str(crash)])
         ok, _ = state.start()
         self.assertTrue(ok)
         for _ in range(40):
@@ -147,8 +153,43 @@ class ConnectorTest(unittest.TestCase):
         self.assertEqual(state.health()["provider"]["error"]["code"], "PROVIDER_EXITED")
         self.assertIsNone(state.process)
 
+    def test_restart_before_exit_monitor_does_not_leave_old_runs_active(self) -> None:
+        self.state.inference_timeout = 0.4
+        self.assertTrue(self.state.start()[0])
+        self.wait_ready()
+        # Holding the state lock gates the real reader/writer/exit monitor,
+        # deterministically scheduling start() before the old monitor can run.
+        with self.state.lock:
+            ok, response = self.state.decide("显示全部")
+            self.assertTrue(ok)
+            run_id = response["run"]["runId"]
+            old_process = self.state.process
+            self.assertIsNotNone(old_process)
+            self.state._terminate_owned(old_process)
+            self.assertIsNotNone(old_process.poll())
+            time.sleep(0.45)  # Old request would expire the new generation.
+            self.assertTrue(self.state.start()[0])
+            self.assertEqual(self.state.runs[run_id].status, "failed")
+        self.wait_ready()
+        time.sleep(0.5)
+        self.assertEqual(self.state.health()["provider"]["state"], "ready")
+
+    def test_stop_before_exit_monitor_finalizes_old_runs(self) -> None:
+        self.assertTrue(self.state.start()[0])
+        self.wait_ready()
+        with self.state.lock:
+            ok, response = self.state.decide("显示全部")
+            self.assertTrue(ok)
+            run_id = response["run"]["runId"]
+            old_process = self.state.process
+            self.assertIsNotNone(old_process)
+            self.state._terminate_owned(old_process)
+            self.assertIsNotNone(old_process.poll())
+            self.state.stop()
+            self.assertIn(self.state.runs[run_id].status, {"failed", "canceled"})
+
     def test_explicit_model_download_can_be_canceled(self) -> None:
-        source_dir = Path(self.temp.name) / "sources"
+        source_dir = (self.temp_root / "sources").resolve()
         source_dir.mkdir()
         (source_dir / "fixture.bin").write_bytes(os.urandom(64 * 1024 * 1024))
         self.state.model_source_dir = source_dir
@@ -170,7 +211,7 @@ class ConnectorTest(unittest.TestCase):
                 break
             time.sleep(0.005)
         self.assertEqual(body["download"]["status"], "canceled")
-        self.assertFalse((Path(self.temp.name) / "data" / "models" / "fixture.bin").exists())
+        self.assertFalse((self.temp_root / "data" / "models" / "fixture.bin").exists())
 
     def test_model_catalog_never_downloads_without_explicit_source(self) -> None:
         status, body = self.request("GET", "/v1/models")
