@@ -3,11 +3,14 @@ import {
   fromCanvasRecord,
   toCanvasRecord,
   emptyVivicState,
+  recoverCanvasRecord,
+  getCanvasRecovery,
 } from "../canvasRecord";
 import {
   fileToCanvasRecord,
   parseCanvasFile,
   toCanvasFile,
+  MAX_CANVAS_FILE_BYTES,
 } from "../canvasFile";
 import { createMemoryDB } from "../db";
 import { createCanvasStore } from "@/state/canvasStore";
@@ -89,6 +92,25 @@ describe("canvas record round-trip", () => {
 });
 
 describe("JSON export/import", () => {
+  it("restores every card from a canvas larger than the old 200-card import limit", () => {
+    const state = { ...emptyVivicState(), cards: Array.from({ length: 201 }, (_, i) => ({ record: todoCard(`card-${i}`) })) };
+    const original = toCanvasRecord("large", "Large canvas", 2, state);
+    const parsed = parseCanvasFile(JSON.stringify(toCanvasFile(original)));
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) {
+      const restored = fileToCanvasRecord(parsed.file, "restored");
+      expect(restored.cardOrder).toEqual(original.cardOrder);
+      expect(restored.cardsById).toEqual(original.cardsById);
+    }
+  });
+
+  it("rejects oversized UTF-8 input before parsing JSON", () => {
+    const oversized = "画".repeat(Math.floor(MAX_CANVAS_FILE_BYTES / 3) + 1);
+    expect(oversized.length).toBeLessThan(MAX_CANVAS_FILE_BYTES);
+    expect(parseCanvasFile(oversized)).toEqual({ ok: false, error: "画布文件过大，最多支持 20 MiB 的 JSON 文件" });
+    expect(parseCanvasFile("x".repeat(MAX_CANVAS_FILE_BYTES + 1))).toEqual({ ok: false, error: "画布文件过大，最多支持 20 MiB 的 JSON 文件" });
+  });
+
   it("export file validates and re-imports with the same cards", () => {
     const store = buildStoreWithCards();
     const record = toCanvasRecord("c1", "演示画布", 3, store.getState());
@@ -160,5 +182,69 @@ describe("memory db parity", () => {
     expect(await db.getMeta("lastCanvasId")).toBe("c1");
     await db.deleteCanvas("c1");
     expect(await db.getCanvas("c1")).toBeUndefined();
+  });
+});
+
+describe("persisted canvas recovery", () => {
+  it("migrates unversioned records and isolates invalid cards without losing valid neighbors", async () => {
+    const good = todoCard("good");
+    const bad = { ...todoCard("bad"), displayProps: { items: "corrupt" } };
+    const unknown = { id: "future", type: "FutureCard", secretFreePayload: [1, 2, 3] };
+    const raw = { ...toCanvasRecord("saved", "Original", 8, emptyVivicState()), schemaVersion: 99,
+      futureCanvasField: { custom: true }, cardsById: { good, bad, future: unknown }, cardOrder: ["bad", "future", "good"] };
+    const db = createMemoryDB([raw]);
+    const recovered = (await db.getAllCanvases())[0]!;
+    expect(recovered.cardOrder).toEqual(["good"]);
+    expect(getCanvasRecovery(recovered)?.quarantinedCardCount).toBe(2);
+    expect(recovered.recovery?.rawRecord).toEqual(raw);
+    // A later autosave can only see valid live cards. The raw source survives it.
+    const live = fromCanvasRecord(recovered);
+    live.cards[0]!.record.layout.x = 100;
+    await db.putCanvas(toCanvasRecord("saved", "Edited", 9, live));
+    const saved = (await db.getCanvas("saved"))!;
+    expect(saved.recovery?.rawRecord).toEqual(raw);
+    expect(saved.recovery?.quarantinedCards).toEqual({ bad, future: unknown });
+    expect(saved.cardsById.good?.layout.x).toBe(100);
+    // Export/restore includes both the current valid state and preserved raw data.
+    const parsed = parseCanvasFile(JSON.stringify(toCanvasFile(saved)));
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) expect(fileToCanvasRecord(parsed.file, "restored").recovery).toEqual(saved.recovery);
+  });
+
+  it("recovers known card fields while keeping unsupported nested and canvas fields in the original", () => {
+    const card = { ...todoCard("known"), newMetadata: true,
+      displayProps: { ...todoCard("known").displayProps, futureDisplayField: { nested: true } } };
+    const raw = { ...toCanvasRecord("saved", "T", 0, emptyVivicState()), cardsById: { known: card }, cardOrder: [], newCanvasField: 7 };
+    const recovered = recoverCanvasRecord(raw)!;
+    expect(recovered.cardOrder).toEqual(["known"]);
+    expect(recovered.cardsById.known).toEqual(todoCard("known"));
+    expect(recovered.recovery?.rawRecord).toEqual(raw);
+    expect(recovered.recovery?.quarantinedCards).toEqual({});
+  });
+
+  it("falls back only damaged envelope fields and retains the raw source", () => {
+    const raw = { id: "damaged", title: null, version: -1, updatedAt: false, viewport: {}, focusHistory: null,
+      cardsById: { good: todoCard("good") }, cardOrder: ["good", "good"] };
+    const record = recoverCanvasRecord(raw)!;
+    expect(record.cardOrder).toEqual(["good"]);
+    expect(record.title).toBe("已恢复的画布");
+    expect(record.viewport).toEqual({ x: 0, y: 0, zoom: 1 });
+    expect(record.recovery?.rawRecord).toEqual(raw);
+    expect(record.recovery?.issues.some(issue => issue.path === "title")).toBe(true);
+  });
+
+  it("preserves multiple package versions and clears them with an explicit app reset", async () => {
+    const db = createMemoryDB();
+    await db.saveCardDefinition({ key: "test@1#a", definition: { test: true }, enabled: true });
+    await db.saveCardDefinition({ key: "test@2#b", definition: { test: false }, enabled: false });
+    const loaded = await db.loadCardDefinitions();
+    expect(loaded).toHaveLength(2);
+    loaded[0]!.enabled = false;
+    expect((await db.loadCardDefinitions())[0]!.enabled).toBe(true);
+    await db.deleteCardDefinition("test@1#a");
+    expect(await db.loadCardDefinitions()).toHaveLength(1);
+    await db.reset(toCanvasRecord("fresh", "Fresh", 0, emptyVivicState()));
+    expect(await db.loadCardDefinitions()).toEqual([]);
+    expect((await db.getAllCanvases()).map(row => row.id)).toEqual(["fresh"]);
   });
 });

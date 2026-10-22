@@ -10,7 +10,7 @@
 - 2026-10-20 已按会议核对分工：程佳锐做核心/卡片接入和集成，xlz 做旅游卡片/MCP 独立试跑及 UI 原型，马泽瑜做决策模型和本地启动器。以 [当前工单](docs/team/README.md) 为准，不按旧“前端/后端”猜测让马泽瑜改飞猪适配。AI 开发与提交 PR 的执行边界见 [WORKFLOW](docs/team/WORKFLOW.md)。
 - 新卡片任务先按 [卡片开发契约](docs/CARD_DEVELOPMENT.md) 固定模型数据、Schema、事实来源、渲染与编辑接口；配套 [开发 Skill](.agents/skills/vivic-card-development/SKILL.md)。首个系列为 [飞猪旅游系列卡片](docs/tasks/fliggy-travel-cards.md)。不把开发 Skill 当运行时插件，不因外部 MCP 数据接入而跳过校验。
 
-- 这是 Web 信息画布，Control/Display 双视图；Display 保持极简。2026-10-16 用户反馈更新：纯计时器只有数字；带事项的提醒显示事项与时间，未固定提醒合并呈现，到时后退出画布、记录留在 Control。2026-10-17 起 Control 分为用户页 `/`（只有设置按钮、头像、对话和文字/语音输入）与设置页 `/control`，二者是同一个 owner 窗口，见 [用户页](docs/user-page-20261017.md)。
+- 这是 Web 信息画布，Control/Display 双视图；Display 保持极简。2026-10-16 用户反馈更新：纯计时器只有数字；带事项的提醒显示事项与时间，未固定提醒合并呈现，到时后退出画布、记录留在 Control。2026-10-17 起 Control 分为用户页 `/` 与设置页 `/control`，二者是同一个 owner 窗口；2026-10-22 用户要求两个标签页间有可见传送门，以及聚焦、显示全部等界面操作，用户页顶部和展示页底部提供这些入口，见 [用户页](docs/user-page-20261017.md)。
 - 保留已批准的 SmoothUI Orb、Assistant UI styled registry、React Flow、Motion、Radix/shadcn、Lucide、Recharts；不要自行重画替代。背景按用户 2026-10-17 提供的 HTML 改为「流光以太」（`components/atmosphere/`），三页共用；用户只能换 6 深 + 6 浅配色，不开放动画形式选择。
 - 当前 LLM 接 StepFun Coding Plan、GPT/Pi OAuth；用户已提出通用自带服务与预设连接方向，后续按路线中的具体任务扩展。语音独立；Pi 只迁移认证/模型，不启用 coding tools、session、扩展或 skills，不开发新 OAuth 协议。
 - 决策模型纳入本地版正式接入目标，支持 API 或本地运行；产品默认优先引导配置并使用，用户明确关闭时允许直接走 LLM。服务不可用或判断不确定时要有明确降级，不静默改成永久关闭。现有 Kev 默认关闭是旧实现状态，不代表新目标已完成。JevHarness 先做适配评估，见 [候选记录](docs/research/jev-harness-assessment.md)；当前仓库整理与 GitHub 教学流程不变。

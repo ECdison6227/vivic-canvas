@@ -158,6 +158,7 @@ const placeCards = (cards: CardState[], preserved: ReadonlySet<string> = new Set
       if (!collision) { cursor++; break; }
     }
     occupied.push({ ...entry.record.layout, x, y, height });
+    if (entry.record.layout.x === x && entry.record.layout.y === y && entry.record.layout.height === height) return entry;
     return {
       ...entry,
       record: {
@@ -177,10 +178,13 @@ export const relayout = (cards: CardState[], preserved: ReadonlySet<string> = ne
   for (const group of view) if (group.memberIds.some(id => preserved.has(id))) fixed.add(group.entry.record.id);
   const placed = placeCards(view.map(item => item.entry), fixed);
   const layouts = new Map(view.flatMap((group, index) => group.memberIds.map(id => [id, placed[index]!.record.layout] as const)));
-  return cards.map(entry => {
+  const next = cards.map(entry => {
     const layout = layouts.get(entry.record.id);
-    return layout ? { ...entry, record: { ...entry.record, layout } } : entry;
+    if (!layout || Object.keys(layout).length === Object.keys(entry.record.layout).length
+      && Object.entries(layout).every(([key, value]) => Object.is(Reflect.get(entry.record.layout, key), value))) return entry;
+    return { ...entry, record: { ...entry.record, layout } };
   });
+  return next.every((entry, index) => entry === cards[index]) ? cards : next;
 };
 
 const withProcessed = (state: VivicState, requestId: string): VivicState => ({

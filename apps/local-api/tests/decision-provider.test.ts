@@ -188,6 +188,9 @@ describe("DEC-01 router and manager lifecycle", () => {
     const manager = new DecisionManager("/nonexistent/vivic-test-model", provider, { timeoutMs: 10 }), pending = manager.score("展开便笺");
     await vi.advanceTimersByTimeAsync(11); expect(await pending).toBeNull();
     expect(manager.status()).toMatchObject({ lastState: "timeout", phase: "error", error: "决策服务暂不可用，本次使用原有指令流程。" });
+    expect(await manager.score("展开便笺")).toBeNull();
+    expect(provider.decide).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(30_000);
     expect(await manager.score("展开便笺")).toEqual(vector());
     expect(manager.status()).toMatchObject({ lastState: "accepted", phase: "ready", error: null }); manager.stop();
   });

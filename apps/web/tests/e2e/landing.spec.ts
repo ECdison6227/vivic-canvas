@@ -56,18 +56,19 @@ test("landing: demos render the product's own scene cards and never call the API
   page.on("pageerror", error => errors.push(error.message));
   await page.goto("/landing/");
 
-  // The ring holds every scene card type (20) plus the classic cards.
+  // The ring holds all 21 built-in scenes plus the classic cards.
   const ring = page.locator(".lp-ring");
   await ring.scrollIntoViewIfNeeded();
-  await expect(ring.locator(".lp-ring-item")).toHaveCount(24);
+  await expect(ring.locator(".lp-ring-item")).toHaveCount(25);
   const types = await ring.locator(".lp-card-frame").evaluateAll(nodes => [...new Set(nodes.map(node => node.getAttribute("data-card-type")))].sort());
   expect(types).toEqual([
     "ActivityFeedCard", "BookCard", "ChartCard", "ComparisonCard", "CountdownCard", "GalleryCard", "HabitHeatmapCard", "LinkPreviewCard",
     "MonthCalendarCard", "NewsCard", "NotificationCard", "PaperCard", "PhotoCoverCard", "ProgressRingCard", "QuoteCard", "RoadmapCard",
-    "SearchResultCard", "StoryCarouselCard", "TableCard", "TimelineCard", "TodoCard", "WeatherCard", "WeeklyScheduleCard",
+    "SearchResultCard", "StoryCarouselCard", "TableCard", "TimelineCard", "TodoCard", "TravelOffersCard", "WeatherCard", "WeeklyScheduleCard",
   ]);
   // Rendered by the real components, not pictures of them.
-  await expect(ring.locator("[data-scene-card]")).toHaveCount(18);
+  await expect(ring.locator("[data-scene-card]")).toHaveCount(19);
+  await expect(ring.locator('[data-scene-card="TravelOffersCard"]')).toContainText("DEMO");
   await expect(ring.locator("[data-vivic-todo-card]")).toHaveCount(1);
   await expect(ring.locator(".lp-ring-bubble").first()).not.toBeEmpty();
 

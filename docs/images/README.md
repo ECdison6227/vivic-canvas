@@ -27,3 +27,7 @@
 - [海边](https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=1000&q=75)
 
 交流群二维码可能更新；最新二维码以官网「联系我们」为准。
+
+## 2026-10-22 本地功能截图
+
+`card-portal-20261022.jpg` 来自 `apps/web/tests/e2e/card-portal.spec.ts` 的独立 Chromium 测试上下文，展示深色卡片传送门、搜索、聚焦和双向传送入口。画布内容为测试合成的“拖入传送门”待办，不含用户画布、账号或凭据。原始 PNG 保存在本机忽略目录 `evidence/card-portal-20261022/`，提交图片仅缩放至 1440px 并压缩为 JPEG，没有改变界面内容。

@@ -16,7 +16,9 @@ test("TEST data cards: all seven registry types, real charts, row highlight, and
   display.on("pageerror", error => errors.push(error.message));
   await display.goto(`/display?canvasId=${encodeURIComponent(canvasId)}`);
   const cards = [
-    ...Object.values(testCards),
+    // The missing-definition fixture belongs to the import-host tests. These
+    // seven classic cards must remain creatable without installing a package.
+    ...Object.values(testCards).filter(card => card.type !== "ExtensionCard"),
     ...(["bar", "pie"] as const).map(chartKind => ({
       ...testCards.ChartCard,
       id: `TEST-chart-${chartKind}`,

@@ -5,6 +5,9 @@ import { activeCanvasId, controlDispatch, sendCommand, showSettings, todoCardRec
 test.use({ video: { mode: "on", size: { width: 1440, height: 900 } } });
 
 test("explicit reset clears only isolated app data, cancels pending work, and refreshes all windows", async ({ page, context }, testInfo) => {
+  // Three recorded windows, an owner takeover and two full reloads need a
+  // larger total budget than a single UI transition on headless Windows.
+  test.setTimeout(180_000);
   const evidence = path.resolve(process.cwd(), "../../evidence/next-iteration-local-data", testInfo.project.name || "chromium");
   await context.addInitScript(() => {
     HTMLMediaElement.prototype.play = async () => { throw new Error("TEST audio disabled"); };

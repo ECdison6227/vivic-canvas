@@ -3,9 +3,10 @@ import { ReminderListView } from "@/cards/ReminderListView";
 import { TargetBadge } from "@/cards/TargetBadge";
 import { SubcardAnchor } from "@/cards/SubcardAnchor";
 import { SubcardThemeContext } from "@/cards/SubcardEditorContext";
-import { cardTitle, type CountdownCard } from "@/contracts";
+import { cardTitle } from "@/contracts";
+import { createNodeDataMemo, type VivicNodeData } from "./nodeData";
 import { GripHorizontal } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { fixedContentHeight } from "@/cards/sizing";
 import { carriesCard, readCardDrag, startCardDrag } from "@/cards/surfaceDrag";
 import {
@@ -24,22 +25,13 @@ import {
   useDisplayPreferences,
   type CardState,
   type FocusState,
-  type HighlightState,
 } from "@/state/canvasStore";
 import { beginCanvasDrag, commitCanvasDrag, getDisplayStatus, requestCardToCanvas } from "@/sync/browserRuntime";
 import type { CanvasDrag } from "@/sync/displayClient";
 import { resolveTheme } from "@/motion/motionDirector";
+import { DisplayCardActions, DisplayControls, DisplayInteractionProvider } from "./DisplayControls";
 
 const EXIT_ANIMATION_MS = 260;
-
-interface VivicNodeData extends Record<string, unknown> {
-  entry: CardState;
-  reminders?: CountdownCard[];
-  focusedId?: string;
-  focused: boolean;
-  dimmed: boolean;
-  highlight: HighlightState | null;
-}
 
 /** Drag a card off the stage onto the user page (another window). */
 const MoveToUserHandle = ({ entry }: { entry: CardState }) => <span
@@ -60,7 +52,7 @@ const MoveToUserHandle = ({ entry }: { entry: CardState }) => <span
   }}
 ><GripHorizontal size={14} aria-hidden /></span>;
 
-const VivicNode = ({ data }: NodeProps<Node<VivicNodeData>>) => {
+export const VivicNode = memo(({ data }: NodeProps<Node<VivicNodeData>>) => {
   const { entry, focused, dimmed, highlight } = data;
   return (
     <div
@@ -76,11 +68,12 @@ const VivicNode = ({ data }: NodeProps<Node<VivicNodeData>>) => {
       {data.reminders ? <ReminderListView cards={data.reminders} focusedId={data.focusedId} highlightedId={highlight?.cardId} />
         : <VivicCard record={entry.record} highlight={highlight} height={fixedContentHeight(entry.record)} />}
       {!data.reminders && !entry.exitingRequestId && <MoveToUserHandle entry={entry} />}
+      {!data.reminders && !entry.exitingRequestId && <DisplayCardActions cardId={entry.record.id} title={cardTitle(entry.record)} focused={focused} />}
       {!data.reminders && (entry.record.type !== "CountdownCard" || !entry.record.sourceData.reminderText) && <TargetBadge cardId={entry.record.id} />}
       {!data.reminders && (entry.record.type !== "CountdownCard" || !entry.record.sourceData.reminderText) && <div className="vivic-card-expansion"><SubcardAnchor card={entry.record} /></div>}
     </div>
   );
-};
+}, (previous, next) => previous.data === next.data);
 
 const nodeTypes = { vivic: VivicNode };
 
@@ -115,33 +108,38 @@ const CanvasInner = ({ resolvedTheme }: { resolvedTheme?: "light" | "dark" }) =>
   const [dragOverrides, setDragOverrides] = useState<Record<string, { x: number; y: number }>>({});
   const [measurements, setMeasurements] = useState<Record<string, { width: number; height: number }>>({});
   const lastFocusRef = useRef<FocusState | null>(null);
+  const focusViewportRef = useRef<FocusState["prevViewport"] | null>(null);
   const lastFitRef = useRef<string | null>(null);
+  const nodeData = useMemo(() => createNodeDataMemo(), []);
 
-  const nodes = useMemo<Array<Node<VivicNodeData>>>(
+  // Presentation data changes only with canvas content/focus. Pointer movement
+  // updates positions separately, so charts and maps retain their data identity.
+  const contentNodes = useMemo<Array<Node<VivicNodeData>>>(
     () =>
       presentCards(cards, { focusId: focus?.cardId }).map(({ entry, reminders, memberIds }) => {
-        const override = dragOverrides[entry.record.id];
         return {
           id: entry.record.id,
           type: "vivic",
-          position: override ?? {
+          position: {
             x: entry.record.layout.x,
             y: entry.record.layout.y,
           },
           width: entry.record.layout.width,
-          measured: measurements[entry.record.id],
           draggable: !entry.record.layout.pinned && !entry.exitingRequestId,
           selectable: false,
-          data: {
-            entry, reminders, focusedId: focus?.cardId,
+          data: nodeData({
+            entry, reminders, focusedId: reminders ? focus?.cardId : undefined,
             focused: Boolean(focus && memberIds.includes(focus.cardId)),
             dimmed: Boolean(focus && !memberIds.includes(focus.cardId)),
             highlight: highlight && memberIds.includes(highlight.cardId) ? highlight : null,
-          },
+          }),
         };
       }),
-    [cards, focus, highlight, dragOverrides, measurements],
+    [cards, focus, highlight, nodeData],
   );
+  const nodes = useMemo(() => contentNodes.map(node => ({ ...node,
+    position: dragOverrides[node.id] ?? node.position, measured: measurements[node.id],
+  })), [contentNodes, dragOverrides, measurements]);
 
   // A manual drag wins until the store picks up the committed position.
   useEffect(() => {
@@ -237,6 +235,9 @@ const CanvasInner = ({ resolvedTheme }: { resolvedTheme?: "light" | "dark" }) =>
   // Never touches card content or variant.
   useEffect(() => {
     if (focus) {
+      // Each Display owns its camera. Restore the view from this window,
+      // rather than the owner's potentially different persisted viewport.
+      if (!lastFocusRef.current) focusViewportRef.current = rf.getViewport?.() ?? focus.prevViewport;
       const entry = presentCards(canvasStore.getState().cards, { focusId: focus.cardId }).find(group => group.memberIds.includes(focus.cardId))?.entry;
       if (entry) {
         const { x, y, width, height } = entry.record.layout;
@@ -250,10 +251,12 @@ const CanvasInner = ({ resolvedTheme }: { resolvedTheme?: "light" | "dark" }) =>
         });
       }
     } else if (lastFocusRef.current) {
-      void rf.setViewport(lastFocusRef.current.prevViewport, { duration: reducedMotion ? 0 : 420 });
+      // A simultaneous "show all" owns the next camera movement.
+      if (fitRequestId === lastFitRef.current) void rf.setViewport(focusViewportRef.current ?? lastFocusRef.current.prevViewport, { duration: reducedMotion ? 0 : 420 });
+      focusViewportRef.current = null;
     }
     lastFocusRef.current = focus;
-  }, [focus, rf, reducedMotion]);
+  }, [focus, fitRequestId, rf, reducedMotion]);
 
   useEffect(() => {
     if (!fitRequestId || fitRequestId === lastFitRef.current) return;
@@ -292,7 +295,7 @@ const CanvasInner = ({ resolvedTheme }: { resolvedTheme?: "light" | "dark" }) =>
   };
 
   return (
-    <SubcardThemeContext.Provider value={resolvedTheme ?? resolveTheme(preferences.theme, themeAt, preferences)}><div ref={wrapperRef} className="absolute inset-0 z-10" data-vivic-canvas {...dropProps}>
+    <DisplayInteractionProvider><SubcardThemeContext.Provider value={resolvedTheme ?? resolveTheme(preferences.theme, themeAt, preferences)}><div ref={wrapperRef} className="absolute inset-0 z-10" data-vivic-canvas {...dropProps}>
       {receiving && <div className="vivic-drop-overlay" data-vivic-drop-overlay="display">松开，把卡片放回副屏</div>}
       <ReactFlow
         nodes={nodes}
@@ -319,11 +322,13 @@ const CanvasInner = ({ resolvedTheme }: { resolvedTheme?: "light" | "dark" }) =>
         deleteKeyCode={null}
         minZoom={0.05}
         maxZoom={1.8}
+        autoPanOnNodeFocus={false}
         colorMode={resolvedTheme ?? resolveTheme(preferences.theme, themeAt, preferences)}
         fitView
         fitViewOptions={{ padding: 0.25, minZoom: 0.05, maxZoom: 1 }}
       />
-    </div></SubcardThemeContext.Provider>
+      <DisplayControls theme={resolvedTheme ?? resolveTheme(preferences.theme, themeAt, preferences)} />
+    </div></SubcardThemeContext.Provider></DisplayInteractionProvider>
   );
 };
 

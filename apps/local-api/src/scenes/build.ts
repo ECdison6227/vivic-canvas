@@ -44,6 +44,7 @@ function groundingIssue(scene: ParsedScene, context: SceneBuildContext): SceneIs
     : { issue: `${scene.scene}.${field} 时间不在用户的话里，不能推测；没有时间就省略` };
   const first = (...checks: Array<SceneIssue | null>) => checks.find(Boolean) ?? null;
   switch (scene.scene) {
+    case "travel_offers": return { issue: "旅游卡必须由服务适配器构建，禁止模型直接创建结果" };
     case "countdown": return first(day(scene.data.targetDate, "targetDate"), clock(scene.data.targetTime, "targetTime"));
     case "academic_paper": {
       const d = scene.data;
@@ -106,6 +107,7 @@ function groundingIssue(scene: ParsedScene, context: SceneBuildContext): SceneIs
 
 const sceneTitle = (scene: ParsedScene): string => {
   switch (scene.scene) {
+    case "travel_offers": return `${scene.data.destination}旅游结果`;
     case "news_summary": return scene.data.headline;
     case "quote_note": return scene.data.text;
     case "habit_tracking": return scene.data.habit;
@@ -125,6 +127,7 @@ function displayFor(scene: ParsedScene, context: SceneBuildContext): { type: Car
   const today = parseIso(context.corpus.today)!;
   const base = { scene: scene.scene, provenance: context.page ? "fetched-page" : "user-text" };
   switch (scene.scene) {
+    case "travel_offers": return { issue: "旅游结果必须经服务适配器构建" };
     case "countdown": {
       const d = scene.data;
       let targetAt: string;

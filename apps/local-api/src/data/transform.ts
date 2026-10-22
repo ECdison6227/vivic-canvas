@@ -76,6 +76,9 @@ export function transformDataIntent(text: string, ctx: CanvasContext): Result | 
   if (!selected || ctx.cards.filter(card => card.id === selected!.id).length !== 1) {
     return clarify("没有唯一明确的数据卡目标，请先聚焦一张表格或图表，或指定第几张；本次没有生成卡片。");
   }
+  if ((selected as Card & { contextSummary?: { truncatedFields: string[] } }).contextSummary?.truncatedFields.some(key => ["rows", "columns", "points"].includes(key))) {
+    return clarify("当前数据仅有摘要，无法可靠转换完整数据；请从原卡片操作或缩小数据后重试。");
+  }
   let points: Array<{ x: string | number; y: number }>;
   let axes: { xLabel?: string; yLabel?: string };
   if (selected.type === "TableCard") {

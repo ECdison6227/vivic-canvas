@@ -57,6 +57,13 @@ export interface DisplayRuntime {
 let displayStarted: Promise<DisplayRuntime> | null = null;
 let displayRuntime: DisplayRuntime | null = null;
 export const getDisplayStatus = () => displayRuntime?.getStatus() ?? null;
+const displayStatusListeners = new Set<() => void>();
+const emitDisplayStatus = () => displayStatusListeners.forEach(listener => listener());
+/** Includes runtime assignment/replacement, so subscribing before startup is safe. */
+export const subscribeDisplayStatus = (listener: () => void): (() => void) => {
+  displayStatusListeners.add(listener);
+  return () => { displayStatusListeners.delete(listener); };
+};
 let displayCanvasKey: string | null = null;
 let displayGeneration = 0;
 
@@ -68,6 +75,15 @@ export const commitCanvasDrag = (drag: CanvasDrag, x: number, y: number): boolea
 /** Display side of a user-page → Display drop. */
 export const requestCardToCanvas = (canvasId: string, cardId: string, x: number, y: number): boolean =>
   displayRuntime?.client.requestCardToCanvas(canvasId, cardId, x, y) ?? false;
+/** Cross-tab portals and view controls are requests to the owner, never local writes. */
+export const requestCardSurface = (cardId: string, surface: "user" | "display"): boolean =>
+  displayRuntime?.client.requestCardSurface(cardId, surface) ?? false;
+export const requestCardFocus = (cardId: string): boolean =>
+  displayRuntime?.client.requestCardFocus(cardId) ?? false;
+export const requestCanvasFit = (): boolean =>
+  displayRuntime?.client.requestCanvasFit() ?? false;
+export const requestFocusRestore = (): boolean =>
+  displayRuntime?.client.requestFocusRestore() ?? false;
 
 /** Display page singleton (read-only reader, pinned via ?canvasId=). */
 export const getDisplayRuntime = (
@@ -79,6 +95,7 @@ export const getDisplayRuntime = (
     displayRuntime = null;
     displayCanvasKey = key;
     const generation = ++displayGeneration;
+    emitDisplayStatus();
     displayStarted = (async () => {
       let db: VivicDB | undefined;
       try {
@@ -88,16 +105,20 @@ export const getDisplayRuntime = (
       }
       const channel = createBroadcastSyncChannel();
       const client = createDisplayClient({ channel, db, pinnedCanvasId });
+      const unsubscribeStatus = client.subscribeStatus(() => {
+        if (generation === displayGeneration) emitDisplayStatus();
+      });
       await client.start();
       const runtime: DisplayRuntime = { client, getStatus: () => client.getStatus(),
         stop: () => {
-          client.stop(); channel.close(); db?.close();
+          client.stop(); unsubscribeStatus(); channel.close(); db?.close();
           if (displayRuntime === runtime) {
             displayRuntime = null; displayStarted = null; displayCanvasKey = null;
+            emitDisplayStatus();
           }
         },
       };
-      if (generation === displayGeneration) displayRuntime = runtime;
+      if (generation === displayGeneration) { displayRuntime = runtime; emitDisplayStatus(); }
       else runtime.stop();
       return runtime;
     })();

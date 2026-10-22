@@ -187,6 +187,37 @@ describe("owner-confirmed canvas interactions", () => {
 });
 
 describe("display loss and recovery", () => {
+  it("notifies status subscribers when owner messages, resync and the existing expiry timer disable controls", async () => {
+    vi.useFakeTimers();
+    const hub = createMemoryHub(), owner = hub.createChannel();
+    const store = createCanvasStore(), client = createDisplayClient({ store, channel: hub.createChannel(), pinnedCanvasId: "c" });
+    cleanup.push(client.stop);
+    const statuses: boolean[] = [];
+    const unsubscribe = client.subscribeStatus(() => statuses.push(client.getStatus().canInteract));
+    await client.start();
+    expect(vi.getTimerCount()).toBe(1); // the original retry timer; subscribers add no polling
+    const snapshot: SyncMessage = { type: "snapshot", canvasId: "c", epoch: "owner", seq: 1, version: 1,
+      requestId: "status-snapshot", payload: { title: "c", version: 1, vivicState: { ...store.toJSON(), cards: [{ record: card("a") }] } } };
+    owner.post(snapshot); await vi.advanceTimersByTimeAsync(0);
+    expect(statuses.at(-1)).toBe(true);
+    owner.post({ type: "patch", canvasId: "c", epoch: "owner", seq: 3, version: 2, requestId: "gap",
+      payload: { envelope: { schemaVersion: "0.6", canvasId: "c", requestId: "gap", actions: [{ type: "canvas.fit" }] } } });
+    await vi.advanceTimersByTimeAsync(0); expect(statuses.at(-1)).toBe(false);
+    owner.post({ ...snapshot, requestId: "resync" }); await vi.advanceTimersByTimeAsync(0);
+    expect(statuses.at(-1)).toBe(true);
+    owner.post({ type: "owner", canvasId: "c", epoch: "owner", seq: 0, version: 1, requestId: "off",
+      payload: { status: "off", ownerId: "owner" } });
+    await vi.advanceTimersByTimeAsync(0); expect(statuses.at(-1)).toBe(false);
+    owner.post({ ...snapshot, requestId: "reconnect" }); await vi.advanceTimersByTimeAsync(0);
+    expect(statuses.at(-1)).toBe(true);
+    await vi.advanceTimersByTimeAsync(3600); expect(statuses.at(-1)).toBe(false);
+    owner.post({ ...snapshot, requestId: "alive-again" }); await vi.advanceTimersByTimeAsync(0);
+    expect(statuses.at(-1)).toBe(true);
+    client.stop(); expect(statuses.at(-1)).toBe(false); expect(vi.getTimerCount()).toBe(0);
+    const count = statuses.length; unsubscribe(); owner.post(snapshot); await vi.advanceTimersByTimeAsync(0);
+    expect(statuses).toHaveLength(count); owner.close();
+  });
+
   it("disables interactions when the owner goes silent and retries until a snapshot is available", async () => {
     vi.useFakeTimers();
     const hub = createMemoryHub(), owner = hub.createChannel(), store = createCanvasStore();
@@ -205,6 +236,10 @@ describe("display loss and recovery", () => {
     await vi.advanceTimersByTimeAsync(4000);
     expect(client.getStatus().ownerAlive).toBe(false);
     expect(client.requestCardMove(drag, 1, 2)).toBe(false);
+    expect(client.requestCardSurface("a", "user")).toBe(false);
+    expect(client.requestCardFocus("a")).toBe(false);
+    expect(client.requestCanvasFit()).toBe(false);
+    expect(client.requestFocusRestore()).toBe(false);
     owner.post({ ...snapshot, epoch: "second", requestId: "reconnect" });
     await vi.advanceTimersByTimeAsync(0);
     expect(client.getStatus().canInteract).toBe(true);

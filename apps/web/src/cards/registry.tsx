@@ -1,4 +1,4 @@
-import type { ComponentType } from "react";
+import { lazy, type ComponentType } from "react";
 import { isDateCountdown, type CardRecord, type CardType } from "@/contracts";
 import { CountdownCardView } from "./CountdownCardView";
 import { ReminderListView } from "./ReminderListView";
@@ -6,7 +6,6 @@ import { TodoCardView } from "./TodoCardView";
 import { SearchResultCardView } from "./SearchResultCardView";
 import { WeatherCardView } from "./WeatherCardView";
 import { TableCardView } from "./TableCardView";
-import { ChartCardView } from "./ChartCardView";
 import { NoteCardView } from "./NoteCardView";
 import type { CardViewProps } from "./scene/types";
 import { CountdownDateView } from "./scene/views/CountdownDateView";
@@ -28,6 +27,10 @@ import { LinkPreviewCardView } from "./scene/views/LinkPreviewCardView";
 import { PhotoCoverCardView } from "./scene/views/PhotoCoverCardView";
 import { NotificationCardView } from "./scene/views/NotificationCardView";
 
+const ChartCardView = lazy(() => import("./ChartCardView").then(module => ({ default: module.ChartCardView })));
+const TravelOffersCardView = lazy(() => import("./scene/views/TravelOffersCardView").then(module => ({ default: module.TravelOffersCardView })));
+const ExtensionCardView = lazy(() => import("@/extensions/ExtensionCardView").then(module => ({ default: module.ExtensionCardView })));
+
 const itemHighlight = (card: CardRecord, props: CardViewProps) => props.highlight?.cardId === card.id ? props.highlight.itemId : undefined;
 
 /**
@@ -37,6 +40,8 @@ const itemHighlight = (card: CardRecord, props: CardViewProps) => props.highligh
  * rejected at the contract boundary — and a render error is contained per card.
  */
 export const CARD_VIEWS: { [K in CardType]: ComponentType<CardViewProps<K>> } = {
+  TravelOffersCard: TravelOffersCardView,
+  ExtensionCard: ExtensionCardView,
   CountdownCard: props => isDateCountdown(props.card) ? <CountdownDateView {...props} />
     : props.card.sourceData.reminderText ? <ReminderListView cards={[props.card]} highlightedId={props.highlight?.cardId} />
     : <CountdownCardView card={props.card} />,

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type DragEvent, type RefObject } from "react";
-import { GripHorizontal, MonitorUp, Trash2 } from "lucide-react";
+import { ArrowLeftRight, GripHorizontal, Trash2 } from "lucide-react";
 import { cardTitle, onUserSurface, type CardRecord } from "@/contracts";
 import { canvasStore, useVivicState } from "@/state/canvasStore";
 import { VivicCard } from "@/cards/VivicCard";
@@ -115,6 +115,11 @@ export function UserCardLayer({ host, theme, layerRef, receiving, notice, onNoti
       if (ok) onNotice("已删除，可输入「撤销」恢复。");
       return ok;
     },
+    refresh: async cardId => {
+      const result = await host.refreshTravelCard(cardId);
+      onNotice(result.ok ? "已刷新旅游结果。" : result.error);
+      return result.ok;
+    },
     addPhotos: async files => {
       const { images, errors } = await storePhotos(files, MAX_PHOTOS);
       onNotice(errors[0] ?? (images.length ? `已在本机保存 ${images.length} 张照片` : null));
@@ -151,7 +156,7 @@ export function UserCardLayer({ host, theme, layerRef, receiving, notice, onNoti
                 }}><GripHorizontal size={14} aria-hidden /></span>
               <div className="vivic-user-card-tools">
                 <button type="button" className="vivic-scene-icon-button" disabled={!editable} onClick={() => sendToDisplay(card)}
-                  aria-label={`把「${cardTitle(card).slice(0, 40)}」放回副屏`} title="放回副屏" data-vivic-send-display={card.id}><MonitorUp size={15} /></button>
+                  aria-label={`把「${cardTitle(card).slice(0, 40)}」放回副屏`} title="传送到展示页" data-vivic-send-display={card.id}><ArrowLeftRight size={15} /><span className="text-xs">传送到展示页</span></button>
                 <button type="button" className="vivic-scene-icon-button" disabled={!editable} onClick={() => actions.remove?.(card.id)}
                   aria-label={`删除「${cardTitle(card).slice(0, 40)}」（可撤销）`} title="删除（可撤销）"><Trash2 size={15} /></button>
               </div>

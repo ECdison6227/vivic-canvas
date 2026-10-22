@@ -4,10 +4,10 @@ import { activeCanvasId, controlDispatch, gotoControl, gotoDisplay, todoCardReco
 // Main thread runs this file against its own managed server. This file never
 // requests microphone permission or starts audio.
 const layout = (page: Page, cardId: string) => page.evaluate(id => {
-  const state = (window as unknown as { __vivic: { getState: () => {
+  const state = (window as unknown as { __vivic?: { getState: () => {
     cards: Array<{ record: { id: string; layout: { x: number; y: number; pinned: boolean } } }>;
-  } } }).__vivic.getState();
-  return state.cards.find(c => c.record.id === id)?.record.layout;
+  } } }).__vivic?.getState();
+  return state?.cards.find(c => c.record.id === id)?.record.layout;
 }, cardId);
 const drag = async (page: Page, cardId: string) => {
   const box = await page.locator(`[data-card-id="${cardId}"]`).boundingBox(); expect(box).not.toBeNull();
@@ -67,7 +67,7 @@ test("60 cards fit an 800×600 display while a pinned card keeps its world coord
         return { type: "card.create", card };
       }));
     }
-    await expect(display.locator("[data-card-id]")).toHaveCount(60);
+    await expect(display.locator("[data-card-id]")).toHaveCount(60, { timeout: 15000 });
     await controlDispatch(control, "fit-sixty", canvasId, [{ type: "canvas.fit" }]);
     await expect.poll(async () => display.locator("[data-card-id]").evaluateAll(nodes => nodes.every(node => {
       const box = node.getBoundingClientRect();

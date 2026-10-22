@@ -37,11 +37,16 @@ export const CanvasInteractionSchema = z.discriminatedUnion("kind", [
     .refine(value => (value.x === undefined) === (value.y === undefined), "x 与 y 需同时提供"),
 ]);
 export type CanvasInteraction = z.infer<typeof CanvasInteractionSchema>;
-/** What a Display window may ask the owner for: drag on the canvas, or receive a card dropped from the user page. */
+/** Narrow Display requests: canvas drags, cross-tab portals, and view controls.
+ * The reader never receives pin, settings, or arbitrary ActionEnvelope authority. */
 export const DisplayInteractionSchema = z.union([
   CanvasInteractionSchema.options[0],
-  CanvasInteractionSchema.options[2].refine(value => value.surface === "display" && value.x !== undefined, "展示端只能把卡片放回画布的指定位置"),
+  CanvasInteractionSchema.options[2],
+  z.strictObject({ kind: z.literal("card.focus"), cardId: z.string().min(1).max(128), from: LayoutBaselineSchema }),
+  z.strictObject({ kind: z.literal("canvas.fit") }),
+  z.strictObject({ kind: z.literal("canvas.restore") }),
 ]);
+export type DisplayInteraction = z.infer<typeof DisplayInteractionSchema>;
 export const DisplayPreferencesSchema = z.strictObject({
   theme: z.enum(["auto", "light", "dark"]),
   reducedMotion: z.boolean(), subtitles: z.boolean(),
@@ -74,8 +79,7 @@ export const SyncMessageSchema = z.discriminatedUnion("type", [
   z.strictObject({
     ...msgBase, type: z.literal("interaction"),
     payload: z.strictObject({ ownerEpoch: z.string().min(1).max(64),
-      // Display may request a move or take back a card dropped from the user
-      // page. Pin/settings and sending cards away stay Control-only.
+      // Display submits only these explicit interactions to the elected owner.
       interaction: DisplayInteractionSchema }),
   }),
   z.strictObject({

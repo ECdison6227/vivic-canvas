@@ -18,9 +18,10 @@ test("the card catalog follows the selected model, disconnects and backend avail
   page.on("request", request => { if (new URL(request.url()).pathname === "/api/intent") intents++; });
   await page.goto("/control");
   const catalog = page.locator("[data-vivic-available-cards]");
-  await expect(catalog).toContainText("24 类已接入");
-  await expect(catalog.locator("[data-vivic-available-card]")).toHaveCount(24);
-  await expect(catalog.locator('[data-vivic-card-group="model"] [data-availability="ready"]')).toHaveCount(17);
+  await expect(catalog).toContainText("26 类已接入");
+  await expect(catalog.locator("[data-vivic-available-card]")).toHaveCount(26);
+  await expect(catalog.locator('[data-vivic-card-group="model"] [data-availability="ready"]')).toHaveCount(18);
+  await expect(catalog.locator('[data-vivic-available-card="TravelOffersCard"]')).toContainText("DEMO");
   await expect(catalog.locator('[data-vivic-available-card="WeatherCard"]')).toContainText("需联网");
   await expect(catalog.locator('[data-vivic-available-card="TableCard"]')).toContainText("需提供数据");
   await catalog.screenshot({ path: "../../evidence/settings/available-cards.png" });
@@ -37,7 +38,7 @@ test("the card catalog follows the selected model, disconnects and backend avail
   await expect(catalog.locator("[data-vivic-card-model-status]")).toContainText("TEST-gpt-cards");
   status = { ...status, providers: status.providers.map(provider => provider.name === "gpt" ? { ...provider, connected: false } : provider) };
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
-  await expect(catalog.locator('[data-vivic-card-group="model"] [data-availability="requires-model"]')).toHaveCount(17);
+  await expect(catalog.locator('[data-vivic-card-group="model"] [data-availability="requires-model"]')).toHaveCount(18);
   await expect(catalog.locator('[data-vivic-card-group="local"] [data-availability="ready"]')).toHaveCount(3);
   offline = true;
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));

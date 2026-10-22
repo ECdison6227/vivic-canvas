@@ -20,7 +20,10 @@ const setup = (handler: (init?: RequestInit) => Response | Promise<Response>) =>
   return { deps: { credentials, stepfun: { baseUrl: "https://unit.test/v1", fetchImpl: fetchStub({ "/chat/completions": call }) } }, call };
 };
 const created = (result: IntentResult) => (result.envelope?.actions ?? [])
-  .filter((a): a is Extract<Action, { type: "card.create" }> => a.type === "card.create").map((a) => a.card);
+  .filter((a): a is Extract<Action, { type: "card.create" }> => a.type === "card.create").map((a) => {
+    if (a.card.type !== "CountdownCard") throw new Error("Reminder planner created a different card type");
+    return a.card;
+  });
 const note = (id = "note-new"): CardRecord => ({ id, type: "NoteCard", variant: "minimal", displayProps: { text: "记住喝水" },
   sourceData: {}, sources: [], layout: { x: 0, y: 0, width: 264, height: 120, pinned: false },
   metadata: { createdAt: "2026-10-15T00:00:00.000Z", updatedAt: "2026-10-15T00:00:00.000Z" } });

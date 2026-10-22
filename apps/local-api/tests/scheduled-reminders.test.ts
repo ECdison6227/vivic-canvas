@@ -32,7 +32,7 @@ describe("explicit recurring, dated and conditional reminders", () => {
     const todo = { id: "todo", type: "TodoCard", displayProps: { items: [{ id: "item", text: "TEST task", done: false }] }, sourceDataSummary: {}, layout: { x: 0, y: 0 } };
     const result = scheduledReminderIntent("当待办第1项完成后5分钟提醒我休息", { ...ctx, cards: [todo] }, now);
     const action = result?.actions?.find(a => a.type === "card.create");
-    expect(action?.type === "card.create" && action.card.sourceData.condition).toEqual({ kind: "todo.completed", cardId: "todo", itemId: "item", delaySeconds: 300 });
+    expect(action?.type === "card.create" && action.card.type === "CountdownCard" && action.card.sourceData.condition).toEqual({ kind: "todo.completed", cardId: "todo", itemId: "item", delaySeconds: 300 });
     expect(scheduledReminderIntent("当待办第1项和2项完成后提醒我休息", { ...ctx, cards: [todo] }, now)?.actions).toBeUndefined();
     expect(scheduledReminderIntent("当待办完成后提醒我休息", { ...ctx, cards: [todo, { ...todo, id: "other" }] }, now)?.actions).toBeUndefined();
   });

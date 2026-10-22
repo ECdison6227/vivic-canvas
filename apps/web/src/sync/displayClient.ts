@@ -4,7 +4,7 @@ import type { VivicDB } from "@/persistence/db";
 import { canvasStore, type CanvasStore } from "@/state/canvasStore";
 import type { SyncChannel } from "./channel";
 import { ANY_CANVAS, CoordinateSchema, DEFAULT_DISPLAY_PREFERENCES,
-  type CanvasInteraction, type SyncMessage } from "./protocol";
+  type CanvasInteraction, type DisplayInteraction, type SyncMessage } from "./protocol";
 
 /**
  * DISPLAY_READER: read-only sync client. On load it hydrates the pinned
@@ -48,10 +48,16 @@ export interface DisplayClient {
   start: () => Promise<void>;
   stop: () => void;
   getStatus: () => DisplayClientStatus;
+  subscribeStatus: (listener: () => void) => () => void;
   beginCardDrag: (cardId: string) => CanvasDrag | null;
   requestCardMove: (drag: CanvasDrag, x: number, y: number) => boolean;
   /** A card dropped here from the user page: ask the owner to place it at (x, y). */
   requestCardToCanvas: (canvasId: string, cardId: string, x: number, y: number) => boolean;
+  /** Cross-tab portal; no drag or screen coordinates are needed. */
+  requestCardSurface: (cardId: string, surface: "user" | "display") => boolean;
+  requestCardFocus: (cardId: string) => boolean;
+  requestCanvasFit: () => boolean;
+  requestFocusRestore: () => boolean;
 }
 
 export const createDisplayClient = (
@@ -76,6 +82,8 @@ export const createDisplayClient = (
   let stateGeneration = 0;
   const canInteract = () => !stopped && hydrated && !resyncing && ownerAlive &&
     Boolean(epoch) && Date.now() - lastOwnerSeenAt < 3600;
+  const statusListeners = new Set<() => void>();
+  const emitStatus = () => statusListeners.forEach(listener => listener());
 
   const baseMsg = (forCanvas: string) => ({
     canvasId: forCanvas,
@@ -94,6 +102,7 @@ export const createDisplayClient = (
       type: "snapshot-request",
       payload: {},
     });
+    emitStatus();
   };
 
   // The controller owns persistence too. A delayed display save must never
@@ -117,6 +126,7 @@ export const createDisplayClient = (
     resyncing = false;
     ownerAlive = true;
     lastOwnerSeenAt = Date.now();
+    emitStatus();
   };
 
   const applyPatch = (msg: Extract<SyncMessage, { type: "patch" }>) => {
@@ -160,6 +170,7 @@ export const createDisplayClient = (
       canvasId = msg.canvasId;
       ownerAlive = true;
       lastOwnerSeenAt = Date.now();
+      emitStatus();
     }
   };
 
@@ -206,6 +217,7 @@ export const createDisplayClient = (
           resyncing = false;
           store.internal({ type: "activity.set", activity: null });
           store.internal({ type: "targetChoice.set", choice: null });
+          emitStatus();
           return;
         }
         // on / takeover: a NEW owner session after we had one => resync.
@@ -220,6 +232,7 @@ export const createDisplayClient = (
           return;
         }
         ownerEpoch = incoming;
+        emitStatus();
         return;
       }
       default:
@@ -228,6 +241,8 @@ export const createDisplayClient = (
   });
 
   const start = async () => {
+    if (stopped) return;
+    emitStatus();
     if (pinned && deps.db) {
       const hydrationGeneration = stateGeneration;
       let rec = await deps.db.getCanvas(pinned);
@@ -243,8 +258,10 @@ export const createDisplayClient = (
         canvasId = rec.id;
         version = rec.version;
         hydrated = true;
+        emitStatus();
       }
     }
+    if (stopped) return;
     deps.channel.post({
       ...baseMsg(pinned),
       type: "hello",
@@ -255,6 +272,7 @@ export const createDisplayClient = (
       if (stopped) return;
       if (ownerAlive && Date.now() - lastOwnerSeenAt >= 3600) {
         ownerAlive = false; store.internal({ type: "targetChoice.set", choice: null });
+        emitStatus();
       }
       // Retry unanswered hello/resync requests; an owner that was absent at
       // startup must not leave this reader permanently stuck in resyncing.
@@ -263,20 +281,42 @@ export const createDisplayClient = (
         requestSnapshot(canvasId || pinned);
       }
     }, 1200);
+    emitStatus();
   };
 
   const stop = () => {
+    if (stopped) return;
     stopped = true;
+    ownerAlive = false;
     if (retryTimer) clearInterval(retryTimer);
     unsubscribeChannel();
+    emitStatus();
+    statusListeners.clear();
+  };
+
+  const postInteraction = (interaction: DisplayInteraction): boolean => {
+    if (!canInteract()) return false;
+    deps.channel.post({ type: "interaction", canvasId, epoch: instanceId,
+      version: version!, seq: 0, requestId: newId("interaction"),
+      payload: { ownerEpoch: epoch, interaction } });
+    return true;
+  };
+  const findCard = (cardId: string) => store.getState().cards.find(c => c.record.id === cardId && !c.exitingRequestId);
+  const baseline = (layout: NonNullable<ReturnType<typeof findCard>>["record"]["layout"]) => {
+    const { x, y, width, height, pinned } = layout;
+    return { x, y, width, height, pinned };
   };
 
   return {
     start,
     stop,
+    subscribeStatus: listener => {
+      statusListeners.add(listener);
+      return () => { statusListeners.delete(listener); };
+    },
     beginCardDrag: cardId => {
       if (!canInteract()) return null;
-      const entry = store.getState().cards.find(c => c.record.id === cardId && !c.exitingRequestId && !c.record.layout.pinned);
+      const entry = store.getState().cards.find(c => c.record.id === cardId && !c.exitingRequestId && !c.record.layout.pinned && c.record.layout.surface !== "user");
       if (!entry) return null;
       const { x, y, width, height, pinned } = entry.record.layout;
       return { canvasId, ownerEpoch: epoch, version: version!, requestId: newId("drag"), cardId, from: { x, y, width, height, pinned } };
@@ -285,7 +325,7 @@ export const createDisplayClient = (
       if (!canInteract() || drag.canvasId !== canvasId || drag.ownerEpoch !== epoch ||
           !CoordinateSchema.safeParse(x).success || !CoordinateSchema.safeParse(y).success) return false;
       const entry = store.getState().cards.find(c => c.record.id === drag.cardId && !c.exitingRequestId);
-      if (!entry || entry.record.layout.pinned || Object.keys(drag.from).some(key =>
+      if (!entry || entry.record.layout.pinned || entry.record.layout.surface === "user" || Object.keys(drag.from).some(key =>
         entry.record.layout[key as keyof typeof drag.from] !== drag.from[key as keyof typeof drag.from])) return false;
       deps.channel.post({ type: "interaction", canvasId, epoch: instanceId,
         version: drag.version, seq: 0, requestId: drag.requestId,
@@ -296,12 +336,22 @@ export const createDisplayClient = (
       if (!canInteract() || forCanvas !== canvasId || !CoordinateSchema.safeParse(x).success || !CoordinateSchema.safeParse(y).success) return false;
       const entry = store.getState().cards.find(c => c.record.id === cardId && !c.exitingRequestId);
       if (!entry || entry.record.layout.surface !== "user") return false;
-      const { surface: _surface, userPos: _userPos, ...from } = entry.record.layout;
-      deps.channel.post({ type: "interaction", canvasId, epoch: instanceId,
-        version: version!, seq: 0, requestId: newId("dock"),
-        payload: { ownerEpoch: epoch, interaction: { kind: "card.surface", cardId, from, surface: "display", x, y } } });
-      return true;
+      return postInteraction({ kind: "card.surface", cardId, from: baseline(entry.record.layout), surface: "display", x, y });
     },
+    requestCardSurface: (cardId, surface) => {
+      if (!canInteract() || (surface !== "user" && surface !== "display")) return false;
+      const entry = findCard(cardId);
+      if (!entry || (entry.record.layout.surface ?? "display") === surface) return false;
+      return postInteraction({ kind: "card.surface", cardId, from: baseline(entry.record.layout), surface });
+    },
+    requestCardFocus: cardId => {
+      if (!canInteract()) return false;
+      const entry = findCard(cardId);
+      if (!entry || entry.record.layout.surface === "user") return false;
+      return postInteraction({ kind: "card.focus", cardId, from: baseline(entry.record.layout) });
+    },
+    requestCanvasFit: () => postInteraction({ kind: "canvas.fit" }),
+    requestFocusRestore: () => postInteraction({ kind: "canvas.restore" }),
     getStatus: () => ({ canvasId, version, ownerAlive: ownerAlive && Date.now() - lastOwnerSeenAt < 3600, hydrated, canInteract: canInteract(), viewKey: `${canvasId}:${epoch}` }),
   };
 };

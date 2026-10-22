@@ -20,10 +20,13 @@ export class DecisionManager {
   private providerRevision = 0;
   private providerRequests = new Set<AbortController>();
   private readonly providerTimeoutMs: number;
+  private providerRetryAt = 0;
+  private readonly failureCooldownMs: number;
   constructor(cache = path.join(root, ".cache/decision-model/kev-0.8b"), provider?: DecisionProvider,
-    options: { enabled?: boolean; timeoutMs?: number } = {}) {
+    options: { enabled?: boolean; timeoutMs?: number; failureCooldownMs?: number } = {}) {
     this.cache = cache; this.provider = provider;
     this.providerTimeoutMs = options.timeoutMs ?? 20_000;
+    this.failureCooldownMs = options.failureCooldownMs ?? 30_000;
     if (provider) this.state = { ...this.state, mode: "provider", enabled: options.enabled !== false,
       phase: options.enabled === false ? "cached" : "ready", model: "DEC-01 决策服务", bytes: 0 };
   }
@@ -55,6 +58,7 @@ export class DecisionManager {
   }
   enable() {
     if (this.provider) {
+      this.providerRetryAt = 0;
       this.state = { ...this.state, enabled: true, phase: "ready", error: null };
       return this.status();
     }
@@ -91,7 +95,7 @@ export class DecisionManager {
     return this.scoreLocal(text, signal);
   }
   private async scoreWithProvider(text: string, signal?: AbortSignal): Promise<number[] | null> {
-    if (!this.state.enabled || signal?.aborted || !text.trim() || text.length > 500 || this.providerRequests.size) return null;
+    if (!this.state.enabled || signal?.aborted || !text.trim() || text.length > 500 || this.providerRequests.size || Date.now() < this.providerRetryAt) return null;
     const revision = this.providerRevision, controller = new AbortController(), started = performance.now();
     const budget = createBudget(this.providerTimeoutMs, [signal, controller.signal]);
     this.providerRequests.add(controller);
@@ -103,6 +107,7 @@ export class DecisionManager {
       this.state.lastState = remote.state === "accepted" && !scores ? "deferred" : remote.state;
       this.state.lastMs = performance.now() - started;
       this.state.phase = remote.state === "error" || remote.state === "timeout" ? "error" : "ready";
+      this.providerRetryAt = this.state.phase === "error" ? Date.now() + this.failureCooldownMs : 0;
       this.state.error = this.state.phase === "error" ? "决策服务暂不可用，本次使用原有指令流程。" : null;
       return scores;
     } catch {
@@ -110,6 +115,7 @@ export class DecisionManager {
         this.state.lastState = signal?.aborted ? "cancelled" : budget.signal.aborted ? "timeout" : "error";
         this.state.lastMs = performance.now() - started;
         this.state.phase = signal?.aborted ? "ready" : "error";
+        this.providerRetryAt = signal?.aborted ? 0 : Date.now() + this.failureCooldownMs;
         this.state.error = signal?.aborted ? null : "决策服务暂不可用，本次使用原有指令流程。";
       }
       return null;
@@ -127,6 +133,7 @@ export class DecisionManager {
     });
   }
   stop() {
+    this.providerRetryAt = 0;
     this.providerRevision++;
     for (const request of this.providerRequests) request.abort();
     if (this.provider) {

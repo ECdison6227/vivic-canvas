@@ -24,6 +24,13 @@ export function buildSceneFixtures(now: number = Date.now()): Record<SceneId, Ca
   const monday = mondayOf(today);
   const month = today.slice(0, 7);
   return {
+    travel_offers: {
+      ...shell("travel_offers", "travel", now), type: "TravelOffersCard",
+      displayProps: { query: { kind: "hotel", destination: "杭州", dateText: "下周", nights: 2, budget: 500 },
+        items: [{ id: "demo-hotel", kind: "hotel", title: "杭州 · 演示住宿", subtitle: "虚构样例，不代表真实可预订住宿。", price: { amount: 328, currency: "CNY" }, tags: ["模拟数据"] }],
+        fetchedAt: iso(now), mode: "demo", status: "ok", selectedIds: [], notes: "" },
+      sourceData: { provider: "vivic-demo", tool: "travel.search", requestId: "sample-travel" },
+    },
     countdown: {
       ...shell("countdown", "countdown", now), type: "CountdownCard", displayProps: {},
       sourceData: { targetAt: iso(Date.parse(`${birthday}T00:00:00`)), startedAt: iso(now - 5 * 86_400_000), timeZone: zone,
