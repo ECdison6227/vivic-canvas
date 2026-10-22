@@ -15,7 +15,8 @@ vi.mock("@xyflow/react", () => ({
   useReactFlow: () => camera,
 }));
 vi.mock("@/cards/VivicCard", () => ({ VivicCard: () => null }));
-vi.mock("@/sync/browserRuntime", () => ({ beginCanvasDrag: vi.fn(), commitCanvasDrag: vi.fn() }));
+vi.mock("@/sync/browserRuntime", () => ({ beginCanvasDrag: vi.fn(), commitCanvasDrag: vi.fn(), getDisplayStatus: vi.fn(() => null), subscribeDisplayStatus: vi.fn(() => () => {}),
+  requestCardSurface: vi.fn(), requestCardFocus: vi.fn(), requestCanvasFit: vi.fn(), requestFocusRestore: vi.fn() }));
 vi.mock("../BackgroundLayer", () => ({ BackgroundLayer: ({ theme }: { theme: string }) => <div data-test-background-theme={theme} /> }));
 vi.mock("../AwakeningClock", () => ({ AwakeningClock: () => null }));
 vi.mock("../OrbLayer", () => ({ OrbLayer: () => null }));

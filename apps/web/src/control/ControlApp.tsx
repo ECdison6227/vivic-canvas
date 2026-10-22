@@ -644,6 +644,7 @@ const ControlShell = (props: ShellProps) => {
         feedback={props.feedback}
         notice={props.view === "chat" ? readonlyNotice : null}
         onOpenSettings={() => props.onNavigate("settings")}
+        onOpenDisplay={openDisplay}
         ownerKey={`${snap.activeCanvasId}:${snap.ownerMode}`}
         disabled={readonly || !snap.ready}
         clarify={props.clarify}

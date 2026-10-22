@@ -33,7 +33,7 @@ import {
   type OwnerManager,
   type OwnerMode,
 } from "./owner";
-import { parseSyncMessage, DisplayPreferencesSchema, DEFAULT_DISPLAY_PREFERENCES,
+import { parseSyncMessage, DisplayInteractionSchema, DisplayPreferencesSchema, DEFAULT_DISPLAY_PREFERENCES,
   type DisplayPreferences, type CanvasInteraction, type SyncMessage } from "./protocol";
 import { isDue, reminderText, sameDelivery, conditionSatisfied, deliveredNoticeCurrent, ReminderInboxSchema, type ReminderNotice, type ReminderSummary } from "@/reminders/reminders";
 import { isDateCountdown, nextReminderOccurrence, TravelQuerySchema, type CardSurface, type CountdownCard } from "@vivic/contracts";
@@ -129,6 +129,9 @@ export const createControlHost = (deps: ControlHostDeps): ControlHost => {
     previous?.recovery && !record.recovery ? { ...record, recovery: previous.recovery } : record;
   const persistedVersions = new Map<string, number>();
   const repairedFitRequests = new Map<string, string>();
+  // A pinned Display may manipulate a canvas while the owner works elsewhere.
+  // Keep its transient view state in this owner session, never in IndexedDB.
+  const inactiveViews = new Map<string, Pick<VivicState, "focus" | "lastFitRequestId">>();
   const travelRequests = new Map<string, AbortController>();
   const cancelTravelRequests = (ids: Iterable<string> = travelRequests.keys()) => {
     for (const id of ids) { travelRequests.get(id)?.abort(); travelRequests.delete(id); }
@@ -284,6 +287,7 @@ export const createControlHost = (deps: ControlHostDeps): ControlHost => {
   };
   const restoredState = (record: CanvasRecord): VivicState => ({ ...fromCanvasRecord(record),
     lastFitRequestId: repairedFitRequests.get(record.id) ?? null,
+    ...inactiveViews.get(record.id),
   });
 
   // ------------------------------------------------------------------ wire
@@ -379,31 +383,59 @@ export const createControlHost = (deps: ControlHostDeps): ControlHost => {
       // Validate here too: custom/in-memory transports need the same boundary.
       const parsed = parseSyncMessage(msg);
       if (!parsed || parsed.type !== "interaction" || !writable()) return;
-      const target = records.get(msg.canvasId);
-      if (!target || msg.payload.ownerEpoch !== sessionEpoch || msg.version > target.version) return;
+      const target = records.get(parsed.canvasId);
+      if (!target || parsed.payload.ownerEpoch !== sessionEpoch || parsed.version > target.version) return;
       // Global bound, not sender-keyed: rotating sender IDs cannot bypass it.
       const stamp = now();
       if (stamp - interactionWindow >= 1000 || stamp < interactionWindow) {
         interactionWindow = stamp; interactionCount = 0;
       }
       if (++interactionCount > 24) return;
-      const result = applyInteraction(msg.canvasId, msg.requestId, parsed.payload.interaction);
-      if (!result.ok) postSnapshot(msg.canvasId);
+      // Drag baselines tolerate unrelated updates. Portal/view buttons refer to
+      // the exact visible revision, including the source surface and focus.
+      if (parsed.payload.interaction.kind !== "card.move" && parsed.version !== target.version) {
+        postSnapshot(parsed.canvasId); return;
+      }
+      const result = applyInteraction(parsed.canvasId, parsed.requestId, parsed.payload.interaction, true);
+      if (!result.ok) postSnapshot(parsed.canvasId);
     }
   });
 
   let interactionWindow = now();
   let interactionCount = 0;
-  function applyInteraction(canvasId: string, requestId: string, raw: unknown): DispatchResult {
+  function applyInteraction(canvasId: string, requestId: string, raw: unknown, fromDisplay = false): DispatchResult {
     if (!writable()) return { ok: false, error: "readonly-not-owner" };
     const meta = records.get(canvasId);
     if (!meta) return { ok: false, error: "missing-canvas" };
     const targetStore = canvasId === activeCanvasId ? store : (() => {
-      const replica = createCanvasStore(); replica.loadState(fromCanvasRecord(meta)); return replica;
+      const replica = createCanvasStore(); replica.loadState(restoredState(meta)); return replica;
     })();
-    const result = targetStore.interact(requestId, raw);
+    const parsed = DisplayInteractionSchema.safeParse(raw);
+    const action = parsed.success ? parsed.data : null;
+    const state = targetStore.getState();
+    if (fromDisplay && action?.kind === "card.move" && state.cards.find(c => c.record.id === action.cardId)?.record.layout.surface === "user")
+      return { ok: false, error: "not-display-card" };
+    if (fromDisplay && action?.kind === "card.surface") {
+      const entry = state.cards.find(c => c.record.id === action.cardId && !c.exitingRequestId);
+      if (!entry) return { ok: false, error: "missing-card" };
+      if ((entry.record.layout.surface ?? "display") === action.surface) return { ok: false, error: "same-surface" };
+    }
+    let result: DispatchResult;
+    if (action?.kind === "card.focus" || action?.kind === "canvas.fit" || action?.kind === "canvas.restore") {
+      if (action.kind === "card.focus") {
+        const entry = state.cards.find(c => c.record.id === action.cardId && !c.exitingRequestId);
+        if (!entry) return { ok: false, error: "missing-card" };
+        if (entry.record.layout.surface === "user") return { ok: false, error: "not-display-card" };
+        if (Object.keys(action.from).some(key => entry.record.layout[key as keyof typeof action.from] !== action.from[key as keyof typeof action.from]))
+          return { ok: false, error: "layout-conflict" };
+      }
+      result = targetStore.dispatch({ schemaVersion: "0.6", canvasId, requestId,
+        actions: [action.kind === "card.focus" ? { type: "card.focus", targetId: action.cardId } : { type: action.kind }] });
+    } else result = targetStore.interact(requestId, raw);
     if (!result.ok || result.deduplicated) return result;
-    const record = retainRecovery(toCanvasRecord(canvasId, meta.title, meta.version + 1, targetStore.getState()));
+    const next = targetStore.getState();
+    if (canvasId !== activeCanvasId) inactiveViews.set(canvasId, { focus: next.focus, lastFitRequestId: next.lastFitRequestId });
+    const record = retainRecovery(toCanvasRecord(canvasId, meta.title, meta.version + 1, next));
     records.set(canvasId, record);
     emit();
     void queueWrite(async () => {
@@ -668,6 +700,7 @@ export const createControlHost = (deps: ControlHostDeps): ControlHost => {
     if (!record) return; // UI only offers existing canvases
     activeCanvasId = id;
     store.loadState(restoredState(record));
+    inactiveViews.delete(id);
     void queueWrite(async () => {
       if (canPersist()) await deps.db.setMeta("lastCanvasId", activeCanvasId ?? id);
     });
@@ -707,6 +740,7 @@ export const createControlHost = (deps: ControlHostDeps): ControlHost => {
     if (!writable()) return;
     if (!records.has(id)) return;
     records.delete(id);
+    inactiveViews.delete(id);
     void queueWrite(async () => {
       if (!canPersist()) return;
       await deps.db.deleteCanvas(id); persistedVersions.delete(id);
@@ -773,6 +807,7 @@ export const createControlHost = (deps: ControlHostDeps): ControlHost => {
       await deps.db.reset(fresh);
       if (!stillOwner()) return { ok: false, error: "readonly-not-owner" };
       records.clear(); records.set(fresh.id, fresh);
+      inactiveViews.clear();
       persistedVersions.clear(); persistedVersions.set(fresh.id, 0);
       repairedFitRequests.clear(); seqByCanvas.clear();
       activeCanvasId = fresh.id;
@@ -847,6 +882,7 @@ export const createControlHost = (deps: ControlHostDeps): ControlHost => {
       await loadPreferences();
       if (stopped || (!allowReadonly && owner.mode() !== "owner")) return;
       records.clear();
+      inactiveViews.clear();
       all.forEach(record => records.set(record.id, record));
       persistedVersions.clear();
       all.forEach(record => persistedVersions.set(record.id, record.version));

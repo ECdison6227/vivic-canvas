@@ -9,7 +9,7 @@ import { beginCanvasDrag, commitCanvasDrag } from "@/sync/browserRuntime";
 import { CanvasView } from "../CanvasView";
 
 const flow = vi.hoisted(() => ({ props: {} as ReactFlowProps, camera: {
-  fitView: vi.fn(), setCenter: vi.fn(), setViewport: vi.fn(),
+  fitView: vi.fn(), setCenter: vi.fn(), setViewport: vi.fn(), getViewport: vi.fn(),
 } }));
 vi.mock("@xyflow/react", () => ({
   ReactFlowProvider: ({ children }: { children: ReactNode }) => children,
@@ -17,7 +17,8 @@ vi.mock("@xyflow/react", () => ({
   useReactFlow: () => flow.camera,
 }));
 vi.mock("@/cards/VivicCard", () => ({ VivicCard: () => null }));
-vi.mock("@/sync/browserRuntime", () => ({ beginCanvasDrag: vi.fn(), commitCanvasDrag: vi.fn() }));
+vi.mock("@/sync/browserRuntime", () => ({ beginCanvasDrag: vi.fn(), commitCanvasDrag: vi.fn(), getDisplayStatus: vi.fn(() => null), subscribeDisplayStatus: vi.fn(() => () => {}),
+  requestCardSurface: vi.fn(), requestCardFocus: vi.fn(), requestCanvasFit: vi.fn(), requestFocusRestore: vi.fn() }));
 let root: Root, container: HTMLDivElement;
 beforeEach(() => {
   vi.useFakeTimers(); vi.clearAllMocks();
@@ -41,6 +42,21 @@ const move = () => act(async () => flow.props.onNodesChange?.([{ type: "position
 const stop = () => act(async () => flow.props.onNodeDragStop?.({} as never, { ...flow.props.nodes![0]!, position: { x: 70, y: 80 } }, flow.props.nodes!));
 
 describe("CanvasView interaction boundary", () => {
+  it("restores this Display's camera after focus and lets show-all own its camera transition", async () => {
+    const viewport = { x: 140, y: -60, zoom: 0.7 };
+    flow.camera.getViewport.mockReturnValue(viewport);
+    await render();
+    const dispatch = (requestId: string, actions: Array<{ type: "card.focus"; targetId: string } | { type: "canvas.restore" | "canvas.fit" }>) =>
+      act(async () => { canvasStore.dispatch({ schemaVersion: "0.6", requestId, canvasId: "c", actions }); });
+    await dispatch("focus", [{ type: "card.focus", targetId: "a" }]);
+    await dispatch("restore", [{ type: "canvas.restore" }]);
+    expect(flow.camera.setViewport).toHaveBeenCalledWith(viewport, expect.objectContaining({ duration: 420 }));
+    await dispatch("focus-again", [{ type: "card.focus", targetId: "a" }]);
+    flow.camera.setViewport.mockClear();
+    await dispatch("show-all", [{ type: "canvas.fit" }]);
+    expect(flow.camera.fitView).toHaveBeenCalled();
+    expect(flow.camera.setViewport).not.toHaveBeenCalled();
+  });
   it("retains measured dimensions through drag previews without writing measurements to shared records", async () => {
     await render();
     await act(async () => flow.props.onNodesChange?.([{ type: "dimensions", id: "a", dimensions: { width: 260, height: 96 } }]));

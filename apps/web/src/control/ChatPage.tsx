@@ -5,6 +5,7 @@ import type { Attachment } from "@/ai/attachments";
 import type { ControlHost } from "@/sync/controlHost";
 import { ChatComposer, type ClarifyState } from "./ChatComposer";
 import { UserCardLayer, useUserPageDrop } from "./UserCardLayer";
+import { UserCanvasControls } from "./UserCanvasControls";
 
 interface ChatPageProps {
   hidden: boolean;
@@ -24,6 +25,7 @@ interface ChatPageProps {
   onCancelClarify: () => void;
   onCancel: () => void;
   onOpenSettings: () => void;
+  onOpenDisplay: () => void;
 }
 
 const STATUS_VISIBLE_MS = 6000;
@@ -33,7 +35,7 @@ const STATUS_VISIBLE_MS = 6000;
  * and one text/voice input. No conversation is kept — results appear on the
  * Display. Cards the user drags in from the Display float where they land.
  */
-export const ChatPage = ({ hidden, host, theme, feedback, notice, onOpenSettings, ...composer }: ChatPageProps) => {
+export const ChatPage = ({ hidden, host, theme, feedback, notice, onOpenSettings, onOpenDisplay, ...composer }: ChatPageProps) => {
   const drop = useUserPageDrop(host);
   // One transient status line (progress, a question, an error), never a log.
   const [fresh, setFresh] = useState(false);
@@ -55,6 +57,7 @@ export const ChatPage = ({ hidden, host, theme, feedback, notice, onOpenSettings
           aria-label="设置" title="设置" data-vivic-open-settings>
           <Settings className="h-[18px] w-[18px]" aria-hidden="true" />
         </button>
+        <UserCanvasControls host={host} theme={theme} onOpenDisplay={onOpenDisplay} />
         {notice}
         <span className="vivic-avatar" role="img" aria-label="我的头像" data-vivic-avatar>
           <UserRound className="h-5 w-5" aria-hidden="true" />
