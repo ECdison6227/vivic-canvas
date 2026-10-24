@@ -3,6 +3,16 @@ import { buildCanvasContext } from "../api";
 import { emptyVivicState } from "@/persistence/canvasRecord";
 import { testCards } from "@/cards/__tests__/fixtures";
 import type { CardRecord } from "@/contracts";
+it("keeps a legacy Word card addressable but does not expose its old extract to the model", () => {
+  const card: CardRecord = { id: "legacy-word", type: "FileCard", variant: "standard", sources: [], sourceData: {}, metadata: { createdAt: "2026-10-24T00:00:00Z", updatedAt: "2026-10-24T00:00:00Z" },
+    layout: { x: 0, y: 0, width: 320, height: 260, pinned: false },
+    displayProps: { name: "old.docx", fileId: "old", sha256: "a".repeat(64), sizeBytes: 20, mediaType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", parseStatus: "ready", previewText: "LEGACY EXTRACT" } };
+  const context = buildCanvasContext({ ...emptyVivicState(), cards: [{ record: card }] }, "TEST");
+  expect(context.cards[0]?.id).toBe("legacy-word");
+  expect(context.cards[0]?.displayProps.name).toBe("old.docx");
+  expect(JSON.stringify(context)).not.toContain("LEGACY EXTRACT");
+  expect(context.cards[0]?.displayProps.parseStatus).toBe("unsupported");
+});
 it("omits credential-shaped source fields regardless of case, and bounds retained article context", () => {
   const state = { ...emptyVivicState(), cards: [{ record: { ...testCards.NoteCard, sourceData: {
     apiKey: "TEST-not-a-real-key", APIKEY: "TEST-uppercase", Token: "TEST-token", SECRET: "TEST-secret",

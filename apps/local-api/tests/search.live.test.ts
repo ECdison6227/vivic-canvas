@@ -35,7 +35,9 @@ describe.skipIf(process.env.VIVIC_SEARCH_LIVE !== "1")("live search diagnostics 
       { name: "public-page", url: "https://example.com/", config: {} },
       { name: "private-literal", url: "https://127.0.0.1/", config: {} },
       { name: "private-dns", url: "https://127.0.0.1.nip.io/", config: {} },
-      { name: "private-redirect", url: "https://httpbingo.org/redirect-to?url=https%3A%2F%2F127.0.0.1%2F", config: {} },
+      // httpbingo refuses this target upstream with 403 (verified 2026-10-24).
+      // httpbin supplies a real 302 so Vivic's destination guard is exercised.
+      { name: "private-redirect", url: "https://httpbin.org/redirect-to?url=https%3A%2F%2F127.0.0.1%2F", config: {} },
       { name: "byte-limit", url: "https://example.com/", config: { maxResponseBytes: 64 } },
       { name: "total-deadline", url: "https://example.com/", config: { fetchTimeoutMs: 1 } },
     ]) {

@@ -7,6 +7,7 @@ import { SearchResultCardView } from "./SearchResultCardView";
 import { WeatherCardView } from "./WeatherCardView";
 import { TableCardView } from "./TableCardView";
 import { NoteCardView } from "./NoteCardView";
+import { FileCardView } from "./FileCardView";
 import type { CardViewProps } from "./scene/types";
 import { CountdownDateView } from "./scene/views/CountdownDateView";
 import { PaperCardView } from "./scene/views/PaperCardView";
@@ -40,6 +41,7 @@ const itemHighlight = (card: CardRecord, props: CardViewProps) => props.highligh
  * rejected at the contract boundary — and a render error is contained per card.
  */
 export const CARD_VIEWS: { [K in CardType]: ComponentType<CardViewProps<K>> } = {
+  FileCard: FileCardView,
   TravelOffersCard: TravelOffersCardView,
   ExtensionCard: ExtensionCardView,
   CountdownCard: props => isDateCountdown(props.card) ? <CountdownDateView {...props} />

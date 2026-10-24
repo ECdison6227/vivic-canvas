@@ -335,6 +335,13 @@ describe("bounded provider API transport", () => {
 });
 
 describe("explicit user numeric data only", () => {
+  it.each([["柱状图记录", "bar"], ["折线图展示", "line"], ["饼图表示", "pie"]])("accepts the same explicit record wording for %s", async (wording, chartKind) => {
+    const h = harness();
+    const value = card(await h.client.handleDataIntent(`用${wording}：周一3，周二5，周三4`, emptyContext()));
+    expect(value.type).toBe("ChartCard");
+    expect(value.displayProps).toEqual({ chartKind, points: [{ x: "周一", y: 3 }, { x: "周二", y: 5 }, { x: "周三", y: 4 }] });
+    expect(h.fetcher).not.toHaveBeenCalled();
+  });
   it("creates an editable table with exact user values, empty sources and user provenance, without networking", async () => {
     const h = harness();
     const value = card(await h.client.handleDataIntent("用表格记录：苹果3，香蕉5", emptyContext()));

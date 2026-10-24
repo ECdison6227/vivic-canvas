@@ -10,7 +10,7 @@ import { createMemoryLockProvider } from "@/sync/testing";
 const cleanup: Array<() => void> = [];
 afterEach(() => cleanup.splice(0).forEach(stop => stop()));
 
-async function setup() {
+async function setup(shareCardPreviews = false) {
   const hub = createMemoryHub(), db = createMemoryDB(), store = createCanvasStore();
   const host = createControlHost({ db, store, channel: hub.createChannel(), lockProvider: createMemoryLockProvider(), reminderPollMs: 1_000_000 });
   cleanup.push(host.stop); await host.start();
@@ -25,12 +25,47 @@ async function setup() {
   const display = createDisplayClient({ db, store: displayStore, channel: hub.createChannel() });
   cleanup.push(display.stop); await display.start(); await flushChannel();
   let commitText: ((text: string, context: TextExecutionContext) => Promise<{ ok: boolean; message: string }>) = async () => ({ ok: false, message: "not installed" });
-  const adapter = createVivicHostAdapter({ host, computerName: "TEST computer", readCards: () => store.getState().cards,
+  const adapter = createVivicHostAdapter({ host, computerName: "TEST computer", shareCardPreviews, readCards: () => store.getState().cards,
     subscribeCards: store.subscribe, submitText: (text, context) => commitText(text, context) });
   return { adapter, db, host, store, displayStore, canvasId, setTextExecutor: (executor: typeof commitText) => { commitText = executor; } };
 }
 
 describe("unmounted Vivic remote adapter with the actual owner and Display", () => {
+  it("moves the one original card in both directions and durably preserves metadata and pin state", async () => {
+    const { adapter, host, store, db, displayStore, canvasId } = await setup(true);
+    host.setCardPinned("mobile-quote", true);
+    host.dispatch({ schemaVersion: "0.6", requestId: "subcard-mobile", canvasId, actions: [{ type: "card.subcard.set", targetId: "mobile-quote", subcard: { id: "detail", text: "保留补充内容" } }] });
+    const before = structuredClone(store.getState().cards[0]!.record);
+    expect((await adapter.setCardSurface!("mobile-quote", "user", { isCurrent: () => true })).ok).toBe(true);
+    await flushChannel();
+    expect(store.getState().cards).toHaveLength(1);
+    expect(displayStore.getState().cards).toHaveLength(1);
+    expect((await db.getCanvas(canvasId))!.cardsById[before.id]!).toMatchObject({
+      id: before.id, displayProps: before.displayProps, sourceData: before.sourceData,
+      metadata: { subcards: before.metadata.subcards }, layout: { pinned: true, surface: "user" },
+    });
+    expect((await adapter.setCardSurface!(before.id, "display", { isCurrent: () => true })).ok).toBe(true);
+    await flushChannel();
+    expect((await db.getCanvas(canvasId))!.cardsById[before.id]!.layout.surface ?? "display").toBe("display");
+    expect((await adapter.setCardSurface!(before.id, "user", { isCurrent: () => false })).ok).toBe(false);
+    expect(store.getState().cards[0]!.record.layout.surface ?? "display").toBe("display");
+    expect((await adapter.setCardSurface!("foreign", "user", { isCurrent: () => true })).ok).toBe(false);
+  });
+  it("shares opted-in visible card content and surface while keeping owner pin/save behavior", async () => {
+    const { adapter, host, db, displayStore, canvasId } = await setup(true);
+    expect(adapter.getSnapshot()).toMatchObject({ cardCount: 1, cardsTruncated: false, cards: [{
+      id: "mobile-quote", title: "PRIVATE TEST CONTENT MUST NOT LEAVE COMPUTER", surface: "display",
+      preview: { kind: "text", body: "PRIVATE TEST CONTENT MUST NOT LEAVE COMPUTER" },
+    }] });
+    expect(host.setCardSurface("mobile-quote", "user").ok).toBe(true);
+    await flushChannel();
+    expect(adapter.getSnapshot().cards[0]!.surface).toBe("user");
+    expect((await adapter.setCardPinned("mobile-quote", true)).ok).toBe(true);
+    await flushChannel();
+    expect(displayStore.getState().cards[0]!.record.layout.pinned).toBe(true);
+    expect((await db.getCanvas(canvasId))!.cardsById["mobile-quote"]!.layout).toMatchObject({ pinned: true, surface: "user" });
+    expect(adapter.getSnapshot().cards[0]!.preview!.body).toBe("PRIVATE TEST CONTENT MUST NOT LEAVE COMPUTER");
+  });
   it("pins through the sole owner, saves and updates Display without leaking card bodies", async () => {
     const { adapter, db, displayStore, canvasId } = await setup();
     expect(JSON.stringify(adapter.getSnapshot())).not.toContain("PRIVATE TEST CONTENT");

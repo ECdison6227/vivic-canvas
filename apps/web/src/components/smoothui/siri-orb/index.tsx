@@ -87,6 +87,8 @@ export interface SiriOrbProps {
   size?: string;
   /** Shared AI state driving speed, scale, saturation and reactivity. */
   state?: AIState;
+  /** The product's reduced-motion preference also stops the mesh animations. */
+  reducedMotion?: boolean;
 }
 
 const SiriOrb: React.FC<SiriOrbProps> = ({
@@ -96,8 +98,10 @@ const SiriOrb: React.FC<SiriOrbProps> = ({
   animationDuration = 20,
   amplitude,
   state = "idle",
+  reducedMotion = false,
 }) => {
-  const shouldReduceMotion = useReducedMotion();
+  const systemReducedMotion = useReducedMotion();
+  const shouldReduceMotion = systemReducedMotion || reducedMotion;
   const amplitudeValue = useAmplitudeValue(amplitude);
   const stateMotion = getAIStateMotion(state);
 
@@ -237,6 +241,7 @@ const SiriOrb: React.FC<SiriOrbProps> = ({
     <motion.div
       animate={getRootAnimate()}
       className={cn("relative", className)}
+      data-orb-reduced-motion={shouldReduceMotion || undefined}
       style={
         {
           "--orb-size": size,
@@ -304,6 +309,12 @@ const SiriOrb: React.FC<SiriOrbProps> = ({
           border-radius: 50%;
           position: relative;
           isolation: isolate;
+        }
+
+        [data-orb-reduced-motion="true"] .siri-orb::before,
+        [data-orb-reduced-motion="true"] .siri-orb::after,
+        [data-orb-reduced-motion="true"] .siri-orb > .siri-orb-layer {
+          animation: none !important;
         }
 
         .siri-orb::before,

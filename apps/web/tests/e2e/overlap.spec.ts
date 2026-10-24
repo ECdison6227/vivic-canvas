@@ -1,7 +1,7 @@
 import { expect, test, type Page, type TestInfo } from "@playwright/test";
 import type { CardRecord } from "../../src/contracts";
 import { testCards } from "../../src/cards/__tests__/fixtures";
-import { activeCanvasId, controlDispatch } from "./helpers1";
+import { activeCanvasId, controlDispatch, openSpace } from "./helpers1";
 
 // Synthetic TEST data only. No provider/key/microphone or future arrangeCanvas API.
 const mixedCards = (): CardRecord[] => [
@@ -121,6 +121,7 @@ const expectPins = async (page: Page, fixtures: CardRecord[]) => {
 };
 const undo = async (control: Page) => {
   // Exercise the existing Control button, never a removed internal card.layout.
+  await openSpace(control);
   await control.locator("[data-vivic-undo]").click();
 };
 

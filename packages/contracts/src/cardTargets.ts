@@ -13,6 +13,7 @@ const fingerprint = (value: unknown): string => {
 
 /** Short Chinese name of every registered card type (Control lists, search, references). */
 export const CARD_TYPE_LABELS: Record<CardRecord["type"], string> = {
+  FileCard: "文件",
   TravelOffersCard: "旅游结果", ExtensionCard: "扩展卡片",
   CountdownCard: "倒计时", TodoCard: "待办", NoteCard: "便笺", SearchResultCard: "搜索结果", WeatherCard: "天气", TableCard: "表格", ChartCard: "图表",
   PaperCard: "文献", GalleryCard: "照片墙", WeeklyScheduleCard: "周计划", RoadmapCard: "路线图", NewsCard: "资讯", TimelineCard: "时间线",
@@ -25,6 +26,7 @@ const hostname = (url: string): string | undefined => url.match(/^https?:\/\/([^
 /** The headline field of each scene card, if it has one. */
 const sceneTitle = (card: CardRecord): string | undefined => {
   switch (card.type) {
+    case "FileCard": return card.displayProps.name;
     case "TravelOffersCard": return `${card.displayProps.query.destination}旅游结果`;
     case "PaperCard": case "GalleryCard": case "WeeklyScheduleCard": case "RoadmapCard": case "TimelineCard": case "StoryCarouselCard":
     case "ActivityFeedCard": case "ProgressRingCard": case "BookCard": case "ComparisonCard": case "PhotoCoverCard": case "NotificationCard":

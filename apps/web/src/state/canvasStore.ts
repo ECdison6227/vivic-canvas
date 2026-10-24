@@ -100,7 +100,7 @@ const initialState = (): VivicState => ({
   processedRequestIds: [],
 });
 
-const cardHeight = ({ record }: CardState): number => {
+export const cardHeight = ({ record }: CardState): number => {
   const width = Math.max(80, record.layout.width);
   // Scene cards render at exactly their layout height and clamp/scroll inside.
   if (usesFixedHeight(record)) return Math.max(record.layout.height, 56 + CARD_INNER_HEIGHT);
@@ -203,10 +203,14 @@ const applyAction = (
       return { ...state, stage: "AWAKENING", awakenedAt: Date.now() };
     }
     case "card.create": {
+      // A visible new card must not remain hidden behind standby just because a
+      // provider omitted a presentation-only wake action. Hidden reminders stay quiet.
+      const awakened = !onUserSurface(action.card) && reminderVisible({ record: action.card })
+        ? applyAction(state, { type: "stage.awaken" }, requestId) : state;
       const exists = state.cards.some((c) => c.record.id === action.card.id);
       if (exists)
         return {
-          ...state,
+          ...awakened,
           cards: relayout(
             state.cards.map((c) =>
               c.record.id === action.card.id ? { record: c.record.layout.pinned
@@ -214,7 +218,7 @@ const applyAction = (
             ),
           ),
         };
-      return { ...state, cards: relayout([...state.cards, { record: action.card }]) };
+      return { ...awakened, cards: relayout([...state.cards, { record: action.card }]) };
     }
     case "cards.delete": {
       return action.targetIds.reduce((next, targetId) => applyAction(next, { type: "card.delete", targetId }, requestId), state);
@@ -244,7 +248,7 @@ const applyAction = (
       // A card on the user page is not on the canvas: never dim the stage for it.
       if (!card || onUserSurface(card.record)) return state;
       return {
-        ...state,
+        ...applyAction(state, { type: "stage.awaken" }, requestId),
         cards: !reminderVisible(card) ? relayout(state.cards, new Set(state.cards.filter(c => reminderVisible(c)).map(c => c.record.id)), card.record.id) : state.cards,
         focus: { cardId: card.record.id, prevViewport: state.viewport },
         focusHistory: [...state.focusHistory, card.record.id].slice(-20),
@@ -314,7 +318,8 @@ const applyAction = (
       };
     }
     case "canvas.fit":
-      return { ...state, focus: null, lastFitRequestId: requestId };
+      return { ...(state.cards.some(card => !card.exitingRequestId && !onUserSurface(card.record) && reminderVisible(card))
+        ? applyAction(state, { type: "stage.awaken" }, requestId) : state), focus: null, lastFitRequestId: requestId };
     case "canvas.restore":
       return { ...state, focus: null };
     case "canvas.switch":
@@ -556,7 +561,10 @@ export const createCanvasStore = (): CanvasStore => {
       cards = relayout(cards, new Set(cards.filter(c => c !== entry && c.record.id !== entry.record.id).map(c => c.record.id)));
     }
     const leavingFocus = action.surface === "user" && state.focus?.cardId === entry.record.id;
-    state = withProcessed({ ...state, cards, ...(leavingFocus ? { focus: null } : {}) }, requestId);
+    const transferred = { ...state, cards, ...(leavingFocus ? { focus: null } : {}) };
+    // A deliberate transfer must be visible even when a newly created canvas
+    // has never received a text command. Reuse the normal reveal transition.
+    state = withProcessed(action.surface === "display" ? applyAction(transferred, { type: "stage.awaken" }, requestId) : transferred, requestId);
     emit();
     return { ok: true, deduplicated: false };
   };

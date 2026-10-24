@@ -5,8 +5,11 @@ import { defineConfig } from "@playwright/test";
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const web = path.resolve(directory, "../../..");
 const host = process.env.VIVIC_MOBILE_TEST_HOST ?? "127.0.0.1";
-if (!["127.0.0.1", "127.0.0.2"].includes(host)) throw new Error("Mobile browser tests require an isolated loopback host.");
-const origin = `http://${host}:5174`;
+if (host !== "127.0.0.1") throw new Error("Mobile development relay controls require 127.0.0.1; use port 5184 for an isolated parallel run.");
+const port = Number(process.env.VIVIC_MOBILE_TEST_PORT ?? 5174);
+if (![5174, 5184].includes(port)) throw new Error("Mobile tests require an approved isolated port.");
+const origin = `http://${host}:${port}`;
+const viteCli = path.join(path.dirname(fileURLToPath(import.meta.resolve("vite/package.json"))), "bin/vite.js");
 export default defineConfig({
   testDir: path.join(path.dirname(fileURLToPath(import.meta.resolve("@vivic/mobile-console-prototype/protocol"))), "browser"),
   outputDir: path.resolve(directory, "../../../../../evidence/mobile-console/browser-results"),
@@ -17,7 +20,7 @@ export default defineConfig({
     launchOptions: { args: ["--mute-audio"], ...(process.env.VIVIC_E2E_CHROMIUM ? { executablePath: process.env.VIVIC_E2E_CHROMIUM } : {}) },
   },
   webServer: {
-    command: `pnpm exec vite --host ${host} --port 5174 --strictPort`, cwd: web,
+    command: `"${process.execPath}" "${viteCli}" --host ${host} --port ${port} --strictPort`, cwd: web,
     url: `${origin}/src/control/mobile/index.html`, reuseExistingServer: false,
     timeout: 30_000,
   },

@@ -3,7 +3,7 @@ import path from "node:path";
 import { createDataClient, weatherCardFields } from "../../../local-api/src/data/index";
 import { runIntent } from "../../../local-api/src/intent/pipeline";
 import { CredentialStore } from "../../../local-api/src/credentials";
-import { activeCanvasId, sendCommand } from "./helpers1";
+import { activeCanvasId, sendCommand, openLocation } from "./helpers1";
 import { waitForDisplayRuntime } from "./helpers";
 
 // TEST network fixtures run the real intent/data code. The browser position is
@@ -63,7 +63,7 @@ test("weather follows the device: asked without a city, then refreshed in place 
   // Only a fix rounded to ~1 km leaves the page.
   expect((await asked).postDataJSON().deviceLocation).toMatchObject({ latitude: 30.27, longitude: 120.16, accuracyM: 20 });
   await expect(page.locator("[data-vivic-command-feedback]")).toHaveText("已按当前位置显示杭州市天气");
-  await expect(display.locator(".vivic-card")).toHaveText("18.5°C", { timeout: 15_000 });
+  await expect(display.locator('.vivic-card [data-aui="text"]')).toHaveText("18.5°C", { timeout: 15_000 });
   await expect(page.locator("[data-vivic-location]")).toHaveAttribute("data-status", "watching");
   await expect(page.locator("[data-vivic-location-status]")).toContainText("精度约 20 米");
   const first = await weatherRecord(page);
@@ -79,14 +79,14 @@ test("weather follows the device: asked without a city, then refreshed in place 
   // A request event precedes JSON consumption, the owner's commit and its
   // persisted snapshot. Wait for each actual state under the WebGL workload.
   await expect.poll(() => weatherRecord(page), { timeout: 15_000 }).toMatchObject({ displayProps: { tempC: 9.5 } });
-  await expect(display.locator(".vivic-card")).toHaveText("9.5°C", { timeout: 15_000 });
+  await expect(display.locator('.vivic-card [data-aui="text"]')).toHaveText("9.5°C", { timeout: 15_000 });
   const second = await weatherRecord(page);
   expect(second).toMatchObject({ id: first!.id, layout: first!.layout, aliases: ["北京市"], location: { name: "北京市", latitude: 39.91 },
     displayProps: { tempC: 9.5, conditionIcon: "rain" } });
   // The card persists and Display keeps it after a reload.
   await display.reload();
   await waitForDisplayRuntime(display, canvasId);
-  await expect(display.locator(".vivic-card")).toHaveText("9.5°C", { timeout: 15_000 });
+  await expect(display.locator('.vivic-card [data-aui="text"]')).toHaveText("9.5°C", { timeout: 15_000 });
   await display.screenshot({ path: path.join(evidence, "TEST-beijing-refreshed.png") });
   expect(JSON.stringify(second)).not.toContain("TEST 酒店");
   expect(providerCalls.every(url => !/ipinfo/.test(url.hostname))).toBe(true);
@@ -122,6 +122,7 @@ test("我在哪里 answers from the device position and reaches Display", async 
 
 test("turning location off falls back without prompting again", async ({ page }) => {
   await expect(page.locator("[data-vivic-location]")).toHaveAttribute("data-status", "watching");
+  await openLocation(page);
   await page.locator("[data-vivic-location-toggle]").click();
   await expect(page.locator("[data-vivic-location]")).toHaveAttribute("data-status", "off");
   const asked = page.waitForRequest("**/api/intent");

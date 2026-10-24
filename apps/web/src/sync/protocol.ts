@@ -2,6 +2,7 @@ import { z } from "zod";
 import { ActionEnvelopeSchema, VivicStateSchema } from "@/contracts";
 import { ActivitySchema, CardSurfaceSchema, TargetChoiceSchema } from "@vivic/contracts";
 import { DARK_PALETTE_IDS, LIGHT_PALETTE_IDS } from "@/components/atmosphere/palettes";
+import { ORB_PALETTE_IDS } from "@/stage/orbPalette";
 
 /**
  * BroadcastChannel('vivic:canvas:v1') message protocol — ARCHITECTURE §4.
@@ -50,11 +51,14 @@ export type DisplayInteraction = z.infer<typeof DisplayInteractionSchema>;
 export const DisplayPreferencesSchema = z.strictObject({
   theme: z.enum(["auto", "light", "dark"]),
   reducedMotion: z.boolean(), subtitles: z.boolean(),
+  ambientMotion: z.enum(["off", "subtle", "vivid"]).optional(),
+  ambientIntensity: z.number().finite().min(0).max(1).optional(),
   dayStart: z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/).optional(),
   dayEnd: z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/).optional(),
   /** Background palette per appearance; absent means 午夜蓝紫 / 云朵蓝紫. The motion is fixed. */
   darkPalette: z.enum(DARK_PALETTE_IDS).optional(),
   lightPalette: z.enum(LIGHT_PALETTE_IDS).optional(),
+  orbPalette: z.enum(ORB_PALETTE_IDS).optional(),
 });
 export type DisplayPreferences = z.infer<typeof DisplayPreferencesSchema>;
 // New installs and resets follow the local daylight schedule by default.
@@ -71,6 +75,9 @@ const msgBase = {
 };
 
 export const SyncMessageSchema = z.discriminatedUnion("type", [
+  z.strictObject({ ...msgBase, type: z.literal("space-feedback"), payload: z.strictObject({
+    kind: z.enum(["saved", "transfer", "arrange", "undo", "redo"]), cardIds: z.array(z.string().min(1).max(128)).max(200).optional(),
+  }) }),
   z.strictObject({ ...msgBase, type: z.literal("target-choice"), payload: z.strictObject({ choice: TargetChoiceSchema.nullable() }) }),
   z.strictObject({
     ...msgBase, type: z.literal("local-data-reset"), canvasId: z.string().min(1).max(128),

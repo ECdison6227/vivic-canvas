@@ -11,6 +11,7 @@ const common = {
 };
 
 export const testCards = {
+  FileCard: { ...common, id: "TEST-file", type: "FileCard", displayProps: { fileId: "file_test", name: "TEST-notes.md", mediaType: "text/markdown", sizeBytes: 64, sha256: "a".repeat(64), previewText: "TEST read-only document", parseStatus: "ready" }, sourceData: {} },
   ExtensionCard: { ...common, id: "TEST-extension", type: "ExtensionCard", displayProps: { def: { id: "test.missing", version: "1.0.0", hash: "0".repeat(64) }, config: {}, data: {}, state: {} }, sourceData: {} },
   CountdownCard: { ...common, id: "TEST-countdown", type: "CountdownCard", displayProps: {}, sourceData: { targetAt: "2099-10-15T08:00:00.000Z" } },
   TodoCard: { ...common, id: "TEST-todo", type: "TodoCard", displayProps: { items: [{ id: "TEST-task", text: "TEST task", done: false }] } },

@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import path from "node:path";
-import { activeCanvasId, controlDispatch, sendCommand, showSettings, todoCardRecord } from "./helpers1";
+import { readIntentResult, activeCanvasId, controlDispatch, sendCommand, openSpace, showChat, todoCardRecord } from "./helpers1";
 
 const stamp = "2026-10-16T00:00:00.000Z";
 test.use({ actionTimeout: 10000 });
@@ -12,7 +12,7 @@ const boot = async (page: Page) => {
   return activeCanvasId(page);
 };
 const inspect = (page: Page, id: string) => page.locator(`[data-vivic-inspect-card="${id}"]`);
-const openInspector = async (page: Page, id: string) => { await showSettings(page); await inspect(page, id).locator("[data-vivic-inspect-toggle]").click(); };
+const openInspector = async (page: Page, id: string) => { await openSpace(page, "卡片"); await inspect(page, id).locator("[data-vivic-inspect-toggle]").click(); };
 const popup = (page: Page) => page.locator("[data-vivic-subcard-popover]");
 const addChild = async (page: Page, id: string, itemId: string, text: string) => {
   const row = inspect(page, id); await row.locator(`[data-vivic-subcard-trigger="${itemId}"]`).click();
@@ -35,7 +35,7 @@ test("four merged reminders get matching frozen numbers, hover preview, local na
   const names = ["TEST喝水", "TEST休息", "TEST开会", "TEST吃药"];
   await controlDispatch(page, "seed", canvasId, names.map((name, i) => ({ type: "card.create", card: reminder(`TEST-r${i + 1}`, name) })));
   await expect(display.locator("[data-vivic-reminder-row]")).toHaveCount(4); await expect(display.locator(".vivic-card")).toHaveCount(1);
-  let remote = 0; await page.route("**/api/intent", route => { remote++; return route.fulfill({ json: { kind: "unknown", message: "TEST unexpected model call" } }); });
+  let remote = 0; page.on("response", async response => { if (response.url().endsWith("/api/intent")) { const result = await readIntentResult(response); if (result.usedProvider === "stepfun" || result.usedProvider === "gpt") remote++; } });
   await sendCommand(page, "删除提醒"); await expect(page.locator("[data-vivic-clarify-candidate]")).toHaveCount(4);
   for (let i = 1; i <= 4; i++) await expect(display.locator(`[data-vivic-target-number="${i}"]`)).toHaveAttribute("data-target-card-id", `TEST-r${i}`);
   await page.locator("[data-vivic-clarify-candidate]").nth(1).hover();
@@ -149,7 +149,7 @@ test("losing ownership closes editors and pending choices without modifying card
   await other.locator("[data-vivic-takeover]").click(); await expect(page.locator("[data-vivic-control]")).toHaveAttribute("data-vivic-owner", "readonly"); await expect(popup(page)).toHaveCount(0);
   await expect(popup(display)).toHaveCount(0);
   await sendCommand(other, "删除待办"); await expect(other.locator("[data-vivic-clarify]")).toBeVisible();
-  await page.locator("[data-vivic-takeover]").click(); await expect(other.locator("[data-vivic-clarify]")).toHaveCount(0);
+  await showChat(page); await page.locator("[data-vivic-takeover]").click(); await expect(other.locator("[data-vivic-clarify]")).toHaveCount(0);
   const cards = await page.evaluate(() => window.__vivic!.getState().cards); expect(cards).toHaveLength(2); expect(JSON.stringify(cards)).not.toContain("尚未保存");
   expect(cards.find(c => c.record.id === "TEST-one")?.record.metadata.subcards?.[0]?.text).toBe("TEST 已保存扩充");
 });

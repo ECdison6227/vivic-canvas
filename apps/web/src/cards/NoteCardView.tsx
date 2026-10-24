@@ -3,9 +3,11 @@ import { Fragment } from "react";
 import { CARD_INNER_HEIGHT } from "./metrics";
 import { renderVivicSpec } from "./vivicGUILibrary";
 import { SubcardAnchor } from "./SubcardAnchor";
+import { ConnectedResultCard } from "@/connections/ConnectedResultCard";
 
 /** Density changes only with the stored variant; Display adds no expand button. */
-export const NoteCardView = ({ card }: { card: NoteCard }) => <div
+export const NoteCardView = ({ card }: { card: NoteCard }) => card.sourceData.connectedSource && typeof card.sourceData.connectedSource === "object"
+  && typeof (card.sourceData.connectedSource as Record<string, unknown>).text === "string" ? <ConnectedResultCard card={card} /> : <div
   className="vivic-note-content min-w-0 whitespace-pre-wrap break-words"
   style={card.variant === "expanded" ? undefined : {
     maxHeight: Math.max(28, Math.min(card.layout.height - CARD_INNER_HEIGHT, card.variant === "minimal" ? 84 : 168)),

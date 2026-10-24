@@ -3,6 +3,7 @@ import { mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { zipSync } from "fflate";
+import { openCardPackages, showChat } from "./helpers1";
 
 async function externalPackage() {
   const source = path.resolve(process.cwd(), "../../examples/card-packages/goal-progress"), files: Record<string, Uint8Array> = {};
@@ -21,6 +22,7 @@ test("external declarative package validates, stays isolated, installs, restores
   const file = await externalPackage();
   await page.goto("/control");
   await expect(page.locator("[data-vivic-control]")).toHaveAttribute("data-vivic-owner", "owner");
+  await openCardPackages(page);
   await page.locator("[data-extension-file]").setInputFiles(file);
   const dialog = page.getByRole("dialog", { name: "Vivic Test Space" });
   await expect(dialog).toBeVisible(); await expect(dialog.getByRole("button", { name: "安装卡片", exact: true })).toBeDisabled();
@@ -50,22 +52,23 @@ test("external declarative package validates, stays isolated, installs, restores
   await expect(page.locator("[data-vivic-user-card]")).toHaveCount(0);
   // Installation publishes only a definition. Creating an instance is a separate owner action.
   await installed.getByRole("button", { name: "从 DEMO 创建卡片" }).click();
-  await page.locator("[data-vivic-open-chat]").click(); await expect(page.locator("[data-extension-rendered='vivic.goal-progress']")).toBeVisible();
+  await showChat(page); await expect(page.locator("[data-extension-rendered='vivic.goal-progress']")).toBeVisible();
   await page.reload(); await expect(page.locator("[data-extension-rendered='vivic.goal-progress']")).toBeVisible();
-  await page.getByRole("button", { name: "设置", exact: true }).click();
+  await openCardPackages(page);
   await installed.getByRole("button", { name: "禁用", exact: true }).click();
-  await page.locator("[data-vivic-open-chat]").click(); await expect(page.getByText("原始卡片数据已保留", { exact: false })).toBeVisible();
-  await page.getByRole("button", { name: "设置", exact: true }).click(); await installed.getByRole("button", { name: "启用", exact: true }).click();
-  await page.locator("[data-vivic-open-chat]").click(); await expect(page.locator("[data-extension-rendered='vivic.goal-progress']")).toBeVisible();
-  await page.getByRole("button", { name: "设置", exact: true }).click(); await installed.getByRole("button", { name: "卸载", exact: true }).click();
+  await showChat(page); await expect(page.getByText("原始卡片数据已保留", { exact: false })).toBeVisible();
+  await openCardPackages(page); await installed.getByRole("button", { name: "启用", exact: true }).click();
+  await showChat(page); await expect(page.locator("[data-extension-rendered='vivic.goal-progress']")).toBeVisible();
+  await openCardPackages(page); await installed.getByRole("button", { name: "卸载", exact: true }).click();
   await expect(installed).toHaveCount(0);
-  await page.reload(); await page.locator("[data-vivic-open-chat]").click(); await expect(page.getByText("原始卡片数据已保留", { exact: false })).toBeVisible();
-  await page.getByRole("button", { name: "设置", exact: true }).click(); await page.locator("[data-extension-file]").setInputFiles(file);
+  await page.reload(); await showChat(page); await expect(page.getByText("原始卡片数据已保留", { exact: false })).toBeVisible();
+  await openCardPackages(page); await page.locator("[data-extension-file]").setInputFiles(file);
   await dialog.getByRole("button", { name: "试跑 DEMO", exact: true }).click(); await dialog.getByRole("button", { name: "安装卡片", exact: true }).click(); await expect(dialog).toBeHidden();
-  await page.locator("[data-vivic-open-chat]").click(); await expect(page.locator("[data-extension-rendered='vivic.goal-progress']")).toHaveCount(1);
+  await showChat(page); await expect(page.locator("[data-extension-rendered='vivic.goal-progress']")).toHaveCount(1);
 });
 test("closing or replacing a preview never installs it and malformed packages give a file error", async ({ page }) => {
   const file = await externalPackage(); await page.goto("/control"); await expect(page.locator("[data-vivic-control]")).toHaveAttribute("data-vivic-owner", "owner");
+  await openCardPackages(page);
   await page.locator("[data-extension-file]").setInputFiles(file);
   await expect(page.getByRole("dialog", { name: "Vivic Test Space" })).toBeVisible();
   await page.keyboard.press("Escape"); await expect(page.getByRole("dialog", { name: "Vivic Test Space" })).toBeHidden();

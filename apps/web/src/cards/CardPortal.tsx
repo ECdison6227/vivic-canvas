@@ -1,5 +1,5 @@
+import { HarkIcon } from "@/components/hark/HarkPrimitives";
 import { useEffect, useRef, useState, type DragEvent } from "react";
-import { ArrowLeftRight, Crosshair, Monitor, Orbit, RotateCcw, Scan, UserRound } from "lucide-react";
 import { Dialog } from "radix-ui";
 import { cardTitle, onUserSurface, type CardSurface } from "@/contracts";
 import { useVivicState } from "@/state/canvasStore";
@@ -11,6 +11,7 @@ import { carriesCard, readCardDrag } from "./surfaceDrag";
 import "./cardPortal.css";
 
 export interface CardPortalProps {
+  compact?: boolean;
   surface: CardSurface;
   canvasId: string;
   disabled: boolean;
@@ -22,7 +23,7 @@ export interface CardPortalProps {
 }
 
 /** The portal works within one tab: drop a card here or choose it from the list. */
-export function CardPortal({ surface, canvasId, disabled, theme, onTransfer, onFocus, onFit, onRestore }: CardPortalProps) {
+export function CardPortal({ surface, canvasId, disabled, theme, onTransfer, onFocus, onFit, onRestore, compact = false }: CardPortalProps) {
   const cards = useVivicState(state => state.cards);
   const focus = useVivicState(state => state.focus);
   const [open, setOpen] = useState(false);
@@ -92,17 +93,17 @@ export function CardPortal({ surface, canvasId, disabled, theme, onTransfer, onF
     onDragOver={event => { if (accepts(event)) { event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = disabled ? "none" : "move"; setReceiving(true); } }}
     onDragLeave={event => { if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) setReceiving(false); }} onDrop={drop}>
     <Dialog.Root open={open} onOpenChange={value => { setOpen(value); if (value && !pending.current) setMessage(""); }}>
-      <Dialog.Trigger asChild><Button ref={trigger} variant="outline" className="vivic-portal-trigger" disabled={!canvasId}
+      <Dialog.Trigger asChild><Button ref={trigger} variant="outline" className={`vivic-portal-trigger${compact ? " vivic-portal-compact" : ""}`} aria-label="卡片传送门" disabled={!canvasId}
         title="拖动卡片到这里，或点开选择卡片；同一浏览器的两个标签页也能传送。">
-        <Orbit size={18} aria-hidden /><span>{dragging ? `拖到这里，传送到${surface === "display" ? "用户页" : "展示页"}` : "卡片传送门"}</span>
-        <span className="vivic-portal-count">{liveCards.length}</span>
+        <HarkIcon name="card" size={18} aria-hidden />{!compact && <><span>{dragging ? `拖到这里，传送到${surface === "display" ? "用户页" : "展示页"}` : "卡片传送门"}</span>
+        <span className="vivic-portal-count">{liveCards.length}</span></>}
       </Button></Dialog.Trigger>
       {open && <ControlDialogContent title="卡片传送门" description="选择卡片即可在用户页和展示页之间传送，无需跨标签页拖拽。" className={`vivic-portal-dialog${theme === "dark" ? " dark" : ""}`}
         onCloseAutoFocus={event => { event.preventDefault(); trigger.current?.focus({ preventScroll: true }); }}>
-        <div className="vivic-portal-summary"><span><Monitor size={15} aria-hidden /> 展示页 {liveCards.filter(entry => !onUserSurface(entry.record)).length}</span>
-          <ArrowLeftRight size={16} aria-hidden /><span><UserRound size={15} aria-hidden /> 用户页 {liveCards.filter(entry => onUserSurface(entry.record)).length}</span></div>
-        <div className="vivic-portal-view-actions"><Button variant="outline" size="sm" disabled={disabled} onClick={() => { if (!onFit()) setMessage("当前不能调整展示视图，请检查主控连接。"); }}><Scan size={15} aria-hidden />显示全部</Button>
-          <Button variant="ghost" size="sm" disabled={disabled || !focus} onClick={() => { if (!onRestore()) setMessage("当前不能恢复视图，请检查主控连接。"); }}><RotateCcw size={15} aria-hidden />恢复视图</Button></div>
+        <div className="vivic-portal-summary"><span><HarkIcon name="computer" size={15} aria-hidden /> 展示页 {liveCards.filter(entry => !onUserSurface(entry.record)).length}</span>
+          <HarkIcon name="share" size={16} aria-hidden /><span><HarkIcon name="person" size={15} aria-hidden /> 用户页 {liveCards.filter(entry => onUserSurface(entry.record)).length}</span></div>
+        <div className="vivic-portal-view-actions"><Button variant="outline" size="sm" disabled={disabled} onClick={() => { if (!onFit()) setMessage("当前不能调整展示视图，请检查主控连接。"); }}><HarkIcon name="expand" size={15} aria-hidden />显示全部</Button>
+          <Button variant="ghost" size="sm" disabled={disabled || !focus} onClick={() => { if (!onRestore()) setMessage("当前不能恢复视图，请检查主控连接。"); }}><HarkIcon name="refresh" size={15} aria-hidden />恢复视图</Button></div>
         <label className="vivic-portal-search">查找卡片<input aria-label="传送门查找卡片" value={query} onChange={event => setQuery(event.target.value)} placeholder="输入名称、内容或拼音" /></label>
         <div className="vivic-portal-list">
           {(["display", "user"] as const).map(place => {
@@ -111,8 +112,8 @@ export function CardPortal({ surface, canvasId, disabled, theme, onTransfer, onF
               {!entries.length && <p className="vivic-portal-empty">{query ? "没有匹配的卡片" : "暂无卡片"}</p>}
               {entries.map(({ record }) => <div key={record.id} className="vivic-portal-row" data-vivic-portal-card={record.id}>
                 <div className="vivic-portal-card-title"><strong>{cardTitle(record)}</strong><small>{CARD_TYPE_LABELS[record.type]}{record.layout.pinned ? " · 已固定" : ""}{focus?.cardId === record.id ? " · 正在聚焦" : ""}</small></div>
-                <div className="vivic-portal-row-actions">{place === "display" && <Button size="sm" variant="ghost" disabled={disabled} aria-label={`聚焦：${cardTitle(record)}`} onClick={() => { if (onFocus(record.id)) setOpen(false); else setMessage("当前不能聚焦，请检查主控连接。"); }}><Crosshair size={15} aria-hidden />聚焦</Button>}
-                  <Button size="sm" variant="outline" disabled={disabled || message === "正在传送…"} aria-label={`传送到${place === "display" ? "用户页" : "展示页"}：${cardTitle(record)}`} onClick={() => transfer(record.id, place === "display" ? "user" : "display")}><ArrowLeftRight size={15} aria-hidden />{place === "display" ? "到用户页编辑" : "到展示页"}</Button></div>
+                <div className="vivic-portal-row-actions">{place === "display" && <Button size="sm" variant="ghost" disabled={disabled} aria-label={`聚焦：${cardTitle(record)}`} onClick={() => { if (onFocus(record.id)) setOpen(false); else setMessage("当前不能聚焦，请检查主控连接。"); }}><HarkIcon name="point" size={15} aria-hidden />聚焦</Button>}
+                  <Button size="sm" variant="outline" disabled={disabled || message === "正在传送…"} aria-label={`传送到${place === "display" ? "用户页" : "展示页"}：${cardTitle(record)}`} onClick={() => transfer(record.id, place === "display" ? "user" : "display")}><HarkIcon name="share" size={15} aria-hidden />{place === "display" ? "到用户页编辑" : "到展示页"}</Button></div>
               </div>)}
             </section>;
           })}

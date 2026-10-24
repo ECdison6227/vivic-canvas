@@ -6,6 +6,7 @@ import {
   controlDispatch,
   gotoControl,
   gotoDisplay,
+  showChat,
   todoCardRecord,
 } from "./helpers1";
 
@@ -135,15 +136,16 @@ test("B01: 打开 Vivic 展示窗口 opens a pinned display window", async ({
   await context.route("https://huggingface.co/**", route => route.abort());
   const A = await gotoControl(context);
   const canvasId = await activeCanvasId(A);
+  await showChat(A);
   const [popup] = await Promise.all([
     context.waitForEvent("page"),
-    A.locator('[data-vivic-open-display]').click(),
+    A.getByRole("button", { name: "展示窗口", exact: true }).click(),
   ]);
   await popup.waitForLoadState("domcontentloaded");
   expect(popup.url()).toContain("/display");
   expect(popup.url()).toContain(`canvasId=${encodeURIComponent(canvasId)}`);
   await expect(popup.getByRole("button", { name: "点击隐藏顶部栏", exact: true })).toBeVisible();
-  await expect(A.getByText(/拖到第二屏/)).toBeVisible();
+  await expect(popup.locator("[data-vivic-stage]")).toBeVisible();
   await popup.close();
   await context.close();
 });

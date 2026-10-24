@@ -1,4 +1,5 @@
 import { presentCards } from "./reminderPresentation";
+import { CanvasSections } from "./CanvasSections";
 import { ReminderListView } from "@/cards/ReminderListView";
 import { TargetBadge } from "@/cards/TargetBadge";
 import { SubcardAnchor } from "@/cards/SubcardAnchor";
@@ -6,6 +7,7 @@ import { SubcardThemeContext } from "@/cards/SubcardEditorContext";
 import { cardTitle } from "@/contracts";
 import { createNodeDataMemo, type VivicNodeData } from "./nodeData";
 import { GripHorizontal } from "lucide-react";
+import { HarkSurface } from "@/components/hark/HarkPrimitives";
 import { memo, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { fixedContentHeight } from "@/cards/sizing";
 import { carriesCard, readCardDrag, startCardDrag } from "@/cards/surfaceDrag";
@@ -33,6 +35,27 @@ import { DisplayCardActions, DisplayControls, DisplayInteractionProvider } from 
 
 const EXIT_ANIMATION_MS = 260;
 
+type CameraState = {
+  viewport: FocusState["prevViewport"] | null;
+  focus: FocusState | null;
+  beforeFocus: FocusState["prevViewport"] | null;
+  fitRequestId: string | null;
+};
+// A same-view owner snapshot can briefly take the stage through AWAKENING,
+// unmounting React Flow. Keep only this window's camera across that remount;
+// a different canvas/owner viewKey starts a separate camera and focus history.
+const displayCameras = new Map<string, CameraState>();
+const displayCamera = (viewKey: string | undefined): CameraState => {
+  const existing = viewKey && displayCameras.get(viewKey);
+  if (existing) return existing;
+  const camera: CameraState = { viewport: null, focus: null, beforeFocus: null, fitRequestId: null };
+  if (viewKey) {
+    if (displayCameras.size >= 16) displayCameras.delete(displayCameras.keys().next().value!);
+    displayCameras.set(viewKey, camera);
+  }
+  return camera;
+};
+
 /** Drag a card off the stage onto the user page (another window). */
 const MoveToUserHandle = ({ entry }: { entry: CardState }) => <span
   className="vivic-move-handle nodrag nopan"
@@ -55,7 +78,7 @@ const MoveToUserHandle = ({ entry }: { entry: CardState }) => <span
 export const VivicNode = memo(({ data }: NodeProps<Node<VivicNodeData>>) => {
   const { entry, focused, dimmed, highlight } = data;
   return (
-    <div
+    <HarkSurface
       className="vivic-card"
       data-card-id={entry.record.id}
       data-scene-type={entry.record.type}
@@ -71,7 +94,7 @@ export const VivicNode = memo(({ data }: NodeProps<Node<VivicNodeData>>) => {
       {!data.reminders && !entry.exitingRequestId && <DisplayCardActions cardId={entry.record.id} title={cardTitle(entry.record)} focused={focused} />}
       {!data.reminders && (entry.record.type !== "CountdownCard" || !entry.record.sourceData.reminderText) && <TargetBadge cardId={entry.record.id} />}
       {!data.reminders && (entry.record.type !== "CountdownCard" || !entry.record.sourceData.reminderText) && <div className="vivic-card-expansion"><SubcardAnchor card={entry.record} /></div>}
-    </div>
+    </HarkSurface>
   );
 }, (previous, next) => previous.data === next.data);
 
@@ -79,7 +102,10 @@ const nodeTypes = { vivic: VivicNode };
 
 const CanvasInner = ({ resolvedTheme }: { resolvedTheme?: "light" | "dark" }) => {
   const rf = useReactFlow();
+  const [camera] = useState(() => displayCamera(getDisplayStatus()?.viewKey));
+  const [initialViewport] = useState(() => camera.viewport ?? undefined);
   const cards = useVivicState((s) => s.cards);
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(() => new Set());
   const focus = useVivicState((s) => s.focus);
   const highlight = useVivicState((s) => s.highlight);
   const targetChoice = useVivicState(s => s.targetChoice);
@@ -107,10 +133,18 @@ const CanvasInner = ({ resolvedTheme }: { resolvedTheme?: "light" | "dark" }) =>
   const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [dragOverrides, setDragOverrides] = useState<Record<string, { x: number; y: number }>>({});
   const [measurements, setMeasurements] = useState<Record<string, { width: number; height: number }>>({});
-  const lastFocusRef = useRef<FocusState | null>(null);
-  const focusViewportRef = useRef<FocusState["prevViewport"] | null>(null);
-  const lastFitRef = useRef<string | null>(null);
+  const lastFocusRef = useRef<FocusState | null>(camera.focus);
+  const focusViewportRef = useRef<FocusState["prevViewport"] | null>(camera.beforeFocus);
+  const lastFitRef = useRef<string | null>(camera.fitRequestId);
   const nodeData = useMemo(() => createNodeDataMemo(), []);
+
+  useEffect(() => () => {
+    if (rf.viewportInitialized === false) return;
+    camera.viewport = rf.getViewport();
+    camera.focus = lastFocusRef.current;
+    camera.beforeFocus = focusViewportRef.current;
+    camera.fitRequestId = lastFitRef.current;
+  }, [camera, rf]);
 
   // Presentation data changes only with canvas content/focus. Pointer movement
   // updates positions separately, so charts and maps retain their data identity.
@@ -137,9 +171,10 @@ const CanvasInner = ({ resolvedTheme }: { resolvedTheme?: "light" | "dark" }) =>
       }),
     [cards, focus, highlight, nodeData],
   );
-  const nodes = useMemo(() => contentNodes.map(node => ({ ...node,
+  const nodes = useMemo(() => contentNodes.filter(node => !node.data.entry.record.metadata.section || !collapsedSections.has(node.data.entry.record.metadata.section)
+    || node.data.entry.record.id === focus?.cardId).map(node => ({ ...node,
     position: dragOverrides[node.id] ?? node.position, measured: measurements[node.id],
-  })), [contentNodes, dragOverrides, measurements]);
+  })), [contentNodes, dragOverrides, measurements, collapsedSections, focus?.cardId]);
 
   // A manual drag wins until the store picks up the committed position.
   useEffect(() => {
@@ -234,6 +269,9 @@ const CanvasInner = ({ resolvedTheme }: { resolvedTheme?: "light" | "dark" }) =>
   // Smooth camera: focus = setCenter on the card, restore = previous viewport.
   // Never touches card content or variant.
   useEffect(() => {
+    // Before panZoom exists getViewport() reports the provider's initial zero
+    // transform, not the viewport restored by ZoomPane. Capture only afterwards.
+    if (rf.viewportInitialized === false) return;
     if (focus) {
       // Each Display owns its camera. Restore the view from this window,
       // rather than the owner's potentially different persisted viewport.
@@ -259,6 +297,7 @@ const CanvasInner = ({ resolvedTheme }: { resolvedTheme?: "light" | "dark" }) =>
   }, [focus, fitRequestId, rf, reducedMotion]);
 
   useEffect(() => {
+    if (rf.viewportInitialized === false) return;
     if (!fitRequestId || fitRequestId === lastFitRef.current) return;
     lastFitRef.current = fitRequestId;
     void rf.fitView({ duration: reducedMotion ? 0 : 450, padding: 0.3, minZoom: 0.05, maxZoom: 1.1 });
@@ -316,7 +355,7 @@ const CanvasInner = ({ resolvedTheme }: { resolvedTheme?: "light" | "dark" }) =>
           settleTimer.current = setTimeout(() => setDragOverrides({}), 1500);
         }}
         onMoveEnd={(_, viewport) =>
-          canvasStore.internal({ type: "canvas.viewport", viewport })
+          { camera.viewport = viewport; canvasStore.internal({ type: "canvas.viewport", viewport }); }
         }
         proOptions={{ hideAttribution: true }}
         deleteKeyCode={null}
@@ -324,9 +363,14 @@ const CanvasInner = ({ resolvedTheme }: { resolvedTheme?: "light" | "dark" }) =>
         maxZoom={1.8}
         autoPanOnNodeFocus={false}
         colorMode={resolvedTheme ?? resolveTheme(preferences.theme, themeAt, preferences)}
-        fitView
+        defaultViewport={initialViewport}
+        fitView={!initialViewport}
         fitViewOptions={{ padding: 0.25, minZoom: 0.05, maxZoom: 1 }}
-      />
+      >
+        <CanvasSections cards={cards} focusId={focus?.cardId} collapsed={collapsedSections} onToggle={section => setCollapsedSections(previous => {
+          const next = new Set(previous); if (next.has(section)) next.delete(section); else next.add(section); return next;
+        })} />
+      </ReactFlow>
       <DisplayControls theme={resolvedTheme ?? resolveTheme(preferences.theme, themeAt, preferences)} />
     </div></SubcardThemeContext.Provider></DisplayInteractionProvider>
   );

@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { activeCanvasId, sendCommand } from "./helpers1";
+import { activeCanvasId, sendCommand, openSpace } from "./helpers1";
 
 // Synthetic microphone only: no employee conversations or physical device.
 const toneFile = path.join(os.tmpdir(), "vivic-e2e-microphone-tone.wav");
@@ -33,7 +33,9 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("disabling automatic sending records WAV, transcribes into review, then uses the shared command engine", async ({ page, context }) => {
+  await page.getByRole("button", { name: "添加内容", exact: true }).click();
   await page.locator('[data-vivic-voice-auto]').uncheck();
+  await page.keyboard.press("Escape");
   let uploads = 0;
   await page.route("**/api/transcribe", async route => {
     const body = route.request().postDataBuffer()!;
@@ -55,6 +57,7 @@ test("disabling automatic sending records WAV, transcribes into review, then use
   const dir = path.resolve(process.cwd(), "../../evidence/phase2-voice-input"); fs.mkdirSync(dir, { recursive: true });
   await page.screenshot({ path: path.join(dir, "transcript-review.png"), fullPage: true });
   await page.locator('[data-vivic-command-send]').click();
+  await openSpace(page, "提醒");
   await expect(page.locator('[data-vivic-reminder-text]')).toHaveText("喝水");
   await expect(display.locator('[data-card-id]')).toHaveCount(1);
   const reminder = display.locator('[data-vivic-reminder-row]');
@@ -73,6 +76,7 @@ test("permission denial leaves text commands usable and never uploads", async ({
   await page.mouse.up();
   expect(uploads).toBe(0);
   await sendCommand(page, "五分钟倒计时");
+  await openSpace(page, "提醒");
   await expect(page.locator('[data-vivic-reminder]')).toHaveCount(1);
 });
 
@@ -127,6 +131,7 @@ test("automatic mode is on by default and sends the recognized command on releas
   await page.route("**/api/transcribe", route => route.fulfill({ json: { ok: true, text: "10分钟后提醒我喝水" } }));
   await expect(page.locator('[data-vivic-voice-auto]')).toBeChecked();
   await hold(page); await page.mouse.up();
+  await openSpace(page, "提醒");
   await expect(page.locator('[data-vivic-reminder-text]')).toHaveText("喝水");
   await expect(page.locator('[data-vivic-command-input]')).toHaveValue("");
 });

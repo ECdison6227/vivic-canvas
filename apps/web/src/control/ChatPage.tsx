@@ -1,11 +1,13 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Settings, UserRound } from "lucide-react";
+import { HarkIcon } from "@/components/hark/HarkPrimitives";
 import type { ResolvedCard } from "@/commands/references";
 import type { Attachment } from "@/ai/attachments";
 import type { ControlHost } from "@/sync/controlHost";
 import { ChatComposer, type ClarifyState } from "./ChatComposer";
 import { UserCardLayer, useUserPageDrop } from "./UserCardLayer";
 import { UserCanvasControls } from "./UserCanvasControls";
+import { ConnectedSources } from "@/connections/ConnectedSources";
+import { FileUploadButton } from "@/files/FileUploadButton";
 
 interface ChatPageProps {
   hidden: boolean;
@@ -31,12 +33,18 @@ interface ChatPageProps {
 const STATUS_VISIBLE_MS = 6000;
 
 /**
- * 用户使用页: the shared background, settings (top left), avatar (top right)
+ * 用户使用页: the shared background, settings and Space controls
  * and one text/voice input. No conversation is kept — results appear on the
  * Display. Cards the user drags in from the Display float where they land.
  */
 export const ChatPage = ({ hidden, host, theme, feedback, notice, onOpenSettings, onOpenDisplay, ...composer }: ChatPageProps) => {
   const drop = useUserPageDrop(host);
+  const [fileMessage, setFileMessage] = useState("");
+  useEffect(() => {
+    if (!fileMessage.startsWith("已保存")) return;
+    const timer = setTimeout(() => setFileMessage(""), STATUS_VISIBLE_MS);
+    return () => clearTimeout(timer);
+  }, [fileMessage]);
   // One transient status line (progress, a question, an error), never a log.
   const [fresh, setFresh] = useState(false);
   const sticky = composer.busy || Boolean(composer.clarify);
@@ -55,19 +63,20 @@ export const ChatPage = ({ hidden, host, theme, feedback, notice, onOpenSettings
       <header className="vivic-chat-header">
         <button type="button" className="vivic-round-button" onClick={onOpenSettings}
           aria-label="设置" title="设置" data-vivic-open-settings>
-          <Settings className="h-[18px] w-[18px]" aria-hidden="true" />
+          <HarkIcon name="gear" size={20} aria-hidden="true" />
         </button>
-        <UserCanvasControls host={host} theme={theme} onOpenDisplay={onOpenDisplay} />
+        <UserCanvasControls host={host} theme={theme} onOpenDisplay={onOpenDisplay} onBeforeClear={composer.onCancel} />
         {notice}
-        <span className="vivic-avatar" role="img" aria-label="我的头像" data-vivic-avatar>
-          <UserRound className="h-5 w-5" aria-hidden="true" />
-        </span>
       </header>
       <div className="vivic-chat-space" />
       <div className="vivic-chat-footer">
+        {fileMessage && <p className="vivic-file-message vivic-upload-status" role="status">{fileMessage}</p>}
         <p className="vivic-chat-status" role="status" aria-live="polite" aria-busy={composer.busy}
           hidden={!feedback} data-visible={(fresh || sticky) || undefined} data-vivic-command-feedback>{feedback}</p>
-        <ChatComposer {...composer} />
+        <ChatComposer {...composer} menuActions={close => <>
+          <FileUploadButton host={host} disabled={composer.disabled || composer.busy} compact onPick={close} onStatus={setFileMessage} />
+          <ConnectedSources host={host} disabled={composer.disabled} onConfigure={onOpenSettings} />
+        </>} />
       </div>
     </div>
   );

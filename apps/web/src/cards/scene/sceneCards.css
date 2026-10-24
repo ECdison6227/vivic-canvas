@@ -33,6 +33,7 @@
 }
 
 .vivic-scene {
+  container: vivic-card-content / inline-size;
   position: relative;
   display: flex;
   flex-direction: column;
@@ -41,7 +42,10 @@
   color: var(--card-foreground);
   font-size: 14px;
   line-height: 1.55;
+  overflow-wrap: anywhere;
 }
+.vivic-scene > :is(.vivic-scene-head, .vivic-scene-title, .vivic-scene-meta, .vivic-scene-foot) { flex-shrink: 0; }
+.vivic-scene[data-mode="control"] > .vivic-scene-title { display: block; }
 .vivic-scene[data-fixed] { overflow: hidden; }
 .vivic-scene[data-bleed] {
   margin: calc(-1 * var(--vivic-card-padding-y)) calc(-1 * var(--vivic-card-padding-x));
@@ -121,6 +125,8 @@
   font-size: 12px;
   color: var(--vivic-muted-ink);
 }
+.vivic-scene-foot > span { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+.vivic-progress-summary [data-progress-values] { overflow-wrap: anywhere; }
 .vivic-scene-scroll { min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 .vivic-scene[data-mode="control"] .vivic-scene-scroll { max-height: 440px; }
 .vivic-scene-clamp-2, .vivic-scene-clamp-3, .vivic-scene-clamp-4 { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
@@ -273,3 +279,11 @@
 
 /* Empty heatmap cells need a little more presence on dark cards. */
 .dark { --vivic-heat-0: color-mix(in oklab, var(--foreground) 13%, transparent); }
+
+/* D adaptation: narrow content keeps badges and actions reachable at large text sizes. */
+@container vivic-card-content (max-width: 300px) {
+  .vivic-scene-head { flex-wrap: wrap; align-items: flex-start; }
+  .vivic-scene-badge { max-width: 100%; }
+  .vivic-scene-foot { align-items: flex-start; }
+  [data-progress-editor] .vivic-scene-action { margin-left: 0; }
+}

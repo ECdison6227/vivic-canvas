@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { LoaderCircle, Mic, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { createLocalSpeechSession, DEFAULT_WAKE_KEYWORDS, DEFAULT_WAKE_PHRASE, MicCapture } from "@/ai/localSpeech";
+import { createLocalSpeechSession, DEFAULT_WAKE_KEYWORDS, DEFAULT_WAKE_PHRASE, MicCapture, localSpeechModels } from "@/ai/localSpeech";
 import type { LocalSpeechEvent, LocalSpeechSession } from "@/ai/localSpeech";
+import { beginWakeActivity } from "@/ai/wakeActivity";
 
 type Segment = Extract<LocalSpeechEvent, { type: "segment" }>;
 export interface LocalWakeInputProps {
@@ -28,12 +29,14 @@ interface Active { controller: AbortController; session: LocalSpeechSession; mic
 export const LocalWakeInput = (props: LocalWakeInputProps) => {
   const currentProps = useRef(props); currentProps.current = props;
   const active = useRef<Active | null>(null);
+  const activity = useRef<ReturnType<typeof beginWakeActivity> | null>(null);
   const mounted = useRef(true);
   const [phase, setPhase] = useState<Phase>("idle");
   const [message, setMessage] = useState<string | null>(null);
   const stop = useCallback((next: Phase = "idle", note: string | null = null) => {
     const old = active.current; active.current = null;
     old?.controller.abort(); old?.mic.dispose(); old?.session.dispose();
+    activity.current?.end(); activity.current = null;
     if (mounted.current) { setPhase(next); setMessage(note); }
   }, []);
   useEffect(() => {
@@ -66,8 +69,8 @@ export const LocalWakeInput = (props: LocalWakeInputProps) => {
         if (!isCurrent()) return;
         if (event.type === "status" && event.status !== "stopped") {
           if (event.status === "transcribing") { scope.accepting = false; mic.stop(); }
-          setPhase(event.status);
-        } else if (event.type === "wake") setMessage("已唤醒，请说一条指令。");
+          setPhase(event.status); activity.current?.phase(event.status);
+        } else if (event.type === "wake") { activity.current?.detected(); setMessage("在听，请说。"); }
         else if (event.type === "fallback") fail(new Error(event.message));
         else if (event.type === "transcript") {
           scope.accepting = false; mic.stop();
@@ -78,6 +81,7 @@ export const LocalWakeInput = (props: LocalWakeInputProps) => {
           scope.accepting = false; mic.stop();
           if (!currentProps.current.onSegment) { fail(new Error("尚未配置语音识别，请改用本地识别或文字。")); return; }
           setPhase("delivering");
+          activity.current?.phase("delivering");
           try {
             const delivery = currentProps.current.onSegment(event);
             if (delivery && typeof delivery.then === "function") {
@@ -94,7 +98,12 @@ export const LocalWakeInput = (props: LocalWakeInputProps) => {
     setPhase("loading"); setMessage(null);
     try {
       props.onBegin?.();
-      const ready = session.start();
+      activity.current = beginWakeActivity(() => stop());
+      // Only this explicit click prepares KWS/VAD. Online users need no desktop launcher.
+      const required = mode === "wake" ? ["vad", "kws-zh-en"] as const : ["vad"] as const;
+      const ready = Promise.all(required.map(id => localSpeechModels.prepareModel(id, { signal: controller.signal }))).then(() => {
+        controller.signal.throwIfAborted(); return session.start();
+      });
       // Called synchronously from click: MicCapture resumes AudioContext before awaiting ready.
       const capture = mic.start({ ready, signal: controller.signal, maxSeconds: 300, onError: fail,
         onPcm: async (samples, rate) => { if (isCurrent() && scope.accepting) await session.acceptPcm(samples, rate); },

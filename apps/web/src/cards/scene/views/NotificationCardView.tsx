@@ -40,6 +40,8 @@ export function NotificationCardView({ card, height }: CardViewProps<"Notificati
   const { title, body, level, at, source } = card.displayProps;
   const status: NoticeStatus = card.displayProps.status ?? "unread";
   const editor = useCardEditor(card);
+  const [error, setError] = useState<string | null>(null);
+  const updateStatus = (next: NoticeStatus) => setError(editor.patch({ status: next }) ? null : "没有保存，请重试。");
   const actions = useCardActions();
   const canRemove = editor.editable && Boolean(actions?.remove);
   const fixed = height !== undefined;
@@ -67,7 +69,7 @@ export function NotificationCardView({ card, height }: CardViewProps<"Notificati
       <div className="vivic-notice-row" data-unread={status === "unread" || undefined}>
         <span className="vivic-notice-icon" role="img" aria-label={kind.label}><Icon size={18} strokeWidth={2.1} aria-hidden /></span>
         <div className="vivic-notice-main">
-          <p ref={titleRef} className="vivic-notice-title" style={{ WebkitLineClamp: titleLines }} title={fixed ? title : undefined} data-notice-title>{title}</p>
+          <p ref={titleRef} className="vivic-notice-title" style={{ WebkitLineClamp: fixed ? titleLines : undefined }} title={fixed ? title : undefined} data-notice-title>{title}</p>
           {body && bodyLines !== 0 && <p className="vivic-notice-body" style={bodyLines ? { WebkitLineClamp: bodyLines } : undefined} title={fixed ? body : undefined} data-notice-body>{body}</p>}
           {hasMeta && <p className="vivic-notice-meta" data-notice-meta>
             {time && <time dateTime={at} title={at ? fullTime(at) : undefined}>{time}</time>}
@@ -78,14 +80,15 @@ export function NotificationCardView({ card, height }: CardViewProps<"Notificati
     </div>
     {editor.editable && <div className="vivic-notice-tools nodrag nopan" data-notice-tools>
       {status === "unread"
-        ? <button type="button" className="vivic-scene-action" onClick={() => editor.patch({ status: "read" })} data-notice-read><MailOpen size={13} aria-hidden />标为已读</button>
-        : <button type="button" className="vivic-scene-action" onClick={() => editor.patch({ status: "unread" })} data-notice-unread><Mail size={13} aria-hidden />标为未读</button>}
-      <button type="button" className="vivic-scene-action" disabled={status === "done"} onClick={() => editor.patch({ status: "done" })} data-notice-done>
+        ? <button type="button" className="vivic-scene-action" onClick={() => updateStatus("read")} data-notice-read><MailOpen size={13} aria-hidden />标为已读</button>
+        : <button type="button" className="vivic-scene-action" onClick={() => updateStatus("unread")} data-notice-unread><Mail size={13} aria-hidden />标为未读</button>}
+      <button type="button" className="vivic-scene-action" disabled={status === "done"} onClick={() => updateStatus("done")} data-notice-done>
         <Check size={13} aria-hidden />完成
       </button>
-      {canRemove && <button type="button" className="vivic-scene-action ml-auto" onClick={() => editor.remove()} data-notice-remove>
+      {canRemove && <button type="button" className="vivic-scene-action ml-auto" onClick={() => setError(editor.remove() ? null : "没有移除，请重试。")} data-notice-remove>
         <Trash2 size={13} aria-hidden />移除
       </button>}
+      {error && <p role="alert" className="m-0 w-full text-xs text-[var(--vivic-danger)]">{error}</p>}
     </div>}
   </SceneCardShell>;
 }

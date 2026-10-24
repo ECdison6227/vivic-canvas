@@ -35,7 +35,7 @@ describe("BackgroundSettings", () => {
     expect(palette("midnight").getAttribute("aria-pressed")).toBe("true");
     expect(palette("milk").getAttribute("aria-pressed")).toBe("true");
     expect(palette("midnight").dataset.vivicPaletteShown).toBe("true");
-    expect(container.textContent).toContain("流光以太");
+    expect(container.textContent).toContain("天空背景");
     expect(container.textContent).not.toMatch(/云雾光晕|丝绸柔光|漫游烟雾|晨曦极光|柔粒渐变/);
   });
   it("switches to the palette's appearance so the change is visible, and keeps 自动 when it already matches", async () => {
@@ -54,6 +54,28 @@ describe("BackgroundSettings", () => {
   it("is read-only without ownership", async () => {
     await render("dark", true);
     expect([...container.querySelectorAll("button")].every(button => button.disabled)).toBe(true);
+  });
+  it("saves the orb choice without changing the sky or appearance", async () => {
+    await render();
+    const before = host.getSnapshot().preferences;
+    const button = container.querySelector<HTMLButtonElement>('[data-vivic-orb-palette="mint"]')!;
+    await click(button);
+    expect(host.getSnapshot().preferences).toEqual({ ...before, orbPalette: "mint" });
+    expect(button.getAttribute("aria-pressed")).toBe("true");
+    expect(host.setPreferences({ orbPalette: "untrusted" } as never).ok).toBe(false);
+  });
+  it("synchronizes light intensity and pause without altering theme or orb", async () => {
+    await render();
+    const before = host.getSnapshot().preferences;
+    await click(container.querySelector<HTMLButtonElement>('[data-vivic-motion-mode="vivid"]')!);
+    expect(host.getSnapshot().preferences).toEqual({ ...before, ambientMotion: "vivid" });
+    expect(host.setPreferences({ ambientIntensity: .8 }).ok).toBe(true);
+    await render();
+    expect(container.querySelector<HTMLInputElement>('[aria-label="光效强度"]')!.value).toBe("80");
+    await click(container.querySelector<HTMLButtonElement>('[data-vivic-motion-mode="off"]')!);
+    expect(container.querySelector<HTMLInputElement>('[aria-label="光效强度"]')!.disabled).toBe(true);
+    expect(host.getSnapshot().preferences.ambientIntensity).toBe(.8);
+    expect(host.setPreferences({ ambientIntensity: 1.01 }).ok).toBe(false);
   });
 });
 

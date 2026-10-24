@@ -15,7 +15,8 @@ test("A02: standby shows the user page's background with only the orb — no vei
   await page.goto("/display");
   await page.waitForSelector(".siri-orb");
   await page.waitForTimeout(1200);
-  // Same 流光以太 background as the user page from the very first frame.
+  await page.getByRole("button", { name: "关闭全屏提示", exact: true }).click();
+  // Same frozen Hark background as the user page from the very first frame.
   await expect(page.locator('[data-vivic-layer="background"]')).toBeVisible();
   await expect(page.locator('[data-vivic-layer="veil"]')).toHaveCount(0);
   const visibleText = await page.evaluate(() =>

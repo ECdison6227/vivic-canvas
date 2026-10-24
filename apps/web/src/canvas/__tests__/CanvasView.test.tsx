@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactFlowProps } from "@xyflow/react";
 import { canvasStore } from "@/state/canvasStore";
 import { emptyVivicState } from "@/persistence/canvasRecord";
-import { beginCanvasDrag, commitCanvasDrag } from "@/sync/browserRuntime";
+import { beginCanvasDrag, commitCanvasDrag, getDisplayStatus } from "@/sync/browserRuntime";
 import { CanvasView } from "../CanvasView";
 
 const flow = vi.hoisted(() => ({ props: {} as ReactFlowProps, camera: {
@@ -33,6 +33,7 @@ beforeEach(() => {
   vi.mocked(beginCanvasDrag).mockReturnValue({ canvasId: "c", ownerEpoch: "owner", version: 1,
     requestId: "drag", cardId: "a", from: { ...canvasStore.getState().cards[0]!.record.layout } });
   vi.mocked(commitCanvasDrag).mockReturnValue(true);
+  vi.mocked(getDisplayStatus).mockReturnValue(null);
   container = document.createElement("div"); document.body.append(container); root = createRoot(container);
 });
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.useRealTimers(); vi.unstubAllGlobals(); });
@@ -42,6 +43,30 @@ const move = () => act(async () => flow.props.onNodesChange?.([{ type: "position
 const stop = () => act(async () => flow.props.onNodeDragStop?.({} as never, { ...flow.props.nodes![0]!, position: { x: 70, y: 80 } }, flow.props.nodes!));
 
 describe("CanvasView interaction boundary", () => {
+  it("preserves this view's camera when a focused owner snapshot remounts the workspace", async () => {
+    const viewport = { x: 458, y: 466, zoom: 0.7 };
+    vi.mocked(getDisplayStatus).mockReturnValue({ viewKey: "camera-remount-owner:canvas" } as never);
+    flow.camera.getViewport.mockReturnValue(viewport);
+    await render();
+    await act(async () => root.render(null));
+    // The owner's shared state can still have its own zero viewport. This
+    // window must retain the camera it actually showed before the remount.
+    await act(async () => canvasStore.loadState({ ...canvasStore.getState(),
+      viewport: { x: 0, y: 0, zoom: 1 },
+      focus: { cardId: "a", prevViewport: { x: 0, y: 0, zoom: 1 } },
+    }));
+    await render();
+    expect(flow.props.defaultViewport).toEqual(viewport);
+    expect(flow.props.fitView).toBe(false);
+    await act(async () => canvasStore.dispatch({ schemaVersion: "0.6", requestId: "remount-restore", canvasId: "c", actions: [{ type: "canvas.restore" }] }));
+    expect(flow.camera.setViewport).toHaveBeenLastCalledWith(viewport, expect.objectContaining({ duration: 420 }));
+    // An owner/canvas scope change must not inherit the previous window view.
+    await act(async () => root.render(null));
+    vi.mocked(getDisplayStatus).mockReturnValue({ viewKey: "camera-remount-other-owner:canvas" } as never);
+    await render();
+    expect(flow.props.defaultViewport).toBeUndefined();
+    expect(flow.props.fitView).toBe(true);
+  });
   it("restores this Display's camera after focus and lets show-all own its camera transition", async () => {
     const viewport = { x: 140, y: -60, zoom: 0.7 };
     flow.camera.getViewport.mockReturnValue(viewport);

@@ -3,7 +3,10 @@ import type { CardState } from "@/state/canvasStore";
 import { CARD_INNER_HEIGHT } from "@/cards/metrics";
 export const completedCountdown = (entry: CardState) => entry.record.type === "CountdownCard" && Boolean(entry.record.sourceData.notifiedAt) && !entry.record.sourceData.schedule;
 export const REMINDER_HORIZON_MS = 60 * 60 * 1000;
-export const reminderGroupKey = (entry: CardState) => entry.record.type === "CountdownCard" && (entry.record.sourceData.schedule || entry.record.sourceData.timeZone || entry.record.sourceData.condition) ? "planned" : "relative";
+export const reminderGroupKey = (entry: CardState) => JSON.stringify([
+  entry.record.type === "CountdownCard" && (entry.record.sourceData.schedule || entry.record.sourceData.timeZone || entry.record.sourceData.condition) ? "planned" : "relative",
+  entry.record.metadata.section ?? "",
+]);
 export function reminderVisible(entry: CardState, now = Date.now()): boolean {
   if (completedCountdown(entry)) return false;
   if (entry.record.type !== "CountdownCard" || !entry.record.sourceData.reminderText || entry.record.layout.pinned) return true;

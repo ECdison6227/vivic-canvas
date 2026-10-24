@@ -4,8 +4,8 @@ import type { Attachment } from "./attachments";
 import { completedCountdown } from "@/canvas/reminderPresentation";
 import type { DeviceFix } from "@/location/deviceLocation";
 import type { CardRecord } from "@/contracts";
-import { TravelOffersCardSchema, type TravelOffersCard, type TravelQuery } from "@vivic/contracts";
-import { readIntentStream, type IntentProgress } from "./intentStream";
+import { isReadableFile, TravelOffersCardSchema, type TravelOffersCard, type TravelQuery, type HostOperation, type DecisionTaskRequest, type DecisionTaskStatus } from "@vivic/contracts";
+import { readIntentStream, IntentResultSchema, type IntentProgress } from "./intentStream";
 import { enabledPlannerDefinitions } from "@/extensions/definitionStore";
 export { intentStageLabel } from "./intentStream";
 
@@ -39,7 +39,9 @@ export interface ProvidersStatusResponse {
 }
 
 export interface IntentResult {
-  kind: "envelope" | "clarify" | "unknown" | "error" | "locale";
+  kind: "envelope" | "clarify" | "unknown" | "error" | "locale" | "host-operation" | "task";
+  hostOperation?: HostOperation;
+  task?: DecisionTaskStatus;
   /** Answer to "我在哪里"; already phrased for display and speech. */
   locale?: { name: string; admin1?: string; country?: string; basis: "device" | "network"; answer: string };
   envelope?: ActionEnvelope;
@@ -49,6 +51,8 @@ export interface IntentResult {
 }
 
 export interface CanvasContextPayload {
+  version?: number;
+  selectedCardIds?: string[];
   timeZone?: string;
   /** Present only when this request carries a selected subset of the canvas. */
   totalCardCount?: number;
@@ -63,7 +67,8 @@ export interface CanvasContextPayload {
     displayProps: Record<string, unknown>;
     sourceDataSummary: Record<string, unknown>;
     contextSummary?: { truncatedFields: string[] };
-    layout: { x: number; y: number };
+    surface?: "user" | "display";
+    layout: { x: number; y: number; width?: number; height?: number; pinned?: boolean };
   }>;
 }
 
@@ -136,6 +141,7 @@ const summarizeSourceData = (
 export const buildCanvasContext = (
   state: VivicState,
   canvasId: string,
+  version?: number,
 ): CanvasContextPayload => {
   const eligible = state.cards.filter(c => !c.exitingRequestId && !completedCountdown(c));
   const ranked = eligible
@@ -150,6 +156,7 @@ export const buildCanvasContext = (
   const selected = eligible.filter(entry => selectedIds.has(entry.record.id));
   return {
   canvasId,
+  ...(version === undefined ? {} : { version }),
   ...(eligible.length > selected.length ? { totalCardCount: eligible.length } : {}),
   timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
   stage: state.stage,
@@ -159,6 +166,8 @@ export const buildCanvasContext = (
     .map((entry) => {
       // Todo is already contract-bounded and edits replace the whole items list.
       const display = entry.record.type === "TodoCard" ? { value: entry.record.displayProps, truncatedFields: [] }
+        : entry.record.type === "FileCard" && !isReadableFile(entry.record.displayProps.mediaType)
+          ? boundedSummary({ ...entry.record.displayProps, previewText: undefined, parseStatus: "unsupported" })
         : boundedSummary(entry.record.displayProps);
       return {
       id: entry.record.id,
@@ -167,7 +176,8 @@ export const buildCanvasContext = (
       displayProps: display.value,
       ...(display.truncatedFields.length ? { contextSummary: { truncatedFields: display.truncatedFields } } : {}),
       sourceDataSummary: summarizeSourceData(entry.record),
-      layout: { x: entry.record.layout.x, y: entry.record.layout.y },
+      surface: entry.record.layout.surface ?? "display",
+      layout: { x: entry.record.layout.x, y: entry.record.layout.y, width: entry.record.layout.width, height: entry.record.layout.height, pinned: entry.record.layout.pinned },
     }; }),
   };
 };
@@ -205,11 +215,12 @@ export const postIntent = async (
   continuation?: { utterance: string; question: string },
   deviceLocation?: DeviceFix | null,
   onProgress?: (event: IntentProgress) => void,
+  task?: DecisionTaskRequest,
 ): Promise<IntentResult> => {
   const extensionDefinitions = enabledPlannerDefinitions();
   const body = { text, canvasContext, ...(attachments?.length ? { attachments } : {}), ...(continuation ? { continuation } : {}),
-    ...(deviceLocation ? { deviceLocation } : {}), ...(extensionDefinitions.length ? { extensionDefinitions } : {}) };
-  if (!onProgress) return post("/api/intent", body, signal);
+    ...(deviceLocation ? { deviceLocation } : {}), ...(extensionDefinitions.length ? { extensionDefinitions } : {}), ...(task ? { task } : {}) };
+  if (!onProgress) return IntentResultSchema.parse(await post("/api/intent", body, signal));
   const response = await fetch("/api/intent", { method: "POST", headers: { "content-type": "application/json", accept: "text/event-stream" }, body: JSON.stringify(body), signal });
   return readIntentStream(response, onProgress, signal);
 };

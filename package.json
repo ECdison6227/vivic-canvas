@@ -6,6 +6,8 @@
   "packageManager": "pnpm@12.11.2",
   "scripts": {
     "package:windows": "node scripts/package-windows.mjs",
+    "package:macos": "node scripts/package-macos.mjs",
+    "package:online": "node scripts/package-online.mjs",
     "package:relay": "node scripts/package-mobile-relay.mjs",
     "dev": "node scripts/dev.mjs",
     "dev:web": "pnpm --filter @vivic/web dev",

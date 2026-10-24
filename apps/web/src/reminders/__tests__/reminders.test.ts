@@ -155,7 +155,13 @@ describe("reminder delivery owned by the controller", () => {
     expect(host.undo()).toBe(true); await flushChannel();
     expect(store.getState().cards.map(c => c.record.id)).toEqual(["a", "b", "c"]);
     expect(displayStore.getState().cards.map(c => c.record.id)).toEqual(["a", "b", "c"]);
+    // General history now also includes the earlier grouped creation.
+    expect(host.undo()).toBe(true); await flushChannel();
+    expect(store.getState().cards).toHaveLength(0);
+    expect(displayStore.getState().cards).toHaveLength(0);
     expect(host.undo()).toBe(false);
+    expect(host.redo()).toBe(true); await flushChannel();
+    expect(displayStore.getState().cards.map(c => c.record.id)).toEqual(["a", "b", "c"]);
     display.stop();
   });
 

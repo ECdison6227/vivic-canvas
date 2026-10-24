@@ -36,7 +36,7 @@ test("TEST data cards: all seven registry types, real charts, row highlight, and
   ]);
   await expect(display.locator("[data-card-id]")).toHaveCount(9);
   const weather = display.locator('[data-card-id="TEST-weather"]');
-  await expect(weather).toHaveText("-3.5°C");
+  await expect(weather.locator('[data-aui="text"]')).toHaveText("-3.5°C");
   await expect(weather.locator("svg.lucide[aria-label]")).toHaveCount(1);
   const table = display.locator('[data-card-id="TEST-table"]');
   await expect(table.locator('[data-aui="table"] tbody tr')).toHaveCount(3);
@@ -45,7 +45,8 @@ test("TEST data cards: all seven registry types, real charts, row highlight, and
   await expect(display.locator(".recharts-line-curve")).toHaveCount(1);
   await expect(display.locator(".recharts-bar-rectangle")).toHaveCount(2);
   await expect(display.locator(".recharts-pie-sector")).toHaveCount(2);
-  await expect(display.locator("[data-card-id] button")).toHaveCount(0);
+  await expect(display.locator("[data-card-id] button:not(.vivic-display-card-actions button)")).toHaveCount(0);
+  await expect(display.locator(".vivic-display-card-actions button")).toHaveCount(18);
   await expect(display.locator("[data-card-id]").filter({ hasText: "TEST hidden location" })).toHaveCount(0);
 
   await controlDispatch(page, "TEST-row-highlight", canvasId, [
@@ -77,7 +78,7 @@ test("TEST data cards: all seven registry types, real charts, row highlight, and
   await display.reload();
   await expect(display.locator("[data-card-id]")).toHaveCount(9);
   await expect(pie.locator('[data-vivic-chart-fallback="negative-pie"]')).toBeVisible();
-  await expect(weather).toHaveText("-3.5°C");
+  await expect(weather.locator('[data-aui="text"]')).toHaveText("-3.5°C");
   expect(sizeWarnings).toEqual([]);
   expect(errors).toEqual([]);
   await display.close();

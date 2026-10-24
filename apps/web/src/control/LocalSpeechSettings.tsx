@@ -19,12 +19,11 @@ export const LocalSpeechSettings = ({ disabled = false, manager = localSpeechMod
   const [clearing, setClearing] = useState(false);
   useEffect(() => {
     let active = true;
-    const controller = new AbortController();
-    const prepare = disabled ? manager.refresh() : manager.prepareDefaultModels({ signal: controller.signal });
+    const prepare = manager.refresh();
     void prepare.catch(cause => {
       if (active && !(cause instanceof DOMException && cause.name === "AbortError")) setError("无法读取本地模型缓存，仍可使用 PTT 或文字。");
     });
-    return () => { active = false; controller.abort(); };
+    return () => { active = false; };
   }, [manager, disabled]);
   const clear = async () => {
     setClearing(true); setError(null);
@@ -35,7 +34,7 @@ export const LocalSpeechSettings = ({ disabled = false, manager = localSpeechMod
   return (
     <section className="rounded-xl border border-neutral-200 bg-white p-4" data-vivic-local-speech>
       <div className="flex items-center gap-2 text-sm font-semibold"><HardDrive className="h-4 w-4" />本地语音</div>
-      <p className="mt-2 text-xs text-neutral-500">首次打开会自动下载下方三个模型，已缓存的不会重复下载。模型首次加载可能较慢并占用较多内存；失败时仍可使用文字输入。</p>
+      <p className="mt-2 text-xs text-neutral-500">按需下载，打开设置不会下载模型。云端识别无需准备本地识别模型。</p>
       <p className="mt-2 text-xs text-neutral-600">默认唤醒词已配置为「{DEFAULT_WAKE_PHRASE}」。麦克风权限会在启动时请求；点击“开启单次监听”后才开始监听，默认不监听。</p>
       <ul className="mt-3 space-y-3">
         {SPEECH_MODELS.map(model => {

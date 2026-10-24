@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ActionEnvelopeSchema } from "@vivic/contracts";
+import { ActionEnvelopeSchema, DecisionTaskRequestSchema, DecisionTaskStatusSchema, HostOperationSchema } from "@vivic/contracts";
 import { SPEECH_VOICE_IDS } from "./voices.js";
 import { ImageAttachmentsSchema } from "./images.js";
 import { TimeZoneSchema } from "@vivic/contracts";
@@ -8,6 +8,8 @@ import { DevicePositionSchema } from "./data/deviceRegion.js";
 /** Compact canvas context the control page sends with each intent request. */
 export const CanvasContextSchema = z.strictObject({
   canvasId: z.string().min(1).max(128),
+  version: z.int().min(0).optional(),
+  selectedCardIds: z.array(z.string().min(1).max(128)).max(64).optional(),
   stage: z.enum(["STANDBY", "AWAKENING", "WORKSPACE"]),
   viewport: z.strictObject({ x: z.number(), y: z.number(), zoom: z.number() }),
   focusHistory: z.array(z.string().max(128)).max(20),
@@ -22,7 +24,8 @@ export const CanvasContextSchema = z.strictObject({
         displayProps: z.record(z.string(), z.unknown()),
         sourceDataSummary: z.record(z.string(), z.unknown()),
         contextSummary: z.strictObject({ truncatedFields: z.array(z.string().min(1).max(128)).max(64) }).optional(),
-        layout: z.strictObject({ x: z.number(), y: z.number() }),
+        layout: z.strictObject({ x: z.number().finite(), y: z.number().finite(), width: z.number().finite().positive().optional(), height: z.number().finite().positive().optional(), pinned: z.boolean().optional() }),
+        surface: z.enum(["user", "display"]).optional(),
       }),
     )
     .max(64, "画布上下文最多包含 64 张卡片，请按聚焦、固定和最近使用筛选后重试。"),
@@ -31,6 +34,7 @@ export const CanvasContextSchema = z.strictObject({
 export type CanvasContext = z.infer<typeof CanvasContextSchema>;
 
 export const IntentRequestSchema = z.strictObject({
+  task: DecisionTaskRequestSchema.optional(),
   text: z.string().min(1).max(500),
   canvasContext: CanvasContextSchema,
   attachments: ImageAttachmentsSchema.optional(),
@@ -66,13 +70,18 @@ export const SpeechRequestSchema = z.strictObject({
 });
 
 export const IntentResponseSchema = z.strictObject({
-  kind: z.enum(["envelope", "clarify", "unknown", "error", "locale"]),
+  kind: z.enum(["envelope", "host-operation", "clarify", "unknown", "error", "locale", "task"]),
   envelope: ActionEnvelopeSchema.optional(),
+  hostOperation: HostOperationSchema.optional(),
+  task: DecisionTaskStatusSchema.optional(),
   message: z.string().max(400).optional(),
   suggestions: z.array(z.string().min(1).max(100)).max(5).optional(),
   locale: z.strictObject({ name: z.string().min(1).max(80), admin1: z.string().max(80).optional(),
     country: z.string().max(80).optional(), basis: z.enum(["device", "network"]), answer: z.string().min(1).max(200) }).optional(),
   usedProvider: z.enum(["rules", "stepfun", "gpt", "rules-offline", "search", "decision"]).optional(),
+}).superRefine((response, ctx) => {
+  if (response.hostOperation && response.envelope || response.kind === "host-operation" && !response.hostOperation
+    || response.hostOperation && response.kind !== "host-operation") ctx.addIssue({ code: "custom", message: "宿主操作与 ActionEnvelope 必须二选一。" });
 });
 
 export type IntentResponse = z.infer<typeof IntentResponseSchema>;

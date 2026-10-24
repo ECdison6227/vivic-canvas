@@ -177,6 +177,10 @@ export const createDisplayClient = (
   const unsubscribeChannel = deps.channel.subscribe((msg) => {
     if (stopped) return;
     switch (msg.type) {
+      case "space-feedback": {
+        if (!hydrated || msg.canvasId !== canvasId || msg.epoch !== epoch || msg.version !== version) return;
+        emitSpaceFeedback(msg.payload); return;
+      }
       case "target-choice": {
         if (!hydrated || msg.canvasId !== canvasId || msg.epoch !== epoch) return;
         const choice = msg.payload.choice;
@@ -355,3 +359,4 @@ export const createDisplayClient = (
     getStatus: () => ({ canvasId, version, ownerAlive: ownerAlive && Date.now() - lastOwnerSeenAt < 3600, hydrated, canInteract: canInteract(), viewKey: `${canvasId}:${epoch}` }),
   };
 };
+import { emitSpaceFeedback } from "@/motion/spaceMotion";

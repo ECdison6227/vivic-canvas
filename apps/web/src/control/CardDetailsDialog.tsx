@@ -28,6 +28,9 @@ export function CardDetailsReader({ children }: { children: ReactNode }) {
     setSelectedId(id);
   }, []);
   const article = card?.type === "SearchResultCard" && typeof card.sourceData.articleText === "string" ? card.sourceData.articleText : null;
+  const connected = card?.type === "NoteCard" && card.sourceData.connectedSource && typeof card.sourceData.connectedSource === "object"
+    ? card.sourceData.connectedSource as Record<string, unknown> : null;
+  const connectedText = connected && typeof connected.text === "string" ? connected.text.slice(0, 24000) : null;
   const kind = card?.type === "NoteCard" ? "便笺原文" : article !== null ? (card?.type === "SearchResultCard" && card.sourceData.truncated ? "网页正文 · 已截取" : "网页正文") : "搜索摘要";
   return <>
     <DetailsContext.Provider value={openDetails}>{children}</DetailsContext.Provider>
@@ -43,6 +46,8 @@ export function CardDetailsReader({ children }: { children: ReactNode }) {
             {card?.type === "NoteCard" && <>
               {renderVivicSpec({ _type: "Markdown", value: card.displayProps.text ?? "" })}
               {!!card.displayProps.bullets?.length && renderVivicSpec({ _type: "Markdown", value: card.displayProps.bullets.map(text => `- ${text}`).join("\n") })}
+              {connectedText && <details open className="mt-5 border-t border-border pt-3"><summary className="text-xs opacity-60">服务查询原文{connected?.truncated === true ? " · 已截取" : ""}</summary>
+                {renderVivicSpec({ _type: "Markdown", value: connectedText })}</details>}
             </>}
             {card?.type === "SearchResultCard" && renderVivicSpec({ _type: "Markdown", value: article ?? card.displayProps.summary })}
           </article>

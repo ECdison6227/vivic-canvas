@@ -34,7 +34,7 @@ if (fs.existsSync(dist)) {
   // Only real files under dist are served; /api and /healthz fall through to
   // the routes defined above.
   app.use("/*", serveStatic({ root: dist }));
-  for (const route of ["/", "/control", "/display", "/mobile"]) app.get(route, serveStatic({ path: path.join(dist, "index.html") }));
+  for (const route of ["/", "/control", "/display", "/mobile", "/launcher"]) app.get(route, serveStatic({ path: path.join(dist, "index.html") }));
 }
 
 const server = serve(

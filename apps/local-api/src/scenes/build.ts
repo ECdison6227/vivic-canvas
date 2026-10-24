@@ -67,7 +67,9 @@ function groundingIssue(scene: ParsedScene, context: SceneBuildContext): SceneIs
       const d = scene.data;
       if (!hasSource) return { issue: "没有可摘要的新闻原文：请让用户提供原文或链接，不要凭空写新闻", ask: "请把新闻原文或链接发给我，我再整理成资讯卡片。" };
       if (overlapRatio(corpus, d.summary) < 0.3) return { issue: "news_summary.summary 必须依据用户提供的原文或链接页面概括" };
-      return first(url(d.url, "url"), url(d.imageUrl, "imageUrl"), day(d.publishedAt, "publishedAt"));
+      return first(url(d.url, "url"), url(d.imageUrl, "imageUrl"),
+        d.publishedAt === undefined || groundedDate(corpus, d.publishedAt) ? null
+          : { issue: "news_summary.publishedAt 没有原文发布日期依据，必须省略这个可选字段；不能把今天或事件发生日当作发布日期，无需向用户追问日期" });
     }
     case "historical_timeline": return first(...scene.data.events.map(event => groundedPartialDate(corpus, event.date) ? null
       : { issue: "historical_timeline.events.date 不在用户提供的信息里，不能编造事件或日期；缺少时请 clarify", ask: "请告诉我这些事情发生的时间，我再整理成时间线。" }));
@@ -85,7 +87,10 @@ function groundingIssue(scene: ParsedScene, context: SceneBuildContext): SceneIs
         ? { issue: "activity_feed.items 必须来自用户提供的记录；查看画布自身动态请改用 {\"live\":true}" } : null;
     }
     case "goal_progress": return first(number(scene.data.current, "current"), number(scene.data.target, "target"), day(scene.data.deadline, "deadline"));
-    case "habit_tracking": return first(...(scene.data.checkins ?? []).map(date => day(date, "checkins")), number(scene.data.weeklyGoal, "weeklyGoal"), day(scene.data.startDate, "startDate"));
+    case "habit_tracking": return first(...(scene.data.checkins ?? []).map(date => day(date, "checkins")),
+      scene.data.weeklyGoal === undefined || groundedNumber(corpus, scene.data.weeklyGoal) ? null
+        : { issue: "habit_tracking.weeklyGoal 没有用户给出的每周目标数值依据，必须省略这个可选字段；不要复制示例目标4，也不需要为已有打卡记录追问目标" },
+      day(scene.data.startDate, "startDate"));
     case "book_record": {
       const d = scene.data;
       return first(phrase(d.title, "title"), phrase(d.author, "author"), number(d.currentPage, "currentPage"), number(d.totalPages, "totalPages"),

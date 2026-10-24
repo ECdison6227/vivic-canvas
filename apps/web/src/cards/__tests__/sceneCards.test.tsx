@@ -52,7 +52,7 @@ describe("scene card registry", () => {
       expect(typeof view === "function" || (typeof view === "object" && view !== null
         && Reflect.get(view, "$$typeof") === Symbol.for("react.lazy"))).toBe(true);
     }
-    expect(Object.keys(CARD_VIEWS)).toHaveLength(26);
+    expect(Object.keys(CARD_VIEWS)).toHaveLength(27);
   });
   it("ships schema-valid sample data whose scene round-trips through the registry", () => {
     const fixtures = buildSceneFixtures();

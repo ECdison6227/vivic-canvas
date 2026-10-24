@@ -4,7 +4,7 @@ import type { SceneRequest, SceneBuild } from "./index.js";
 import { buildSceneActions } from "./index.js";
 import { buildTravelCard, demoTravelProvider, queryTravel, type TravelProvider } from "../providers/travel.js";
 
-export function travelQueryIssue(query: TravelQuery, req: SceneRequest): { issue: string; ask: string } | null {
+export function travelQueryIssue(query: TravelQuery, req: SceneRequest): { issue: string; ask?: string } | null {
   // Tool output, page text and canvas facts are deliberately excluded from query authority.
   const text = `${req.continuation?.utterance ?? ""}\n${req.text}`;
   const corpus = buildCorpus([text], { now: req.now, timeZone: req.ctx.timeZone ?? "Asia/Shanghai" });
@@ -13,6 +13,12 @@ export function travelQueryIssue(query: TravelQuery, req: SceneRequest): { issue
   if (query.kind === "hotel" && !/酒店|住宿|住|民宿|宾馆/.test(text)
     || query.kind === "flight" && !/航班|机票|飞机/.test(text)
     || query.kind === "poi" && !/景点|景区|门票|游玩/.test(text)) return fail("你想查询住宿、航班还是景点？");
+  if (query.startDate && !groundedDate(corpus, query.startDate) && query.dateText && groundedPhrase(corpus, query.dateText)) {
+    // The user supplied a usable coarse date; the planner added unsupported
+    // precision. Reject that proposal and use the existing repair round.
+    // No provider runs and no date is silently changed or accepted here.
+    return { issue: "travel_offers.startDate 没有具体日期依据，但已有来自用户原话的dateText；保留dateText并省略编造的startDate，重新输出查询。仅说下周不能指定下周某一天，不需向用户追问已经提供的模糊日期。" };
+  }
   if (query.startDate && !groundedDate(corpus, query.startDate) || query.dateText && !groundedPhrase(corpus, query.dateText)) return fail("请补充出行日期，不能推测日期。");
   if (query.kind !== "poi" && !query.startDate && !query.dateText) return fail("计划哪天出发或入住？");
   if (query.kind === "hotel" && !query.nights) return fail("计划住几晚？");

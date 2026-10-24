@@ -7,6 +7,12 @@ import { createVivicHostAdapter } from "@vivic/mobile-console-prototype/vivicHos
 import { createComputerConnector, type ConnectorState } from "@vivic/mobile-console-prototype/connector";
 import { createWebSocketTransport } from "@vivic/mobile-console-prototype/transport";
 import { executeRemoteText } from "./executeRemoteText";
+import { ExtensionDefinitionRefSchema } from "@vivic/contracts";
+import { extensionDefinitions } from "@/extensions/definitionStore";
+import { loadBuiltinOfficeDefinitions, officePlannerKind } from "@/cards/office/builtinOfficePackages";
+import { AndroidDownload } from "./AndroidDownload";
+import { projectMobileSubcards } from "./projectSubcards";
+import { createRemoteFileReader } from "@/files/remoteFiles";
 
 const stopped: ConnectorState = { status: "stopped", pairCode: null, pairExpiresAt: null, expiresAt: null, controllers: [], error: null };
 const subscribeNothing = () => () => {};
@@ -35,14 +41,27 @@ export function MobileControlSettings({ host, disabled, desktopBusy }: { host: C
   const start = async () => {
     setBusy(true); setError(null); connector?.stop(); setConnector(null);
     try {
+      // A custom extension sharing an Office ID must never select its preview.
+      await Promise.all([loadBuiltinOfficeDefinitions(), extensionDefinitions.ready()]).catch(() => {});
       const response = await fetch("/api/mobile/session", { method: "POST", cache: "no-store" });
       if (!response.ok) throw new Error("relay_unavailable");
       const session = await response.json() as { relayUrl: string; mobileUrl: string; deviceId: string; token: string };
-      const adapter = createVivicHostAdapter({ computerName: "Vivic 电脑", host: { ...host,
+      const adapter = createVivicHostAdapter({ computerName: "Vivic 电脑", shareCardPreviews: true, host: { ...host,
         getSnapshot: () => { const snapshot = host.getSnapshot(); return { ...snapshot, ready: snapshot.ready && !desktopBusy() }; },
         switchCanvas: id => { if (!desktopBusy()) host.switchCanvas(id); },
+        setCardSurface: (cardId, surface, position, canvasId) => desktopBusy() ? { ok: false } : host.setCardSurface(cardId, surface, position, canvasId),
         setCardPinned: (...args) => desktopBusy() ? { ok: false } : host.setCardPinned(...args) },
-        readCards: () => canvasStore.getState().cards, subscribeCards: canvasStore.subscribe,
+        isOfficeDefinition: ref => {
+          const parsed = ExtensionDefinitionRefSchema.safeParse(ref);
+          return parsed.success && Boolean(officePlannerKind(extensionDefinitions.get(parsed.data)));
+        },
+        projectSubcards: projectMobileSubcards,
+        readFileChunk: createRemoteFileReader(),
+        readCards: () => canvasStore.getState().cards,
+        subscribeCards: listener => {
+          const cards = canvasStore.subscribe(listener), definitions = extensionDefinitions.subscribe(listener);
+          return () => { cards(); definitions(); };
+        },
         submitText: (text, context) => executeRemoteText(host, text, context, desktopBusy) });
       const next = createComputerConnector({ transport: createWebSocketTransport(session.relayUrl), host: adapter,
         deviceId: session.deviceId, deviceName: "Vivic 电脑", token: session.token });
@@ -51,11 +70,12 @@ export function MobileControlSettings({ host, disabled, desktopBusy }: { host: C
     finally { setBusy(false); }
   };
   return <section className="rounded-xl border border-neutral-200 bg-white p-4" data-vivic-mobile-control>
-    <h2 className="text-sm font-semibold">手机控制</h2>
-    <p className="mt-2 text-xs text-neutral-500">开启后用手机扫码，可发送文字、切换画布和固定卡片。电脑控制页需保持打开；手机只接收画布与卡片摘要。</p>
-    <p className="mt-2 text-xs" role="status">{labels[state.status]} · 已授权 {state.controllers.length} 部手机</p>
+    <h2 className="text-sm font-semibold">扫码连接手机</h2>
+    <p className="mt-2 text-xs text-neutral-500">先在电脑连接模型，再扫码。手机可聊天，并查看当前画布的卡片内容。</p>
+    {running && <p className="mt-2 text-xs" role="status">{state.status === "connected" ? state.controllers.length ? `已连接 ${state.controllers.length} 部手机` : "等待扫码" : labels[state.status]}</p>}
     <div className="mt-3 flex flex-wrap gap-2">
-      {!running ? <Button size="sm" disabled={disabled || busy} onClick={() => void start()} data-vivic-mobile-start>开启手机控制</Button>
+      <AndroidDownload />
+      {!running ? <Button size="sm" disabled={disabled || busy} onClick={() => void start()} data-vivic-mobile-start>生成连接二维码</Button>
         : <><Button size="sm" variant="outline" onClick={() => { connector?.stop(); setConnector(null); }} data-vivic-mobile-stop>停止手机控制</Button>
           <Button size="sm" variant="secondary" disabled={state.status !== "connected"} onClick={() => connector?.rotatePairing()}>生成新配对码</Button></>}
     </div>
@@ -63,7 +83,7 @@ export function MobileControlSettings({ host, disabled, desktopBusy }: { host: C
       {qr && <img src={qr} alt="手机控制一次性配对二维码" width={240} height={240} />}
       <output className="font-mono text-lg" data-vivic-mobile-pair-code>{pairCode}</output>
       <p className="text-xs text-neutral-500">也可在手机打开 {mobileUrl}，手动输入配对码。</p></div>}
-    {state.controllers.map(id => <div className="mt-2 flex items-center gap-3" key={id}><span className="text-xs">手机 {id.slice(0, 8)}</span><Button size="sm" variant="outline" onClick={() => connector?.revoke(id)}>撤销授权</Button></div>)}
+    {state.controllers.map((id, index) => <div className="mt-2 flex items-center gap-3" key={id}><span className="text-xs">手机 {index + 1}</span><Button size="sm" variant="outline" onClick={() => connector?.revoke(id)}>撤销授权</Button></div>)}
     {(error || state.error) && <p className="mt-2 text-xs text-amber-700" role="alert">{error ?? state.error}</p>}
   </section>;
 }

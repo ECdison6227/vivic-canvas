@@ -1,13 +1,16 @@
-import { CanvasSnapshotSchema, PERMISSIONS, serializeFrame, type CanvasSnapshot, type Command, type Frame, type Permission, type Result, type Welcome } from "./protocol";
+import { CanvasSnapshotSchema, FileChunkDataSchema, PERMISSIONS, serializeFrame, type CanvasSnapshot, type Command, type Frame, type Permission, type Result, type Welcome, type FileChunkData } from "./protocol";
 import type { Transport } from "./transport";
 
+export interface HostMutationContext { isCurrent(): boolean; withCommit?<T>(write: () => T): T }
 export interface ComputerHostAdapter {
   getSnapshot(): CanvasSnapshot;
   subscribe(listener: () => void): () => void;
   /** Resolve only after owner execution. Honor signal/isCurrent immediately before every commit. */
-  submitText(text: string, context: { requestId: string; signal: AbortSignal; isCurrent(): boolean }): Promise<{ ok: boolean; message: string }>;
+  submitText(text: string, context: { requestId: string; signal: AbortSignal; isCurrent(): boolean; conversationId?: string; withCommit?<T>(write: () => T): T }): Promise<{ ok: boolean; message: string }>;
   switchCanvas(id: string, context?: { isCurrent(): boolean }): { ok: boolean; message: string } | Promise<{ ok: boolean; message: string }>;
   setCardPinned(cardId: string, pinned: boolean): { ok: boolean; message: string } | Promise<{ ok: boolean; message: string }>;
+  setCardSurface?(cardId: string, surface: "display" | "user", context?: HostMutationContext): { ok: boolean; message: string } | Promise<{ ok: boolean; message: string }>;
+  readFileChunk?(cardId: string, offset: number, context: { isCurrent(): boolean }): Promise<FileChunkData>;
 }
 export interface ConnectorState {
   status: "stopped" | "connecting" | "connected" | "offline" | "expired" | "error";
@@ -18,7 +21,7 @@ export interface ComputerConnectorOptions {
   transport: Transport; deviceId: string; deviceName: string; accessKey?: string; token?: string;
   host: ComputerHostAdapter; now?: () => number; maxRequests?: number; reconnectDelayMs?: number;
 }
-interface Entry { command: Command; fingerprint: string; abort: AbortController; started: boolean; result?: Result }
+interface Entry { command: Command; fingerprint: string; abort: AbortController; started: boolean; result?: Result; committedVersion?: number }
 
 /** Owns no canvas/store. Only a leased, validated adapter to the existing elected owner. */
 export function createComputerConnector(options: ComputerConnectorOptions) {
@@ -28,6 +31,7 @@ export function createComputerConnector(options: ComputerConnectorOptions) {
   // Owner initiated revocations take effect locally even before the relay acknowledges them.
   const locallyRevoked = new Set<string>();
   const ledger = new Map<string, Entry>();
+  const fileReads = new Set<string>();
   const listeners = new Set<() => void>();
   let state: ConnectorState = { status: "stopped", pairCode: null, pairExpiresAt: null, expiresAt: null, controllers: [], error: null };
   let welcome: Welcome | null = null;
@@ -56,9 +60,18 @@ export function createComputerConnector(options: ComputerConnectorOptions) {
     const s = scope(); if (!s || !connected) return;
     try {
       const snapshot = hostSnapshot();
-      const frame: Extract<Frame, { type: "snapshot" }> = { ...s, type: "snapshot", sequence: ++sequence, state: { ...snapshot } };
+      const cards = snapshot.cards.map(card => {
+        // Older deployed relays have strict v1 schemas: omit additive content
+        // unless this session explicitly advertises the corresponding new grant.
+        const { subcards, file, section, priority, dueDate, ...legacy } = card;
+        return { ...legacy, ...(welcome?.permissions.includes("card.surface") && subcards ? { subcards } : {}),
+          ...(welcome?.permissions.includes("card.surface") ? { ...(section ? { section } : {}), ...(priority ? { priority } : {}), ...(dueDate ? { dueDate } : {}) } : {}),
+          ...(welcome?.permissions.includes("file.read") && file ? { file } : {}) };
+      });
+      const frame: Extract<Frame, { type: "snapshot" }> = { ...s, type: "snapshot", sequence: ++sequence, state: { ...snapshot, cards } };
       // Schema row/character limits alone do not bound UTF-8 bytes. Retain navigation and
-      // the active canvas while fitting summaries to the same wire budget as the relay.
+      // the active canvas. First remove previews from the end, then trim summaries.
+      // Clones keep the adapter's snapshot and its card objects untouched.
       const fit = <T>(rows: T[], assign: (rows: T[]) => void) => {
         let low = 0, high = rows.length;
         while (low < high) {
@@ -68,7 +81,15 @@ export function createComputerConnector(options: ComputerConnectorOptions) {
         }
         assign(rows.slice(0, low));
       };
-      if (!serializeFrame(frame)) fit(snapshot.cards, rows => { frame.state.cards = rows; });
+      if (!serializeFrame(frame)) {
+        frame.state.cardCount = snapshot.cardCount ?? snapshot.cards.length;
+        frame.state.cardsTruncated = true;
+        const summaries = cards.map(({ preview: _preview, subcards: _subcards, file: _file, ...summary }) => summary);
+        // A prefix of full previews is equivalent to stripping from the end.
+        // Binary fitting avoids repeatedly serializing every large table/card.
+        fit(cards, prefix => { frame.state.cards = cards.map((card, index) => index < prefix.length ? card : summaries[index]!); });
+      }
+      if (!serializeFrame(frame)) fit(frame.state.cards, rows => { frame.state.cards = rows; });
       if (!serializeFrame(frame)) {
         const active = snapshot.canvases.find(canvas => canvas.id === snapshot.activeCanvasId);
         const others = snapshot.canvases.filter(canvas => canvas.id !== snapshot.activeCanvasId);
@@ -95,13 +116,13 @@ export function createComputerConnector(options: ComputerConnectorOptions) {
     entry.result = makeResult(entry.command, status, message);
     if (active && connected && scoped(entry.command) && authorized(entry.command.deviceId)) send(entry.result);
   }
-  function current(entry: Entry) {
+  function current(entry: Entry, ignoreVersion = false) {
     const c = entry.command;
     try {
       const snapshot = hostSnapshot();
       return active && connected && scoped(c) && authorized(c.deviceId, c.operation.kind) && !entry.abort.signal.aborted
         && snapshot.ownerAvailable && snapshot.ownerEpoch === c.ownerEpoch
-        && snapshot.activeCanvasId === c.canvasId && snapshot.version === c.expectedVersion;
+        && snapshot.activeCanvasId === c.canvasId && (ignoreVersion || snapshot.version === (entry.committedVersion ?? c.expectedVersion));
     } catch { return false; }
   }
   async function execute(entry: Entry) {
@@ -112,15 +133,33 @@ export function createComputerConnector(options: ComputerConnectorOptions) {
     entry.started = true;
     send({ ...scope()!, type: "executing", requestId: c.requestId, forDeviceId: c.deviceId });
     try {
+      const mutation: HostMutationContext = {
+        isCurrent: () => current(entry),
+        // Only a synchronous, currently leased owner write advances this request's version.
+        withCommit: <T>(write: () => T): T => {
+          if (!current(entry)) throw new Error("remote_scope_changed");
+          const from = hostSnapshot().version;
+          const result = write();
+          const to = hostSnapshot().version;
+          if (!current(entry, true) || !Number.isSafeInteger(to) || to < from || to > from + 1) throw new Error("remote_commit_scope_changed");
+          entry.committedVersion = to; return result;
+        },
+      };
       let outcome: { ok: boolean; message: string };
       if (operation.kind === "text.submit") {
-        outcome = await host.submitText(operation.text, { requestId: c.requestId, signal: entry.abort.signal, isCurrent: () => current(entry) });
+        outcome = await host.submitText(operation.text, { requestId: c.requestId, signal: entry.abort.signal, isCurrent: () => current(entry),
+          conversationId: [c.sessionId, c.epoch, c.deviceId, c.ownerEpoch, c.canvasId].join(":"),
+          withCommit: mutation.withCommit,
+        });
       } else if (operation.kind === "canvas.switch") {
         if (!hostSnapshot().canvases.some(canvas => canvas.id === operation.targetCanvasId)) { answer(entry, "rejected", "目标画布不存在。"); return; }
         outcome = await host.switchCanvas(operation.targetCanvasId, { isCurrent: () => current(entry) });
       } else {
         if (!hostSnapshot().cards.some(card => card.id === operation.cardId)) { answer(entry, "rejected", "目标卡片不在当前画布。"); return; }
-        outcome = await host.setCardPinned(operation.cardId, operation.pinned);
+        if (operation.kind === "card.surface") {
+          if (!host.setCardSurface) { answer(entry, "rejected", "电脑版本暂不支持手机传送门，请更新电脑端后重新配对。"); return; }
+          outcome = await host.setCardSurface(operation.cardId, operation.surface, mutation);
+        } else outcome = await host.setCardPinned(operation.cardId, operation.pinned);
       }
       // If the adapter committed before cancellation, report execution; cancellation never rolls it back.
       answer(entry, outcome.ok ? "succeeded" : entry.abort.signal.aborted ? "cancelled" : "rejected", outcome.message);
@@ -193,6 +232,20 @@ export function createComputerConnector(options: ComputerConnectorOptions) {
       if (frame.state === "joined" && !locallyRevoked.has(frame.deviceId)) permissions.set(frame.deviceId, frame.permissions.filter(permission => PERMISSIONS.includes(permission)));
       else { permissions.delete(frame.deviceId); ledger.forEach(entry => { if (entry.command.deviceId === frame.deviceId && !entry.result) entry.abort.abort(); }); }
       emit({ controllers: [...permissions.keys()] }); publishSnapshot();
+    } else if (frame.type === "file.request" && authorized(frame.deviceId, "file.read")) {
+      const isCurrent = () => {
+        try { const current = hostSnapshot(); return active && connected && scoped(frame) && authorized(frame.deviceId, "file.read") && current.ownerAvailable
+          && current.activeCanvasId === frame.canvasId && current.ownerEpoch === frame.ownerEpoch && current.version === frame.expectedVersion
+          && current.cards.some(card => card.id === frame.cardId && card.file); } catch { return false; }
+      };
+      const reject = () => { const s = scope(); if (s && scoped(frame) && authorized(frame.deviceId)) send({ ...s, type: "file.error", forDeviceId: frame.deviceId, requestId: frame.requestId, message: "文件或电脑状态已变化，请同步后重试下载。" }); };
+      if (!isCurrent() || !host.readFileChunk || fileReads.has(frame.deviceId)) { reject(); return; }
+      fileReads.add(frame.deviceId);
+      void host.readFileChunk(frame.cardId, frame.offset, { isCurrent }).then(raw => {
+        const chunk = FileChunkDataSchema.parse(raw);
+        if (!isCurrent()) { reject(); return; }
+        send({ ...scope()!, type: "file.chunk", forDeviceId: frame.deviceId, requestId: frame.requestId, cardId: frame.cardId, offset: frame.offset, chunk });
+      }).catch(reject).finally(() => fileReads.delete(frame.deviceId));
     } else if (frame.type === "command") command(frame);
     else if ((frame.type === "query" || frame.type === "cancel") && authorized(frame.deviceId)) {
       const entry = ledger.get(key(frame.sessionId, frame.epoch, frame.deviceId, frame.requestId));
@@ -221,7 +274,11 @@ export function createComputerConnector(options: ComputerConnectorOptions) {
         } else if (event.type === "message") receive(event.frame);
         else lost(event.reason);
       });
-      unsubHost = host.subscribe(publishSnapshot);
+      unsubHost = host.subscribe(() => {
+        // A temporarily lost identity never revives an old text task, even if the UI recovers.
+        for (const entry of ledger.values()) if (!entry.result && entry.command.operation.kind === "text.submit" && !current(entry, true)) entry.abort.abort();
+        publishSnapshot();
+      });
       transport.connect();
     },
     stop() {

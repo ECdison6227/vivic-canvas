@@ -1,7 +1,11 @@
 import { lazy, Suspense } from "react";
+import { ONLINE_BUILD } from "@/online/mode";
+import { OnlineBoundary } from "@/online/OnlineBoundary";
+import { OnlineWorkspace } from "@/online/OnlineWorkspace";
 const ControlApp = lazy(() => import("@/control/ControlApp").then(module => ({ default: module.ControlApp })));
 const DisplayApp = lazy(() => import("@/display/DisplayApp").then(module => ({ default: module.DisplayApp })));
 const MobileConsole = lazy(() => import("@/control/mobile/MobileConsole").then(module => ({ default: module.MobileConsole })));
+const LauncherApp = import.meta.env.MODE === "online" ? null : lazy(() => import("@/launcher/LauncherApp"));
 
 /**
  * One app, three pages (pathname routing, no router dependency):
@@ -14,6 +18,7 @@ const MobileConsole = lazy(() => import("@/control/mobile/MobileConsole").then(m
  */
 const rawPath = window.location.pathname.replace(/\/+$/, "") || "/";
 const isDisplay = rawPath === "/display";
+const isOnlineRemote = ONLINE_BUILD && (rawPath === "/remote" || rawPath === "/remote/index.html");
 const isPlayground = import.meta.env.DEV && rawPath === "/playground";
 // Production builds drop the playground chunk entirely.
 const CardPlayground = import.meta.env.DEV ? lazy(() => import("@/dev/CardPlayground").then(module => ({ default: module.CardPlayground }))) : null;
@@ -22,12 +27,18 @@ if (/^\/landing(?:\/|$)/.test(window.location.pathname) && window.location.pathn
   // The landing is its own HTML entry; only /landing/ resolves to it. Any other
   // path under it (/landing, or a pasted link with trailing punctuation) lands there too.
   window.location.replace(`/landing/${window.location.search}${window.location.hash}`);
-} else if (rawPath !== "/display" && rawPath !== "/control" && rawPath !== "/mobile" && rawPath !== "/" && !isPlayground) {
+} else if (rawPath !== "/display" && rawPath !== "/control" && rawPath !== "/mobile" && rawPath !== "/launcher" && rawPath !== "/" && !isPlayground && !isOnlineRemote) {
   window.location.replace(`/${window.location.search}`);
 }
 
 function App() {
-  if (rawPath === "/mobile") return <Suspense fallback={null}><MobileConsole /></Suspense>;
+  // The paired phone is a remote controller, never another browser owner session.
+  if (isOnlineRemote) return <Suspense fallback={<div role="status" aria-label="正在载入手机控制" />}><MobileConsole /></Suspense>;
+  if (ONLINE_BUILD) return <OnlineBoundary><Suspense fallback={<div role="status" aria-label="正在载入 Vivic" />}>
+    {isDisplay ? <DisplayApp /> : <OnlineWorkspace><ControlApp /></OnlineWorkspace>}
+  </Suspense></OnlineBoundary>;
+  if (rawPath === "/launcher" && LauncherApp) return <Suspense fallback={<div role="status" aria-label="正在载入启动器" />}><LauncherApp /></Suspense>;
+  if (rawPath === "/mobile" && MobileConsole) return <Suspense fallback={null}><MobileConsole /></Suspense>;
   if (isPlayground && CardPlayground) return <Suspense fallback={null}><CardPlayground /></Suspense>;
   return <Suspense fallback={<div role="status" aria-label="正在载入画布" />}>{isDisplay ? <DisplayApp /> : <ControlApp />}</Suspense>;
 }

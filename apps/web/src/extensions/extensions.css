@@ -6,3 +6,8 @@
 .vivic-extension-progress::-webkit-progress-bar { background: var(--vivic-track, #e5e7ef); border-radius: 999px; }
 .vivic-extension-progress::-webkit-progress-value { background: var(--vivic-accent, #7c68df); border-radius: 999px; }
 .vivic-extension-progress::-moz-progress-bar { background: var(--vivic-accent, #7c68df); border-radius: 999px; }
+.vivic-extension-content { min-width:0; overflow-wrap:anywhere; }
+.vivic-extension-image { height:176px; width:100%; border-radius:var(--radius-md); }
+.vivic-extension-table { min-width:0; max-width:100%; overflow:auto; overscroll-behavior:contain; scrollbar-width:thin; }
+.vivic-extension-table :is(th,td) { min-width:72px; max-width:240px; overflow-wrap:anywhere; vertical-align:top; }
+.vivic-extension-table:focus-visible { outline:2px solid var(--ring); outline-offset:-2px; }

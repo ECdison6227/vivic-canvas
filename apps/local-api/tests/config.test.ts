@@ -11,6 +11,10 @@ const isolatedConfig = (env: NodeJS.ProcessEnv = {}) => {
   finally { rmSync(dir, { recursive: true, force: true }); }
 };
 describe("independent request budgets", () => {
+  it("preserves the native StartLux protocol selection", () => {
+    expect(isolatedConfig({ VIVIC_DECISION_PROVIDER_PROTOCOL: "startlux" }).decisionProviderProtocol).toBe("startlux");
+    expect(isolatedConfig({ VIVIC_MANAGED_DECISION: "off" }).managedDecisionEnabled).toBe(false);
+  });
   it("allows the dedicated daily origin while keeping tests and explicit origin overrides bounded", () => {
     const config = isolatedConfig();
     expect(config.allowedOrigins).toContain("http://localhost:5175");

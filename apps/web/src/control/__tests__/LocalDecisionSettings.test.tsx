@@ -1,4 +1,4 @@
-﻿// @vitest-environment jsdom
+// @vitest-environment jsdom
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -41,11 +41,11 @@ describe("LocalDecisionSettings", () => {
     });
     vi.stubGlobal("fetch", fetch);
     await render();
-    expect(container.querySelector("h2")?.textContent).toBe("受控决策服务（可选）");
+    expect(container.querySelector("h2")?.textContent).toBe("决策服务");
     expect(container.querySelector("[data-vivic-decision-prepare]")).toBeNull();
     expect(container.querySelector("[data-vivic-decision-clear]")).toBeNull();
     expect(container.textContent).not.toContain("Apple Silicon");
-    expect(container.textContent).toContain("不确定时转交原有流程");
+    expect(container.textContent).toContain("不确定时交给主模型");
     const enable = container.querySelector<HTMLButtonElement>("[data-vivic-decision-enable]")!;
     const stop = container.querySelector<HTMLButtonElement>("[data-vivic-decision-stop]")!;
     expect(enable.textContent).toBe("启用决策服务");
@@ -81,7 +81,7 @@ describe("LocalDecisionSettings", () => {
     const fetch = vi.fn(async () => response({ ...kevStatus, configurationError, error: configurationError }));
     vi.stubGlobal("fetch", fetch);
     await render();
-    expect(container.querySelector("h2")?.textContent).toBe("受控决策服务（可选）");
+    expect(container.querySelector("h2")?.textContent).toBe("决策服务");
     expect(container.querySelector("[data-vivic-decision-status]")?.textContent).toContain("配置无效");
     expect(container.querySelector("[data-vivic-decision-status]")?.textContent).not.toContain("Kev");
     expect(container.textContent).toContain(configurationError);
@@ -137,7 +137,7 @@ describe("LocalDecisionSettings", () => {
     });
     vi.stubGlobal("fetch", fetch);
     await render();
-    expect(container.querySelector("h2")?.textContent).toBe("本地快速决策（可选）");
+    expect(container.querySelector("h2")?.textContent).toBe("决策模型");
     expect(container.querySelector("[data-vivic-decision-prepare]")).not.toBeNull();
     expect(container.querySelector("[data-vivic-decision-clear]")).not.toBeNull();
     expect(container.querySelector("[data-vivic-decision-status]")?.textContent).toBe("Kev-0.8B · 已准备，未启用");

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { activeCanvasId, controlDispatch, gotoControl, gotoDisplay, sendCommand, showChat, todoCardRecord } from "./helpers1";
+import { activeCanvasId, controlDispatch, gotoControl, gotoDisplay, openPreferences, sendCommand, showChat, todoCardRecord } from "./helpers1";
 
 test.beforeEach(async ({ context }) => {
   await context.addInitScript(() => {
@@ -40,6 +40,7 @@ test("visible focus, restore and fit controls sync between tabs and disable with
   const control = await gotoControl(context), canvasId = await activeCanvasId(control);
   const display = await gotoDisplay(context, canvasId);
   const pinned = todoCardRecord("portal-fixed", ["固定位置保留"]);
+  await openPreferences(control, true);
   await control.getByRole("switch", { name: "减少动效", exact: true }).click();
   pinned.layout = { ...pinned.layout, x: -100, y: -100, pinned: true };
   await controlDispatch(control, "portal-view-seed", canvasId, [{ type: "stage.awaken" },
@@ -58,6 +59,7 @@ test("visible focus, restore and fit controls sync between tabs and disable with
   await control.getByRole("button", { name: "卡片传送门", exact: false }).click();
   await control.locator('[data-vivic-portal-card="portal-fixed"]').getByRole("button", { name: "聚焦：固定位置保留", exact: true }).click();
   await expect.poll(() => focusId(display)).toBe("portal-fixed");
+  await control.getByRole("button", { name: "卡片传送门", exact: true }).click();
   await control.getByRole("button", { name: "显示全部", exact: true }).click();
   await expect.poll(() => focusId(display)).toBeNull();
   const fixedLayout = await control.evaluate(() => (window.__vivic!.getState() as { cards: Array<{ record: { id: string; layout: object } }> }).cards.find(entry => entry.record.id === "portal-fixed")!.record.layout);
@@ -76,6 +78,7 @@ test("visible focus, restore and fit controls sync between tabs and disable with
 test("a same-tab drag into the portal transfers the card and a click brings it back", async ({ context }, info) => {
   const control = await gotoControl(context), canvasId = await activeCanvasId(control);
   const display = await gotoDisplay(context, canvasId);
+  await openPreferences(control);
   await control.getByRole("radio", { name: "深色", exact: true }).click();
   await controlDispatch(control, "portal-drag-seed", canvasId, [{ type: "stage.awaken" }, { type: "card.create", card: todoCardRecord("portal-drag", ["拖入传送门"]) }]);
   await showChat(control);
@@ -96,4 +99,56 @@ test("a same-tab drag into the portal transfers the card and a click brings it b
   expect(box).not.toBeNull(); expect(box!.x).toBeGreaterThanOrEqual(0); expect(box!.x + box!.width).toBeLessThanOrEqual(390);
   await expect(display.getByRole("dialog").getByRole("button", { name: "传送到用户页：拖入传送门", exact: true })).toBeVisible();
   await display.screenshot({ path: info.outputPath("portal-card-list-mobile.png") });
+});
+
+test("Hark card corners keep layout dimensions and focus tools work at half and enlarged canvas zoom", async ({ context }, info) => {
+  const control = await gotoControl(context), canvasId = await activeCanvasId(control);
+  const display = await gotoDisplay(context, canvasId);
+  await openPreferences(control, true);
+  await control.getByRole("switch", { name: "减少动效", exact: true }).click();
+  await controlDispatch(control, "hark-zoom-seed", canvasId, [{ type: "stage.awaken" },
+    { type: "card.create", card: todoCardRecord("hark-zoom", ["缩放时卡片和操作保持完整"]) }]);
+  await showChat(control);
+  const card = display.locator('[data-card-id="hark-zoom"]');
+  await expect(card).toBeVisible();
+  await display.evaluate(() => document.fonts.ready);
+  await expect(card).toHaveAttribute("data-hark-corner", "continuous");
+  const geometry = () => card.evaluate(element => ({
+    width: element.offsetWidth, height: element.offsetHeight,
+    renderedWidth: element.getBoundingClientRect().width,
+    clip: (element.querySelector(":scope > .hark-surface-fill") as HTMLElement).style.clipPath,
+  }));
+  const original = await geometry();
+  expect(original.clip).toContain("path(");
+  const viewport = display.locator(".react-flow__viewport");
+  const readZoom = () => viewport.evaluate(element => new DOMMatrixReadOnly(getComputedStyle(element).transform).a);
+  for (const zoom of [0.5, 1.4]) {
+    await display.mouse.move(1000, 250);
+    // Drive real wheel input. Chromium's device-scale normalization can alter
+    // the delivered delta, so calibrate its observed exponent before correcting.
+    let exponent = -0.002;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const current = await viewport.evaluate(element => new DOMMatrixReadOnly(getComputedStyle(element).transform).a);
+      if (Math.abs(current - zoom) < 0.000001) break;
+      const delta = Math.log2(zoom / current) / exponent;
+      await display.mouse.wheel(0, delta);
+      await expect.poll(readZoom).not.toBe(current);
+      await expect.poll(() => display.locator(".react-flow__renderer").evaluate(element => !("__zooming" in element))).toBe(true);
+      exponent = Math.log2(await readZoom() / current) / delta;
+    }
+    await expect.poll(readZoom).toBeCloseTo(zoom, 4);
+    const scaled = await geometry();
+    expect(scaled.width).toBe(original.width);
+    expect(scaled.height).toBe(original.height);
+    expect(scaled.clip).toBe(original.clip);
+    expect(scaled.renderedWidth / scaled.width).toBeCloseTo(zoom, 4);
+    const beforeFocus = await viewport.getAttribute("style");
+    await card.hover();
+    await card.getByRole("button", { name: "聚焦：缩放时卡片和操作保持完整", exact: true }).click();
+    await expect(card).toHaveAttribute("data-focused", "true");
+    await display.getByRole("button", { name: "恢复视图", exact: true }).click();
+    await expect.poll(() => focusId(display)).toBeNull();
+    await expect(viewport).toHaveAttribute("style", beforeFocus!);
+    await display.screenshot({ path: info.outputPath(`hark-zoom-${zoom}.png`) });
+  }
 });

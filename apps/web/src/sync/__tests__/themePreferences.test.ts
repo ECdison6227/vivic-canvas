@@ -64,10 +64,10 @@ describe("optional local daylight preferences", () => {
     try {
       await host.start(); await client.start(); await flushChannel();
       expect(host.setPreferences({ theme: "light", lightPalette: "mint" }).ok).toBe(true);
-      expect(host.setPreferences({ darkPalette: "ocean" }).ok).toBe(true);
+      expect(host.setPreferences({ darkPalette: "ocean", orbPalette: "peach" }).ok).toBe(true);
       expect(host.setPreferences({ darkPalette: "peach" } as never).ok).toBe(false);
       await flushChannel();
-      const expected = { ...DEFAULT_DISPLAY_PREFERENCES, theme: "light", lightPalette: "mint", darkPalette: "ocean" };
+      const expected = { ...DEFAULT_DISPLAY_PREFERENCES, theme: "light", lightPalette: "mint", darkPalette: "ocean", orbPalette: "peach" };
       expect(displayStore.getPreferences()).toEqual(expected);
       expect(displayStore.getState().ambient.theme).toBe("light");
       expect(JSON.parse((await db.getMeta("displayPreferences"))!)).toEqual(expected);

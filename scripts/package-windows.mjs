@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import { spawn } from "node:child_process";
+import { stageAndroidDownload } from "./stage-android-download.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 if (process.platform !== "win32" || process.arch !== "x64") throw new Error("Build this Windows x64 package on Windows x64.");
@@ -19,6 +20,7 @@ const run = (exe, args, cwd = root) => new Promise((resolve, reject) => {
   child.once("error", reject); child.once("exit", code => code === 0 ? resolve() : reject(new Error(`Build step failed (${code})`)));
 });
 const runPnpm = args => run(pnpm.endsWith(".exe") ? pnpm : process.execPath, [...(pnpm.endsWith(".exe") ? [] : [pnpm]), ...args]);
+await stageAndroidDownload(root);
 await runPnpm(["build"]);
 await runPnpm(["--filter", "@vivic/local-api", "deploy", "--prod", "--config.node-linker=hoisted", api]);
 await fs.cp(path.join(root, "apps/web/dist"), path.join(stage, "apps/web/dist"), { recursive: true });
@@ -44,7 +46,7 @@ await fs.writeFile(path.join(stage, "VIVIC-NOTICE.txt"), "Vivic preview distribu
 await fs.copyFile(path.join(root, "LICENSES.md"), path.join(stage, "LICENSES.md"));
 await fs.writeFile(path.join(stage, "release.json"), JSON.stringify({ product: "Vivic", createdAt: new Date().toISOString(), nodeVersion, nodeArchiveSha256: archiveSha,
   nodeSha256: createHash("sha256").update(node).digest("hex"), platform: "win32-x64", modelIncluded: false }, null, 2));
-await fs.writeFile(path.join(stage, "README.txt"), "Vivic Windows x64\r\n\r\nDouble-click Start-Vivic.cmd, then open Settings to prepare and enable the local decision model.\r\nStop-Vivic.cmd stops this package's API and its owned model.\r\nInstall-Vivic.cmd optionally copies this folder to LocalAppData and creates desktop shortcuts.\r\nThe app uses http://127.0.0.1:18787. Canvas data stays in this browser profile.\r\nFirst model preparation downloads about 530 MB. No model credentials are included.\r\nMobile relay needs a separately provisioned private ~/.vivic/mobile-relay.json.\r\nDo not redistribute a folder after running it: it can contain local session files.\r\n");
+await fs.writeFile(path.join(stage, "README.txt"), "Vivic Windows x64\r\n\r\nDouble-click Start-Vivic.cmd to open the local launcher at http://127.0.0.1:18787/launcher.\r\nOpen the canvas immediately, or prepare and start the optional local decision model.\r\nClosing the browser does not stop the local service. Use Stop-Vivic.cmd to release it and its owned model.\r\nInstall-Vivic.cmd copies this folder to a new LocalAppData directory and creates desktop shortcuts; existing shortcuts are preserved.\r\nFor an isolated install, run powershell -File Install-Vivic.ps1 -Destination <new-folder> -NoShortcuts.\r\nFor another port, run powershell -File Start-Vivic.ps1 -Port 18788; canvas storage is separate for each address.\r\nStartLux profiles are selected by memory; the launcher shows each download size. Python and the engine are prepared privately on first use. Optional local Kokoro voice is about 400 MB plus its runtime. CPU inference only; uncertain results fall back to the original flow.\r\nNo model credentials are included. Mobile relay needs a separately provisioned private ~/.vivic/mobile-relay.json.\r\nIf startup fails, inspect runtime.err.log and retry. Occupied ports are never stopped automatically.\r\nDo not redistribute a folder after running it: it can contain local session files.\r\n");
 // The hoisted deployment is ordinary files; no administrator permission is needed to extract it.
 const zip = `${stage}.zip`;
 await run("tar.exe", ["-a", "-cf", zip, "-C", stage, "."]);

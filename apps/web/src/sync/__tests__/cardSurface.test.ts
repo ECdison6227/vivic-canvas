@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CardRecord } from "@/contracts";
 import { presentCards } from "@/canvas/reminderPresentation";
 import { createMemoryDB } from "@/persistence/db";
+import { fromCanvasRecord } from "@/persistence/canvasRecord";
 import { createCanvasStore } from "@/state/canvasStore";
 import { createMemoryHub, flushChannel } from "../channel";
 import { createControlHost } from "../controlHost";
@@ -15,13 +16,14 @@ const stamp = "2026-10-17T00:00:00.000Z";
 const quote = (id: string, x = 0): CardRecord => ({ id, type: "QuoteCard", variant: "standard", displayProps: { text: `TEST ${id}` }, sourceData: {}, sources: [],
   layout: { x, y: 0, width: 320, height: 220, pinned: false }, metadata: { createdAt: stamp, updatedAt: stamp } });
 
-const setup = async () => {
+const setup = async (surface?: "user") => {
   const hub = createMemoryHub(), db = createMemoryDB();
   const store = createCanvasStore();
   const host = createControlHost({ db, store, channel: hub.createChannel(), lockProvider: createMemoryLockProvider(), reminderPollMs: 1000000 });
   cleanup.push(host.stop); await host.start();
   const canvasId = host.getSnapshot().activeCanvasId!;
-  host.dispatch({ schemaVersion: "0.6", canvasId, requestId: "seed", actions: [{ type: "card.create", card: quote("a") }, { type: "card.create", card: quote("b") }] });
+  const seedCards = [quote("a"), quote("b")].map(card => surface ? { ...card, layout: { ...card.layout, surface } } : card);
+  host.dispatch({ schemaVersion: "0.6", canvasId, requestId: "seed", actions: seedCards.map(card => ({ type: "card.create", card })) });
   await flushChannel();
   const displayStore = createCanvasStore();
   const client = createDisplayClient({ db, store: displayStore, channel: hub.createChannel(), pinnedCanvasId: canvasId });
@@ -31,6 +33,18 @@ const setup = async () => {
 };
 
 describe("cards move between the Display canvas and the user page", () => {
+  it("reveals a standby canvas when a user card is deliberately sent to Display", async () => {
+    const { db, host, store, displayStore, canvasId } = await setup("user");
+    expect(store.getState().stage).toBe("STANDBY");
+    expect(host.setCardSurface("a", "user").ok).toBe(true);
+    expect(store.getState().stage).toBe("STANDBY");
+    expect(host.setCardSurface("a", "display").ok).toBe(true);
+    await flushChannel();
+    expect(store.getState().stage).toBe("AWAKENING");
+    expect(displayStore.getState().stage).toBe("AWAKENING");
+    expect(store.getState().awakenedAt).toBeGreaterThan(0);
+    expect(fromCanvasRecord((await db.getCanvas(canvasId))!).stage).toBe("WORKSPACE");
+  });
   it("sends a card to the user page: off the canvas layout, persisted, synced to Display", async () => {
     const { db, host, store, displayStore, canvasId, find } = await setup();
     const before = find(store, "b").layout;

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { buildCanvasContext, fetchWeatherHere, postIntent, intentStageLabel } from "@/ai/api";
+import { fetchWeatherHere, intentStageLabel } from "@/ai/api";
+import { runDecisionTask, cancelDecisionTask } from "@/ai/decisionTask";
+import { cancelWakeActivity, getWakeActivity, isWakeInputBusy, subscribeWakeActivity } from "@/ai/wakeActivity";
 import { fixForRequest, freshFix, looksLikeWeather, subscribeLocation } from "@/location/deviceLocation";
 import { requestStartupPermissions } from "@/permissions/devicePermissions";
 import { startLiveWeather } from "@/location/liveWeather";
@@ -8,8 +10,8 @@ import { cancelSpeech, speakText, subscribeSpeech, getSpeechSnapshot, speakShort
 import { speechDisplayFrame, type SpeechRange } from "@/ai/speechTelemetry";
 import { LocalDecisionSettings } from "./LocalDecisionSettings";
 import { MobileControlSettings } from "./mobile/MobileControlSettings";
-import { ExtensionManager } from "@/extensions/ExtensionManager";
-import { clarifiedCardAction, fastLocalCommand, parseCommand, type CommandResult } from "@/commands/parse";
+import { OnlineMobileControlSettings } from "./mobile/OnlineMobileControlSettings";
+import { clarifiedCardAction, parseCommand, type CommandResult } from "@/commands/parse";
 import { choiceNumber } from "@/commands/choice";
 import { completedCountdown } from "@/canvas/reminderPresentation";
 import type { ResolvedCard } from "@/commands/references";
@@ -19,29 +21,29 @@ import { canvasStore, useDisplayPreferences } from "@/state/canvasStore";
 import { getControlHost } from "@/sync/browserRuntime";
 import type { ControlHost } from "@/sync/controlHost";
 import { AiSection } from "./AiSection";
-import { CanvasManager } from "./CanvasManager";
 import type { ClarifyState } from "./ChatComposer";
 import { ChatPage } from "./ChatPage";
 import { BackgroundSettings } from "./BackgroundSettings";
 import { DataActions } from "./DataActions";
-import { RemindersSection } from "./RemindersSection";
 import type { ReminderNotice } from "@/reminders/reminders";
 import { deliveredNoticeCurrent } from "@/reminders/reminders";
 import { cancelVoiceInput, getVoiceInputSnapshot, isVoiceInputBusy, subscribeVoiceInput } from "@/ai/voiceInput";
 import { LocalSpeechSettings } from "./LocalSpeechSettings";
 import { CanvasSettings } from "./CanvasSettings";
-import { CardSubcardsSection } from "./CardSubcardsSection";
-import { QuickFind } from "./QuickFind";
+import { NotificationSettings } from "./NotificationSettings";
+import { SettingsExperience } from "./SettingsExperience";
 import type { Attachment } from "@/ai/attachments";
 import { startsNewInstruction } from "@vivic/contracts";
 import { focusResponseActions } from "@/commands/responseFocus";
 import { armReminderSound } from "@/reminders/sound";
-import { ArrowLeft } from "lucide-react";
-import { useReducedMotion } from "motion/react";
-import { AtmosphereBackground } from "@/components/atmosphere/AtmosphereBackground";
+import { useSystemReducedMotion } from "@/motion/useMotionVisibility";
+import { HarkCanvasBackdrop as AtmosphereBackground } from "@/components/hark/HarkCanvasBackdrop";
 import { paletteFor } from "@/components/atmosphere/palettes";
 import { useResolvedTheme } from "@/stage/useResolvedTheme";
 import { pathForView, viewForPath, type ControlView } from "./controlView";
+import "@/components/hark/hark.css";
+import "./hark-control.css";
+import { ONLINE_BUILD } from "@/online/mode";
 
 export const INTENT_TIMEOUT_MS = 100_000;
 
@@ -90,6 +92,21 @@ export const ControlApp = () => {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [backendOnline, setBackendOnline] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    const shortcut = (event: KeyboardEvent) => {
+      if (!host || busy || event.isComposing || !(event.metaKey || event.ctrlKey) || event.altKey) return;
+      if (event.target instanceof Element && event.target.closest("input,textarea,[contenteditable=true]")) return;
+      const key = event.key.toLowerCase(), redo = key === "y" || key === "z" && event.shiftKey;
+      if (key !== "z" && key !== "y") return;
+      if (host.getSnapshot().ownerMode !== "owner") return;
+      event.preventDefault();
+      const applied = redo ? host.redo() : host.undo();
+      setFeedback(applied ? `已${redo ? "重做" : "撤销"}上一步操作` : "没有可恢复的操作，或目标内容已变化。");
+    };
+    window.addEventListener("keydown", shortcut);
+    return () => window.removeEventListener("keydown", shortcut);
+  }, [host, busy, setFeedback]);
+  const submitAnswer = useRef<((text: string) => void) | null>(null);
   const pending = useRef<{
     requestId: string;
     canvasId: string;
@@ -117,10 +134,11 @@ export const ControlApp = () => {
     });
   }, [host]);
   const announcing = useRef(false);
-  const previousQuestion = useRef<{ canvasId: string; utterance: string; question: string; at: number } | null>(null);
+  const previousQuestion = useRef<{ canvasId: string; utterance: string; question: string; at: number; taskId?: string } | null>(null);
 
   const cancelPending = useCallback(() => {
     cancelVoiceInput();
+    cancelWakeActivity();
     cancelSpeech();
     setSuggestions([]);
     const current = pending.current;
@@ -136,7 +154,7 @@ export const ControlApp = () => {
   }, [host, setFeedback]);
 
   useEffect(() => {
-    const cancelVoiceActivity = () => { cancelVoiceInput(); cancelSpeech(); };
+    const cancelVoiceActivity = () => { cancelVoiceInput(); cancelWakeActivity(); cancelSpeech(); };
     window.addEventListener("vivic:provider-change", cancelPending);
     window.addEventListener("vivic:voice-config-change", cancelVoiceActivity);
     return () => { window.removeEventListener("vivic:provider-change", cancelPending); window.removeEventListener("vivic:voice-config-change", cancelVoiceActivity); };
@@ -150,7 +168,7 @@ export const ControlApp = () => {
     let lastSpeechRange: SpeechRange | null = null;
     const update = () => {
       const speech = getSpeechSnapshot();
-      if (isVoiceInputBusy() || host.getSnapshot().ownerMode !== "owner") return;
+      if (isVoiceInputBusy() || isWakeInputBusy() || host.getSnapshot().ownerMode !== "owner") return;
       const live = speech.status === "loading" || speech.status === "playing";
       if (pending.current && (!live || speech.kind !== "phrase" || speech.status === "loading")) {
         if (voiceActivityId) {
@@ -186,21 +204,30 @@ export const ControlApp = () => {
   useEffect(() => {
     if (!host) return;
     let requestId: string | null = null;
+    let wakeWasDetected = false;
     const update = () => {
       const voice = getVoiceInputSnapshot();
+      const wake = getWakeActivity();
       if (host.getSnapshot().ownerMode !== "owner") return;
-      if (isVoiceInputBusy()) {
+      if (wake.detected && !wakeWasDetected) {
+        const canvasId = host.getSnapshot().activeCanvasId;
+        if (canvasId) host.dispatch({ schemaVersion: "0.6", requestId: newId("wake"), canvasId, actions: [{ type: "stage.awaken" }] });
+      }
+      wakeWasDetected = wake.detected;
+      if (isVoiceInputBusy() || isWakeInputBusy()) {
         requestId ??= newId("microphone");
+        const transcribing = voice.status === "transcribing" || wake.phase === "transcribing" || wake.phase === "delivering";
         host.setActivity(requestId, { requestId,
-          phase: voice.status === "transcribing" ? "transcribing" : "listening",
-          text: voice.status === "transcribing" ? "正在识别语音…" : voice.status === "requesting" ? "等待麦克风授权…" : "在听，请说…",
+          phase: transcribing ? "transcribing" : "listening",
+          text: transcribing ? "正在识别语音…" : voice.status === "requesting" ? "等待麦克风授权…" : wake.phase === "loading" ? "正在准备唤醒…" : wake.phase === "listening" && !wake.detected ? "等待你说 Vivic…" : "在听，请说…",
           expiresAt: Date.now() + 6000,
         });
       } else if (requestId) { host.setActivity(requestId, null); requestId = null; }
     };
     const unsubscribe = subscribeVoiceInput(update);
+    const unsubscribeWake = subscribeWakeActivity(update);
     const timer = setInterval(update, 2000);
-    return () => { unsubscribe(); clearInterval(timer); if (requestId) host.setActivity(requestId, null); };
+    return () => { unsubscribe(); unsubscribeWake(); clearInterval(timer); if (requestId) host.setActivity(requestId, null); };
   }, [host]);
 
   useEffect(() => {
@@ -208,10 +235,10 @@ export const ControlApp = () => {
     const seen = new Set(host.getSnapshot().reminderNotices.map(n => n.id));
     let cancelled = false;
     const drain = async () => {
-      if (announcing.current || pending.current || isVoiceInputBusy() || getSpeechSnapshot().status === "playing" || getSpeechSnapshot().status === "loading") return;
+      if (announcing.current || pending.current || isVoiceInputBusy() || isWakeInputBusy() || getSpeechSnapshot().status === "playing" || getSpeechSnapshot().status === "loading") return;
       announcing.current = true;
       try {
-        while (!cancelled && reminderQueue.current.length && !pending.current && !isVoiceInputBusy() && host.getSnapshot().ownerMode === "owner" &&
+        while (!cancelled && reminderQueue.current.length && !pending.current && !isVoiceInputBusy() && !isWakeInputBusy() && host.getSnapshot().ownerMode === "owner" &&
           getSpeechSnapshot().status !== "playing" && getSpeechSnapshot().status !== "loading") {
           const notice = reminderQueue.current.shift()!;
           // If the timer was removed/rescheduled after firing, don't read a
@@ -244,7 +271,7 @@ export const ControlApp = () => {
     const unsubscribe = host.subscribe(() => {
       const current = pending.current;
       const snap = host.getSnapshot();
-      if (snap.activeCanvasId !== lastCanvasId || snap.ownerMode !== "owner") { cancelSpeech(); cancelVoiceInput(); setClarify(null); setSuggestions([]); previousQuestion.current = null; }
+      if (snap.activeCanvasId !== lastCanvasId || snap.ownerMode !== "owner") { cancelSpeech(); cancelVoiceInput(); cancelWakeActivity(); setClarify(null); setSuggestions([]); previousQuestion.current = null; }
       lastCanvasId = snap.activeCanvasId;
       if (current && (snap.activeCanvasId !== current.canvasId || snap.ownerMode !== "owner")) {
         cancelPending();
@@ -295,10 +322,15 @@ export const ControlApp = () => {
         return;
       }
       if (result.kind === "undo") {
-        const text = h.undo() ? "已撤销上一次删除" : "没有可撤销的删除";
+        const label = h.getSnapshot().history?.undoLabel;
+        const text = h.undo() ? `已撤销${label ?? "上一步操作"}` : "没有可撤销的操作，或目标内容已变化。";
         setFeedback(text);
         void speakText(text, { requestId: newId("speech") });
         return;
+      }
+      if (result.kind === "redo") {
+        const text = h.redo() ? "已重做上一步操作" : "没有可重做的操作，或目标内容已变化。";
+        setFeedback(text); publishFeedback(h, text); return;
       }
       if (result.kind === "clarify") {
         const choiceId = newId("choice"), expiresAt = Date.now() + 120_000;
@@ -327,6 +359,11 @@ export const ControlApp = () => {
   const pickClarify = useCallback(
     (candidate: ResolvedCard) => {
       if (!host || !clarify) return;
+      if (clarify.taskId) {
+        const index = clarify.candidates.findIndex(item => item.card.id === candidate.card.id);
+        if (index >= 0) submitAnswer.current?.(`${clarify.numbers?.[index] ?? index + 1}号`);
+        return;
+      }
       host.setTargetChoice(null);
       const { activeCanvasId, ownerMode } = host.getSnapshot();
       if (!activeCanvasId || ownerMode !== "owner" || !clarify.candidates.some(item => item.card.id === candidate.card.id)) return;
@@ -375,7 +412,7 @@ export const ControlApp = () => {
       // A request still running is cancelled before this one starts; the page keeps no history.
       if (pending.current) cancelPending();
       setFeedback(null);
-      if (clarify && !attachments?.length) {
+      if (clarify && !clarify.taskId && !attachments?.length) {
         const number = choiceNumber(trimmed);
         if (number !== null) {
           const candidate = clarify.candidates[number - 1];
@@ -394,11 +431,6 @@ export const ControlApp = () => {
         && !attachments?.length && !startsNewInstruction(trimmed, previous.utterance)
         ? { utterance: previous.utterance, question: previous.question } : undefined;
       previousQuestion.current = null;
-      if (!attachments?.length && /^(?:请|帮我|请帮我)?\s*(?:重新排(?:布|列|版)(?:卡片)?(?:并?居中)?|整理(?:布局|画布)|排好卡片)[。！!]*$/.test(trimmed)) {
-        const result = host.arrangeCanvas();
-        setFeedback(result.ok ? "已重新排布，固定卡片保持原位。" : "暂时无法整理布局，请检查控制权后重试。");
-        return;
-      }
       const runLocal = () =>
         applyResult(
           host,
@@ -407,25 +439,10 @@ export const ControlApp = () => {
             canvasId: activeCanvasId,
           }),
         );
-      if (!attachments?.length && !continuation) {
-        const exact = fastLocalCommand(trimmed, { state: canvasStore.getState(), canvasId: activeCanvasId });
-        if (exact) { applyResult(host, exact); return; }
-      }
-      // 撤销 is window-local undo-stack semantics: handle it here, never
-      // round-trip to the decision API.
-      if (!attachments?.length && /^(撤销|撤销删除)$/.test(trimmed)) {
-        runLocal();
-        return;
-      }
-      // Resolve explicit Note density locally first: an ambiguous target must not be guessed by a model.
-      if (!attachments?.length && /^(?:请\s*)?(?:展开|收起|折叠|(?:把|将).+(?:展开|收起|折叠)[。！!]?$)/.test(trimmed)) {
-        runLocal();
-        return;
-      }
       const requestId = newId("intent");
       const controller = new AbortController();
       const expiresAt = Date.now() + INTENT_TIMEOUT_MS;
-      const isCurrent = () => pending.current?.requestId === requestId &&
+      const isCurrent = () => !controller.signal.aborted && pending.current?.requestId === requestId &&
         host.getSnapshot().activeCanvasId === activeCanvasId &&
         host.getSnapshot().ownerMode === "owner";
       pending.current = {
@@ -449,9 +466,8 @@ export const ControlApp = () => {
       setBusy(true);
       setFeedback("正在理解你的指令…");
       host.setActivity(requestId, { requestId, text: "让我想想…", expiresAt, phase: "thinking" });
-      // Backend-first: /api/intent (rules-first, then LLM planner when a key
-      // exists). When the local API is offline, fall back to the in-browser
-      // rules — an explicit offline mode, surfaced in the mode pill.
+      // Every language entry reaches the configured decision service first.
+      // Deterministic clicks remain direct owner actions; offline fallback is explicit.
       void (async () => {
         try {
           // Weather and "where am I" wording carries the rounded live fix; the first ask shows
@@ -459,25 +475,50 @@ export const ControlApp = () => {
           const deviceLocation = !attachments?.length && looksLikeWeather(continuation ? `${continuation.utterance} ${trimmed}` : trimmed)
             ? await fixForRequest() : null;
           if (!isCurrent()) return;
-          const result = await postIntent(
-            trimmed,
-            buildCanvasContext(canvasStore.getState(), activeCanvasId),
-            controller.signal,
-            attachments,
-            continuation,
-            deviceLocation,
-            event => {
+          const result = await runDecisionTask({
+            host, text: trimmed, signal: controller.signal, isCurrent,
+            taskId: continuation ? previous?.taskId : undefined,
+            attachments, continuation, deviceLocation,
+            onProgress: event => {
               if (!isCurrent() || event.status !== "started" || event.stage === "total") return;
               const text = intentStageLabel(event.stage);
               pending.current!.text = text;
               setFeedback(text);
               host.setActivity(requestId, { requestId, text, expiresAt, phase: "thinking" });
             },
-          );
-          if (!isCurrent()) return;
+          });
+          if (!isCurrent()) {
+            if (pending.current?.requestId === requestId && controller.signal.aborted) setFeedback(result.executed ? "后续处理已停止，请检查已有卡片。" : controller.signal.reason?.name === "TimeoutError" ? "本次请求超时，请重试。" : "已取消本次请求");
+            return;
+          }
           cancelShortFeedback(requestId);
           setBackendOnline(true);
-          if (result.kind === "envelope" && result.envelope) {
+          // In explicit legacy fallback, retain the old exact target chooser.
+          // Only its clarification UI is reused; never bypass a rejected task by executing its envelope.
+          if (!result.executed && !attachments?.length && result.task?.decision === "legacy-fallback" && ["unknown", "clarify", "error"].includes(result.kind)) {
+            const choice = parseCommand(trimmed, { state: canvasStore.getState(), canvasId: activeCanvasId });
+            if (choice.kind === "clarify") { void cancelDecisionTask(host, result.task.id); applyResult(host, choice); return; }
+          }
+          if (result.task || result.executed || result.handled) {
+            const message = result.message ?? (result.task?.status === "completed" ? "已完成并保存。" : "操作未完成，请重试。");
+            setFeedback(message); publishFeedback(host, message); setSuggestions(result.suggestions ?? []);
+            if (result.kind === "clarify" && result.task?.status === "awaiting_clarification") previousQuestion.current = {
+              canvasId: activeCanvasId, utterance: continuation?.utterance ?? trimmed,
+              question: message.slice(0, 180), at: Date.now(), taskId: result.task.id,
+            };
+            if (result.task?.status === "awaiting_clarification" && result.task.clarification?.candidates.length) {
+              const choices = result.task.clarification.candidates.flatMap(choice => {
+                const card = canvasStore.getState().cards.find(entry => !entry.exitingRequestId && entry.record.id === choice.id)?.record;
+                return card ? [{ card, label: choice.label, number: choice.number }] : [];
+              });
+              if (choices.length === result.task.clarification.candidates.length) {
+                const expiresAt = Date.now() + 120000, choiceId = newId("choice");
+                setClarify({ action: "focus", canvasId: activeCanvasId, taskId: result.task.id, candidates: choices, numbers: choices.map(choice => choice.number), prompt: message, choiceId, expiresAt });
+                host.setTargetChoice({ id: choiceId, targets: choices.map(choice => choice.card.id), expiresAt });
+              }
+            }
+            if (result.task?.status === "completed") void speakText(message, { requestId });
+          } else if (result.kind === "envelope" && result.envelope) {
             const res = host.dispatch({ ...result.envelope, actions: focusResponseActions(result.envelope.actions, canvasStore.getState()) });
             const message = res.ok ? result.envelope.spokenText ?? "已执行" : `指令未执行（${res.error}）`;
             setFeedback(message);
@@ -516,6 +557,10 @@ export const ControlApp = () => {
         } catch (error) {
           if (!isCurrent()) return;
           cancelShortFeedback(requestId);
+          if (controller.signal.aborted) {
+            setFeedback(controller.signal.reason?.name === "TimeoutError" ? "本次请求超时，请重试。" : "已取消本次请求");
+            return;
+          }
           if (error instanceof DOMException && error.name === "TimeoutError") {
             setFeedback("本次请求超时，请重试。");
             publishFeedback(host, "本次请求超时，请重试。");
@@ -543,12 +588,14 @@ export const ControlApp = () => {
 
   const dismissClarify = useCallback(() => {
     if (!host) return;
+    if (clarify?.taskId) { void cancelDecisionTask(host, clarify.taskId); previousQuestion.current = null; }
     setClarify(null); host.setTargetChoice(null); setFeedback("已取消选择");
-  }, [host, setFeedback]);
+  }, [host, clarify, setFeedback]);
+  useEffect(() => { submitAnswer.current = submitCommand; }, [submitCommand]);
 
   if (!host) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#0C1224] text-sm text-white/70">
+      <div className="vh-hark vivic-control-loading" role="status">
         正在载入本地画布…
       </div>
     );
@@ -600,9 +647,10 @@ const ControlShell = (props: ShellProps) => {
   const readonly = snap.ownerMode !== "owner";
   const theme = useResolvedTheme();
   const preferences = useDisplayPreferences();
-  const reduced = useReducedMotion() || preferences.reducedMotion;
+  const reduced = useSystemReducedMotion() || preferences.reducedMotion;
 
   useEffect(() => {
+    if (ONLINE_BUILD) return;
     if (readonly || !snap.ready) return;
     requestStartupPermissions();
     document.addEventListener("visibilitychange", requestStartupPermissions);
@@ -620,7 +668,7 @@ const ControlShell = (props: ShellProps) => {
       <span>另一个控制窗口正在写入，本窗口为只读。</span>
       <button
         type="button"
-        className="rounded-md border border-amber-400 bg-white px-3 py-1 text-xs font-medium hover:bg-amber-100"
+        className="vivic-chip"
         onClick={() => props.host.takeover()}
         data-vivic-takeover
       >
@@ -631,17 +679,19 @@ const ControlShell = (props: ShellProps) => {
 
   return (
     <div
-      className="vivic-control-root"
+      className="vivic-control-root vh-hark"
       data-vivic-control="ready"
       data-vivic-owner={snap.ownerMode}
       data-vivic-active-canvas={snap.activeCanvasId ?? ""}
       data-vivic-view={props.view}
       data-appearance={theme}
+      data-reduced-motion={reduced || undefined}
+      data-space-motion={preferences.ambientMotion ?? "subtle"}
     >
-      <AtmosphereBackground theme={theme} palette={paletteFor(theme, preferences)} paused={reduced} className="fixed inset-0" />
+      <AtmosphereBackground theme={theme} palette={paletteFor(theme, preferences)} paused={reduced} motionMode={preferences.ambientMotion} intensity={preferences.ambientIntensity} className="fixed inset-0" />
 
       <ChatPage
-        hidden={props.view !== "chat"}
+        hidden={false}
         host={props.host}
         theme={theme}
         feedback={props.feedback}
@@ -667,57 +717,27 @@ const ControlShell = (props: ShellProps) => {
         onCancel={props.onCancel}
       />
 
-      <div className="vivic-settings" hidden={props.view !== "settings"} data-vivic-settings>
-        <div className="mx-auto flex max-w-3xl flex-col gap-5 px-5 py-8">
-          <header className="vivic-settings-header">
-            <button type="button" className="vivic-settings-back" onClick={() => props.onNavigate("chat")} data-vivic-open-chat>
-              <ArrowLeft className="h-4 w-4" aria-hidden="true" />返回聊天
-            </button>
-            <h1 className="text-lg font-semibold tracking-tight">设置</h1>
-            <QuickFind host={props.host} />
-          </header>
-
-          {props.view === "settings" && readonlyNotice}
-
-          <AiSection disabled={readonly || !snap.ready} onBackendChange={props.onBackendChange} />
-          <LocalSpeechSettings disabled={readonly || !snap.ready} onBeforeClear={props.onCancel} />
-
-          <section className="rounded-xl border border-neutral-200 bg-white p-4">
-            <div className="flex flex-wrap items-center gap-3">
-              <button
-                type="button"
-                onClick={openDisplay}
-                disabled={!snap.activeCanvasId}
-                className="rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-700 disabled:opacity-50"
-                data-vivic-open-display
-              >
-                打开 Vivic 展示窗口
-              </button>
-              <p className="text-xs text-neutral-500">
-                把打开的窗口拖到第二屏，点击“隐藏顶部栏”提示进入全屏；文字和语音输入在聊天页，本页负责设置。
-              </p>
-            </div>
-          </section>
-
-          <CanvasManager
-            host={props.host}
-            canvases={snap.canvases}
-            activeCanvasId={snap.activeCanvasId}
-            readonly={readonly}
-          />
-          <CanvasSettings host={props.host} disabled={readonly || !snap.ready} />
-          <BackgroundSettings host={props.host} disabled={readonly || !snap.ready} resolvedTheme={theme} />
-          <LocationSettings disabled={readonly} />
-          <CardSubcardsSection key={`${snap.activeCanvasId}:${snap.ownerMode}:${snap.ownerId}:${snap.ready}`} host={props.host} />
-          <LocalDecisionSettings disabled={readonly || !snap.ready} />
-          <MobileControlSettings host={props.host} disabled={readonly || !snap.ready} desktopBusy={props.desktopBusy} />
-          <ExtensionManager host={props.host} disabled={readonly || !snap.ready} />
-
-          <RemindersSection host={props.host} readonly={readonly} />
-
-          <DataActions host={props.host} readonly={readonly || !snap.ready} onBeforeClear={props.onCancel} />
-        </div>
-      </div>
+      <AiSection disabled={readonly || !snap.ready} onBackendChange={props.onBackendChange} renderPanels={(connection, voice) => <SettingsExperience
+        hidden={props.view !== "settings"}
+        onBack={() => props.onNavigate("chat")}
+        notice={props.view === "settings" ? readonlyNotice : null}
+        local={<>
+          {!ONLINE_BUILD && <><LocalDecisionSettings disabled={readonly || !snap.ready} />
+          <LocalSpeechSettings disabled={readonly || !snap.ready} onBeforeClear={props.onCancel} /></>}
+        </>}
+        connections={connection}
+        voice={voice}
+        appearance={<>
+          <CanvasSettings host={props.host} disabled={readonly || !snap.ready} compact />
+          <BackgroundSettings host={props.host} disabled={readonly || !snap.ready} resolvedTheme={theme} compact />
+        </>}
+        notifications={<NotificationSettings disabled={readonly || !snap.ready} compact />}
+        mobile={ONLINE_BUILD
+          ? <OnlineMobileControlSettings host={props.host} disabled={readonly || !snap.ready} desktopBusy={props.desktopBusy} />
+          : <MobileControlSettings host={props.host} disabled={readonly || !snap.ready} desktopBusy={props.desktopBusy} />}
+        permissions={<LocationSettings disabled={readonly} compact />}
+        data={<DataActions host={props.host} readonly={readonly || !snap.ready} onBeforeClear={props.onCancel} compact />}
+      />} />
     </div>
   );
 };

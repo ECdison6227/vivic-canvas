@@ -1,5 +1,6 @@
-import { OperationSchema, type CanvasSnapshot, type Frame, type Operation, type Welcome } from "./protocol";
+import { OperationSchema, type CanvasSnapshot, type Frame, type Operation, type Permission, type Welcome } from "./protocol";
 import { createWebSocketTransport, type Transport } from "./transport";
+import { createFileClient, type DownloadedFile } from "./fileClient";
 
 export type MobileStatus = "unpaired" | "connecting" | "connected" | "reconnecting" | "offline" | "expired" | "revoked" | "error";
 export interface RequestState {
@@ -10,6 +11,8 @@ export interface RequestState {
 export interface MobileState {
   status: MobileStatus; snapshot: CanvasSnapshot | null; requests: RequestState[];
   error: string | null; expiresAt: number | null;
+  /** Negotiated grants; absent on older injected clients, never imply portal permission. */
+  permissions?: Permission[];
 }
 export interface MobileClient {
   getSnapshot(): MobileState;
@@ -22,6 +25,7 @@ export interface MobileClient {
   cancel(requestId: string): void;
   query(requestId: string): void;
   refresh(): void;
+  readFile?(cardId: string, onProgress?: (received: number, total: number) => void, signal?: AbortSignal): Promise<DownloadedFile>;
 }
 export interface MobileClientOptions {
   id?: string; name?: string; transportFactory?: (url: string) => Transport;
@@ -64,11 +68,12 @@ export function createMobileClient(options: MobileClientOptions = {}): MobileCli
     state = { ...state, requests: state.requests.map(r => pending(r) ? { ...r, status: "unknown", message: "执行结果未确认，请先查询结果；不会自动重发。" } : r) };
   };
   const expire = (status: "expired" | "revoked", message: string) => {
+    fileClient.cancel("手机授权已结束，下载已取消");
     stopped = true; generation++; stopLoops(); clearRequests();
     unsubscribe?.(); unsubscribe = null;
     if (expiryTimer) clearTimeout(expiryTimer); expiryTimer = null;
     token = null; welcome = null; transport?.close();
-    uncertain(); patch({ status, snapshot: null, expiresAt: null, error: message });
+    uncertain(); patch({ status, snapshot: null, expiresAt: null, permissions: [], error: message });
   };
   const modifyRequest = (id: string, change: Partial<RequestState>) => {
     const current = state.requests.find(r => r.requestId === id);
@@ -88,8 +93,10 @@ export function createMobileClient(options: MobileClientOptions = {}): MobileCli
   };
   const scoped = (frame: Frame) => welcome && "sessionId" in frame && frame.sessionId === welcome.sessionId && frame.epoch === welcome.epoch;
   const connected = () => !stopped && state.status === "connected" && !!welcome && now() < welcome.expiresAt;
+  const fileClient = createFileClient({ now, send, context: () => connected() && welcome && state.snapshot ? { welcome, snapshot: state.snapshot, deviceId } : null });
   function lost(reason: string) {
     if (stopped) return;
+    fileClient.cancel("连接已断开，请重新连接后下载");
     if (heartbeat) clearInterval(heartbeat); heartbeat = null;
     uncertain();
     patch({ status: token ? "offline" : "error", error: reason, snapshot: state.snapshot ? { ...state.snapshot, ownerAvailable: false } : null });
@@ -97,11 +104,12 @@ export function createMobileClient(options: MobileClientOptions = {}): MobileCli
   }
   function receive(frame: Frame) {
     lastSeen = now();
+    if (fileClient.receive(frame)) return;
     if (frame.type === "welcome") {
       if (frame.deviceId !== deviceId) return;
       if (welcome && (frame.sessionId !== welcome.sessionId || frame.epoch !== welcome.epoch)) { expire("expired", "配对会话已改变，请重新配对。"); return; }
       welcome = frame; token = frame.token; pairCode = null;
-      patch({ status: "connected", error: null, expiresAt: frame.expiresAt });
+      patch({ status: "connected", error: null, expiresAt: frame.expiresAt, permissions: [...frame.permissions] });
       if (expiryTimer) clearTimeout(expiryTimer);
       expiryTimer = setTimeout(() => expire("expired", "配对已过期，请在电脑重新生成配对码。"), Math.max(0, frame.expiresAt - now()));
       if (heartbeat) clearInterval(heartbeat);
@@ -123,12 +131,12 @@ export function createMobileClient(options: MobileClientOptions = {}): MobileCli
     if (!scoped(frame)) return;
     if (frame.type === "revoked") { expire("revoked", frame.reason); return; }
     if (frame.type === "status") {
-      if (!frame.ownerAvailable) { uncertain(); patch({ snapshot: state.snapshot ? { ...state.snapshot, ownerAvailable: false } : null, error: frame.reason ?? "电脑 owner 当前不可用" }); }
+      if (!frame.ownerAvailable) { fileClient.cancel("电脑控制页不可用，下载已取消"); uncertain(); patch({ snapshot: state.snapshot ? { ...state.snapshot, ownerAvailable: false } : null, error: frame.reason ?? "电脑 owner 当前不可用" }); }
       else { const s = scope(); if (s) send({ ...s, type: "snapshot.request" }); }
       return;
     }
     if (frame.type === "snapshot" && frame.deviceId === welcome?.computerId && frame.sequence > sequence) {
-      sequence = frame.sequence; patch({ snapshot: frame.state, error: frame.state.ownerAvailable ? null : "电脑 owner 当前不可用" });
+      sequence = frame.sequence; patch({ snapshot: frame.state, error: frame.state.ownerAvailable ? null : "电脑 owner 当前不可用" }); fileClient.reconcile();
     } else if (frame.type === "accepted" && frame.deviceId === deviceId) {
       modifyRequest(frame.requestId, { status: "accepted", message: "中继已送达，等待电脑执行确认。" }); requestTimer(frame.requestId);
     } else if (frame.type === "executing" && frame.deviceId === welcome?.computerId && frame.forDeviceId === deviceId) {
@@ -161,6 +169,7 @@ export function createMobileClient(options: MobileClientOptions = {}): MobileCli
     getSnapshot: () => state,
     subscribe(listener) { listeners.add(listener); return () => { listeners.delete(listener); }; },
     pair(url, code) {
+      fileClient.cancel("配对已变化，下载已取消");
       stopped = true; generation++; stopLoops(); clearRequests(); unsubscribe?.(); transport?.close();
       if (expiryTimer) clearTimeout(expiryTimer); expiryTimer = null;
       welcome = null; token = null; sequence = -1; relayUrl = url; pairCode = code.trim().toUpperCase();
@@ -169,6 +178,7 @@ export function createMobileClient(options: MobileClientOptions = {}): MobileCli
     },
     reconnect() { if (token) { uncertain(); connect(true); } else patch({ status: "unpaired", error: "请重新配对；凭据未保存在浏览器中。" }); },
     disconnect() {
+      fileClient.cancel("连接已断开，下载已取消");
       stopped = true; generation++; stopLoops(); unsubscribe?.(); unsubscribe = null; transport?.close(); uncertain();
       patch({ status: welcome ? "offline" : "unpaired", snapshot: state.snapshot ? { ...state.snapshot, ownerAvailable: false } : null });
     },
@@ -191,6 +201,7 @@ export function createMobileClient(options: MobileClientOptions = {}): MobileCli
     cancel(id) { const r = state.requests.find(r => r.requestId === id); const s = scope(); if (r && s && connected()) send({ ...s, type: "cancel", requestId: id, canvasId: r.canvasId }); },
     query(id) { const r = state.requests.find(r => r.requestId === id); const s = scope(); if (r && s && connected()) send({ ...s, type: "query", requestId: id, canvasId: r.canvasId }); },
     refresh() { const s = scope(); if (s && connected()) send({ ...s, type: "snapshot.request" }); },
+    readFile: fileClient.read,
   };
   return client;
 }

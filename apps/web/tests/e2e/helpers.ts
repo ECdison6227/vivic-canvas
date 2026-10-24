@@ -27,6 +27,7 @@ export const fire = async (
   tag: string,
   actions: Array<Record<string, unknown>>,
 ) => {
+  await waitForDisplayRuntime(page);
   const envelope = {
     schemaVersion: "0.6",
     requestId: rid(tag),

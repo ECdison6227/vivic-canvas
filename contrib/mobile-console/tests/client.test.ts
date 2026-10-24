@@ -28,6 +28,21 @@ function setup() {
   return {client,transports,welcome,snapshot};
 }
 describe("phone confirmation and reconnect semantics", () => {
+  it("exposes portal grants only when negotiated and retains same-ID move queries after timeout", () => {
+    const { client, transports, welcome } = setup(); const t = transports[0]!;
+    expect(client.getSnapshot().permissions).not.toContain("card.surface");
+    expect(client.submit({ kind: "card.surface", cardId: "note", surface: "user" })).toBeNull();
+    t.receive({ ...welcome, permissions: [...welcome.permissions, "card.surface"] });
+    const id = client.submit({ kind: "card.surface", cardId: "note", surface: "user" })!;
+    expect(id).toBeTruthy();
+    expect(t.sent.at(-1)).toMatchObject({ type: "command", expectedVersion: 1, operation: { kind: "card.surface", surface: "user" } });
+    vi.advanceTimersByTime(1001);
+    expect(client.submit({ kind: "card.surface", cardId: "note", surface: "display" })).toBeNull();
+    client.query(id);
+    expect(t.sent.at(-1)).toMatchObject({ type: "query", requestId: id, canvasId: "canvas" });
+    expect(t.sent.filter(frame => frame.type === "command")).toHaveLength(1);
+    client.revoke(); expect(client.getSnapshot().permissions).toEqual([]);
+  });
   it("keeps timed-out writes unknown despite late ACK/executing frames until a real result arrives", () => {
     const { client, transports } = setup(); const t = transports[0]!;
     const id = client.submit({ kind: "text.submit", text: "create once" })!;

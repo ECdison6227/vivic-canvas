@@ -1,4 +1,5 @@
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
+import { openVoice, showChat } from "./helpers1";
 
 // Permission prompts and streams are synthetic; no physical microphone or
 // actual device position is used in these browser checks.
@@ -40,9 +41,10 @@ test("opening the owner requests both permissions once, releases the mic, and le
   await page.goto("/");
   await expect.poll(() => counts(page)).toEqual({ location: 1, microphone: 1, stopped: 1 });
   await page.getByRole("button", { name: "设置", exact: true }).click();
-  await expect(page.locator("[data-vivic-microphone-permission]")).toHaveAttribute("data-status", "granted");
+  await openVoice(page);
+  await expect(page.getByRole("switch", { name: "语音输入", exact: true })).toBeChecked();
   await expect(page.locator("[data-vivic-location]")).toHaveAttribute("data-status", "watching");
-  await expect(page.locator("[data-vivic-local-wake]")).toHaveAttribute("data-local-wake-phase", "idle");
+  await expect(page.getByRole("switch", { name: "唤醒 Vivic", exact: true })).not.toBeChecked();
   expect(await counts(page)).toEqual({ location: 1, microphone: 1, stopped: 1 });
   const reader = await context.newPage(); await reader.goto("/control");
   await expect(reader.locator("[data-vivic-control]")).toHaveAttribute("data-vivic-owner", "readonly");
@@ -52,10 +54,11 @@ test("opening the owner requests both permissions once, releases the mic, and le
 
 test("denied permissions show recovery controls without retry loops or blocking text", async ({ page, context }) => {
   await installDevices(context, "denied"); await page.goto("/control");
-  await expect(page.locator("[data-vivic-microphone-permission]")).toHaveAttribute("data-status", "denied");
+  await openVoice(page);
+  await expect(page.getByRole("region", { name: "语音偏好" })).toContainText("麦克风权限未开启");
   await expect(page.locator("[data-vivic-location]")).toHaveAttribute("data-status", "denied");
-  await expect(page.getByRole("button", { name: "重新检查麦克风权限" })).toBeEnabled();
-  await page.getByRole("button", { name: "返回聊天", exact: true }).click();
+  await expect(page.getByRole("button", { name: "重新检查", exact: true })).toBeEnabled();
+  await showChat(page);
   await expect(page.getByRole("textbox", { name: "指令输入" })).toBeEnabled();
   expect(await counts(page)).toEqual({ location: 0, microphone: 0, stopped: 0 });
 });
@@ -64,6 +67,7 @@ test("explicitly disabled location and text-only input keep their saved choices"
   await installDevices(context, "prompt", true); await page.goto("/control");
   await expect(page.locator("[data-vivic-control]")).toHaveAttribute("data-vivic-owner", "owner");
   await expect(page.locator("[data-vivic-location]")).toHaveAttribute("data-status", "off");
-  await expect(page.getByLabel("语音输入服务")).toContainText("仅文字输入");
+  await openVoice(page, true);
+  await expect(page.getByLabel("语音输入服务")).toContainText("关闭");
   expect(await counts(page)).toEqual({ location: 0, microphone: 0, stopped: 0 });
 });

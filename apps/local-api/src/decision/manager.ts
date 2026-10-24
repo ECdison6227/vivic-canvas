@@ -8,7 +8,7 @@ import { acceptedDecision } from "./intent.js";
 import { createBudget } from "../intent/budget.js";
 const root = fileURLToPath(new URL("../../../../", import.meta.url));
 const replySchema = z.object({ id: z.number().int(), probabilities: z.array(z.number().finite().min(0).max(1)).length(7), ms: z.number().finite().min(0).max(30000) });
-export interface DecisionStatus { phase: "absent" | "downloading" | "installing" | "cached" | "loading" | "ready" | "error"; enabled: boolean; model: string; bytes: number; gpuBytes: number; lastMs: number | null; error: string | null; mode?: "provider" | "managed"; lastState?: DecisionProviderState; downloadedBytes?: number; totalBytes?: number; scoreSource?: string }
+export interface DecisionStatus { phase: "absent" | "downloading" | "installing" | "cached" | "loading" | "ready" | "stopping" | "error"; enabled: boolean; model: string; bytes: number; gpuBytes: number; lastMs: number | null; error: string | null; mode?: "provider" | "managed"; lastState?: DecisionProviderState; downloadedBytes?: number; totalBytes?: number; scoreSource?: string }
 export class DecisionManager {
   private worker: ChildProcess | undefined;
   private preparing: ChildProcess | undefined;
@@ -23,12 +23,12 @@ export class DecisionManager {
   private providerRetryAt = 0;
   private readonly failureCooldownMs: number;
   constructor(cache = path.join(root, ".cache/decision-model/kev-0.8b"), provider?: DecisionProvider,
-    options: { enabled?: boolean; timeoutMs?: number; failureCooldownMs?: number } = {}) {
+    options: { enabled?: boolean; timeoutMs?: number; failureCooldownMs?: number; modelLabel?: string } = {}) {
     this.cache = cache; this.provider = provider;
     this.providerTimeoutMs = options.timeoutMs ?? 20_000;
     this.failureCooldownMs = options.failureCooldownMs ?? 30_000;
     if (provider) this.state = { ...this.state, mode: "provider", enabled: options.enabled !== false,
-      phase: options.enabled === false ? "cached" : "ready", model: "DEC-01 决策服务", bytes: 0 };
+      phase: options.enabled === false ? "cached" : "ready", model: options.modelLabel ?? "DEC-01 决策服务", bytes: 0 };
     if (provider?.controls) this.state = { ...this.state, ...provider.controls.status() };
   }
   private cached() { return fs.existsSync(path.join(this.cache, "venv/bin/python")) && fs.existsSync(path.join(this.cache, "model/base/model.safetensors-00001-of-00001.safetensors")); }

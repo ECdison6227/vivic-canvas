@@ -1,5 +1,5 @@
+import { HarkIcon } from "@/components/hark/HarkPrimitives";
 import { useEffect, useState } from "react";
-import { Maximize2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 /** Browser fullscreen needs a user gesture; the canvas itself always fills its window. */
@@ -28,10 +28,10 @@ export function FullscreenHint() {
   return <div className="pointer-events-none fixed inset-x-0 top-4 z-[60] flex flex-col items-center gap-2 px-4" data-vivic-fullscreen-hint>
     <div className="pointer-events-auto flex max-w-full items-center gap-1 rounded-full border border-neutral-200 bg-white/90 p-1 shadow-md backdrop-blur-md">
       {supported ? <Button variant="ghost" size="sm" className="rounded-full" disabled={busy} onClick={() => void enter()}>
-        <Maximize2 className="size-3.5" aria-hidden="true" />{busy ? "正在进入全屏…" : "点击隐藏顶部栏"}
+        <HarkIcon name="expand" className="size-3.5" aria-hidden="true" />{busy ? "正在进入全屏…" : "点击隐藏顶部栏"}
       </Button> : <p className="px-3 text-xs text-neutral-700">可使用浏览器的全屏功能隐藏顶部栏</p>}
       <Button variant="ghost" size="icon" className="h-7 w-7 rounded-full" onClick={() => setDismissed(true)} aria-label="关闭全屏提示">
-        <X className="size-3.5" aria-hidden="true" />
+        <HarkIcon name="close" className="size-3.5" aria-hidden="true" />
       </Button>
     </div>
     {error && <p className="pointer-events-auto max-w-md rounded-lg bg-white/95 px-3 py-2 text-center text-xs text-neutral-700 shadow-sm"

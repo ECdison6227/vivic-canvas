@@ -1,5 +1,5 @@
+import { HarkIcon } from "@/components/hark/HarkPrimitives";
 import { useEffect, useRef, useSyncExternalStore } from "react";
-import { LoaderCircle, Mic, Square, X } from "lucide-react";
 import { cancelSpeech } from "@/ai/speech";
 import { cancelVoiceInput, finishVoiceInput, getVoiceInputSnapshot, startVoiceInput, subscribeVoiceInput } from "@/ai/voiceInput";
 import { getVoiceConfiguration, subscribeVoiceConfiguration } from "@/ai/voiceConfig";
@@ -45,7 +45,7 @@ export const VoiceInput = ({ disabled, onBegin, onTranscript, autoExecute = fals
   return (
     <div className="vivic-voice" data-vivic-voice-input data-vivic-voice-status={voice.status}>
       {busy && <button type="button" className="vivic-composer-icon" onClick={cancel} aria-label="取消录音" title="取消录音" data-vivic-voice-cancel>
-        <X className="h-4 w-4" aria-hidden="true" />
+        <HarkIcon name="close" className="h-4 w-4" aria-hidden="true" />
       </button>}
       <button type="button" className="vivic-composer-icon vivic-ptt"
         disabled={disabled || config.stt === "none" || voice.status === "transcribing"}
@@ -59,8 +59,8 @@ export const VoiceInput = ({ disabled, onBegin, onTranscript, autoExecute = fals
         onKeyUp={event => { if (event.key === " " || event.key === "Enter") { event.preventDefault(); finish(); } }}
         onBlur={() => { if (held.current) cancel(); }}
       >
-        {voice.status === "requesting" || voice.status === "transcribing" ? <LoaderCircle className="h-[18px] w-[18px] animate-spin motion-reduce:animate-none" aria-hidden="true" />
-          : voice.status === "recording" ? <Square className="h-4 w-4" aria-hidden="true" /> : <Mic className="h-[18px] w-[18px]" aria-hidden="true" />}
+        {voice.status === "requesting" || voice.status === "transcribing" ? <HarkIcon name="refresh" className="h-[18px] w-[18px] animate-spin motion-reduce:animate-none" aria-hidden="true" />
+          : voice.status === "recording" ? <HarkIcon name="stop" className="h-4 w-4" aria-hidden="true" /> : <HarkIcon name="mic" className="h-[18px] w-[18px]" aria-hidden="true" />}
       </button>
     </div>
   );

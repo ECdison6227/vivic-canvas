@@ -1,5 +1,18 @@
 # LICENSES.md — Vivic 组件、运行包、模型与数据归属
 
+2026-10-23 最新本地运行增量（优先于下方历史阶段说明）：可选启动器现在会按需下载真正的 StartLux Instant 与动态本地 TTS。Windows/线上源码包不捆绑这些模型权重或 Python 环境；Hark 资源沿用文末所列独立权利条件。
+
+| 新增运行 / 训练来源 | 固定版本 / revision | 许可与分发说明 |
+| --- | --- | --- |
+| StartLux 官方推理源码 | `StartLuxLabs/StartLux-Decision@83fe6c7d61a687a6e17f118b4f7d8f429f5d3a01` | Apache-2.0，按需准备时附原 LICENSE；只提取运行必需源码 |
+| StartLux Instant 0.8B / 2B / 4B / 9B | `apps/local-api/src/runtime/startluxProfiles.ts` 固定仓库、revision、SHA256 | **CC BY-NC 4.0**；基础权重、衍生适配器与代码许可分别记录，本轮不声明商业授权，不捆绑权重 |
+| llama.cpp | 固定官方 `b11550` Windows x64 / macOS arm64 / x64，见 `platform-artifacts.json` | MIT，下载的引擎保留上游许可；旧 Qwen / b9660 记录为历史兼容实现 |
+| uv / CPython | uv 0.12.24；CPython 3.12.15，独立运行目录 | uv Apache-2.0 / MIT；Python PSF-2.0 及发行包自带通知，不改系统 Python |
+| 动态 Sherpa-ONNX / Kokoro TTS | Sherpa-ONNX 1.12.32；`csukuangfj/kokoro-multi-lang-v1_1@914313412b607d95400bcd12446233fbd1248801` | Sherpa-ONNX 与 Kokoro 模型 Apache-2.0；内含 eSpeak 数据 **GPL-3.0-or-later**，按固定 manifest 下载 COPYING / 来源，不能把整条链统称 Apache |
+| 开发训练环境 | PyTorch 2.9.1+cu128、Transformers 5.8.0、PEFT 0.21.0、NumPy 2.5.4 | BSD-3-Clause / Apache-2.0 / Apache-2.0 / BSD-3-Clause；独立开发环境，不随安装器捆绑 |
+
+本地运行详见 `docs/updates/2026-10-23-local-runtime-next.md`，训练来源、合成数据与候选边界见 `training/startlux/README.md`。动态合成已实际执行为文件，尚未进行用户扬声器听感验收；下方“Sherpa仅开发/未新增推理引擎”只描述此前固定短句阶段。
+
 2026-10-22 新增分发：Node 24.21.0 Windows x64 使用官方固定 SHA-256 发行包并随包保留完整 Node LICENSE；llama.cpp b9660（MIT）与 Qwen2.5-0.5B-Instruct-GGUF 固定 revision（Apache-2.0）在用户准备时从各自官方发行源下载，清单/哈希见 `apps/local-api/src/runtime/artifacts.ts`。`qrcode@1.5.4`（MIT）用于二维码，`ws`（MIT）用于独立中继，`fflate`（MIT）用于固定 ZIP 解压；精确解析版本由锁文件固定。本次没有再分发 Hark 字体、APK 或反编译实现。
 
 更新：2026-10-15。本轮新增包的 exact 版本与许可核对了 workspace package.json、`pnpm-lock.yaml` 及本机安装包 package.json；Recharts、Sherpaw、Sharp 同时读取了包内 LICENSE。Pi 1.2.0 的 MIT 依据安装包 license 元数据和本地 provenance，不声称其 npm 包根目录附带了本轮未找到的 LICENSE 文件。
@@ -108,3 +121,17 @@ Vite 8.3.4、TypeScript 6.0.3、Vitest 5.0.4、@playwright/test 1.64.0、oxlint 
 | PyTorch / Transformers / PEFT | 2.8.0 / 5.19.0 / 0.21.2 | BSD-3-Clause / Apache-2.0 / Apache-2.0 | 固定离线加载及张量接口；完整环境锁见 `requirements.lock` |
 
 默认唤醒词合成验收复用上述「固定短反馈」中同一套 Kokoro 固定权重与许可，仅生成本机 TEST 文件，不随产品新增用户音频。Winnow 只核对公开元数据，未下载/分发其权重。
+
+## 2026-10-22 手机与演讲体验增量（历史）
+
+- Android 原生二维码解码复用 ZXing core 3.5.3（Apache-2.0）；固定工件散列、完整许可与 NOTICE 见 `apps/android/README.md` 和 `apps/android/licenses/`，许可同时随 APK 打包。
+- `apps/web/public/voice-feedback/stepfun/` 为本轮经用户授权，用 StepFun Plan 官方温柔女声音色生成的 16 段自编通用短句；模型/音色/日期/文件散列见同目录 PROVENANCE 与 manifest。没有克隆真人音色，不分发模型权重或凭据。
+- Hark/Mirasim/TODAY 的设计与交互研究用于 Vivic 适配，来源固定提交与差异见 `docs/mobile-design-transfer-20261022.md`、`docs/research/today-office-planner-mapping.md`、`docs/settings-design-transfer-20261022.md`。本轮未随产品加入其原 APK、私有字体、账户资料或反编译实现。
+- Travel Vivic Space 复用主产品既有组件；独立构建生成 `THIRD-PARTY-NOTICES.txt` 并纳入部署包。其 DEMO 行程、住宿偏好画像和规划文字为本项目自编内容。
+- 后续按用户要求复用 TODAY 研究的原始任务模板、认证参考 CSS 与选定内容卡属性，并组合 Hark 排版角色和 Lucide 图标映射；来源文件、固定提交与散列见 `apps/web/src/components/today/SOURCE.json`，目标差异见 `docs/updates/2026-10-22-today-hark-ui.md`。TODAY 合作与复用由用户在本会话明确授权；未使用私有账户原图或 withheld 原字体。Android 包同时附带实际 UI 依赖的 Lucide、Geist、React、React DOM 与 Radix 许可原文。
+
+## 2026-10-23 Hark 全面替换
+
+最新活动实现为 `apps/web/src/components/hark/`，固定 library `26ac2724`。七份原字体、74 命名 SVG 几何、连续圆角 helper 与离线渲染的天空静帧实际进入本地预览/测试包；原始路径与 SHA-256 见 `SOURCE.json`。上述历史段落的「未加入原字体」只描述旧版本。TODAY 视觉源码已退出活动产品，模板业务内容继续保留。
+
+原 Hark 字体、图标和代码片段保留各自原权利条件；研究公开不等于授予开源或商业分发许可，不将它们声明为本项目 MIT 依赖。归属说明随 Web 的 `HARK-SOURCE-NOTICE.txt` 与 Android `licenses/HARK-SOURCE-NOTICE.txt` 提供。本轮未加入 Hark 原 APK、服务端、账户资料或私密研究截图。React/Radix/Lucide/Geist/ZXing 等现有依赖许可继续随包保留。

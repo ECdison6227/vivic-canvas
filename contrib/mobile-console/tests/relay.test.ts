@@ -131,7 +131,7 @@ describe("ephemeral authenticated WebSocket relay", () => {
   it("pairs once, binds a trusted controller identity, and forwards commands with transport ACK only", async () => {
     const { computer, mobile, connect } = await setup(); const c = await computer(); const m = await mobile(c.welcome.pairCode!);
     const joined = await c.socket.take("controller"); expect(joined.deviceId).toBe(m.welcome.deviceId);
-    expect(joined.permissions).toEqual(["text.submit", "canvas.switch", "card.pin"]);
+    expect(joined.permissions).toEqual(["text.submit", "canvas.switch", "card.pin", "card.surface", "file.read"]);
     m.socket.send(command(m.welcome));
     expect(await c.socket.take("command")).toEqual(command(m.welcome));
     expect((await m.socket.take("accepted")).requestId).toBe("request_1");

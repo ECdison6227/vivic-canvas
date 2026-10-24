@@ -37,6 +37,7 @@ export type CommandResult =
       prompt: string;
     }
   | { kind: "undo" }
+  | { kind: "redo" }
   | { kind: "unknown"; message: string };
 
 // ---------------------------------------------------------------- zh numerals
@@ -193,6 +194,7 @@ export const parseCommand = (
     };
   }
   if (/^(撤销|撤销删除)$/.test(input)) return { kind: "undo" };
+  if (/^(重做|恢复上次撤销)$/.test(input)) return { kind: "redo" };
   if (/^唤醒$/.test(input)) {
     return {
       kind: "envelope",

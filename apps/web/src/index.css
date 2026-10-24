@@ -1502,7 +1502,8 @@
 .vivic-subcard-trigger { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; gap: 3px; min-width: 26px; min-height: 28px; border-radius: 6px; color: var(--muted-foreground); cursor: pointer; transition: color 140ms, background 140ms; font-size: 11px; }
 .vivic-subcard-trigger:hover, .vivic-subcard-trigger:focus-visible { color: var(--foreground); background: var(--muted); outline: 2px solid var(--ring); outline-offset: 2px; }
 .vivic-subcard-trigger[data-has-subcards] { color: var(--primary); background: color-mix(in oklab, var(--primary) 8%, transparent); }
-.vivic-subcard-popover { z-index: 80; width: min(380px, calc(100vw - 24px)); max-height: min(640px, var(--radix-popover-content-available-height)); padding: 16px; border: 1px solid var(--border); border-radius: var(--radius-xl); background: var(--card); color: var(--card-foreground); box-shadow: 0 16px 48px -12px #0004; transform-origin: var(--radix-popover-content-transform-origin); }
+/* Reading/editing popovers must sit above their Space/Test Space dialog (81). */
+.vivic-subcard-popover { z-index: 90; width: min(380px, calc(100vw - 24px)); max-height: min(640px, var(--radix-popover-content-available-height)); padding: 16px; border: 1px solid var(--border); border-radius: var(--radius-xl); background: var(--card); color: var(--card-foreground); box-shadow: 0 16px 48px -12px #0004; transform-origin: var(--radix-popover-content-transform-origin); }
 .vivic-subcard-scroll { overflow: auto; max-height: min(510px, calc(var(--radix-popover-content-available-height) - 120px)); overscroll-behavior: contain; }
 [data-vivic-subcard-slot] { display: inline-flex; vertical-align: middle; margin-left: 8px; }
 .vivic-reminder-row .vivic-subcard-anchor [data-aui="text"] { font-size: 1.125rem; line-height: 1.5; overflow-wrap: anywhere; }

@@ -40,11 +40,11 @@ test("上海天气 directly selects the verified municipality and creates source
   await sendCommand(page, "上海天气");
   await expect(page.locator("[data-vivic-command-feedback]")).toHaveText("已显示上海当前天气");
   await expect(display.locator(".vivic-card")).toHaveCount(1);
-  await expect(display.locator(".vivic-card")).toHaveText("22.4°C");
+  await expect(display.locator('.vivic-card [data-aui="text"]')).toHaveText("22.4°C");
   await expect(page.locator("[data-vivic-data-suggestions]")).toHaveCount(0);
   await expect(display.locator("[data-vivic-weather-source]")).toHaveCount(1);
   await display.reload();
-  await expect(display.locator(".vivic-card")).toHaveText("22.4°C");
+  await expect(display.locator('.vivic-card [data-aui="text"]')).toHaveText("22.4°C");
   await display.screenshot({ path: path.join(evidence, "TEST-weather-result.png") });
   const video = display.video(); await display.close();
   if (video) await video.saveAs(path.join(evidence, "TEST-weather-flow.webm"));

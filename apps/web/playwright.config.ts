@@ -18,6 +18,7 @@ export default defineConfig({
   workers: 1,
   reporter: [["list"]],
   use: {
+    actionTimeout: 20_000,
     baseURL: `http://localhost:${E2E_WEB_PORT}`,
     viewport: { width: 1440, height: 900 },
     deviceScaleFactor: 2,

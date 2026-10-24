@@ -1,4 +1,5 @@
 import { clearMedia } from "@/cards/scene/mediaStore";
+import { clearAllFileAssets, removeCanvasFileAssets } from "@/files/assetStore";
 import { CanvasRecordSchema, preserveCanvasRecovery, recoverCanvasRecord, type CanvasRecord } from "./canvasRecord";
 
 /**
@@ -133,6 +134,7 @@ export const openVivicDB = (): Promise<VivicDB> =>
           const tx = db.transaction("canvases", "readwrite");
           tx.objectStore("canvases").delete(id);
           await txDone(tx);
+          await removeCanvasFileAssets(id);
         },
         async getMeta(key) {
           const tx = db.transaction("meta", "readonly");
@@ -172,6 +174,7 @@ export const openVivicDB = (): Promise<VivicDB> =>
           await txDone(tx);
           // Photos added to scene cards live in their own local database.
           await clearMedia();
+          await clearAllFileAssets();
           notifyDataReset();
         },
         close() {

@@ -1,0 +1,16 @@
+.git
+**/node_modules
+**/.cache
+**/.env*
+**/*.log
+**/*.tsbuildinfo
+**/dist
+**/dist-online
+**/dist-ui
+evidence
+delivery
+.review
+apps/android
+**/*.apk
+**/*.keystore
+**/*.jks

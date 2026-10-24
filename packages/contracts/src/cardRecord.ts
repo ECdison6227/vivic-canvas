@@ -4,6 +4,7 @@ import { CardVariantSchema, CommonShape, EvidenceRefSchema, OpenSourceData } fro
 import { ClockTimeSchema, IsoDateSchema, SCENE_CARD_SCHEMAS } from "./sceneCards";
 import { TravelOffersCardSchema } from "./providers";
 import { ExtensionCardDisplayPropsSchema } from "./extensionCard";
+import { FileCardSchema } from "./files";
 
 export const ExtensionCardSchema = z.strictObject({ ...CommonShape, type: z.literal("ExtensionCard"),
   displayProps: ExtensionCardDisplayPropsSchema, sourceData: z.strictObject({}) });
@@ -149,6 +150,7 @@ export const CardRecordSchema = z.discriminatedUnion("type", [
   ChartCardSchema,
   TravelOffersCardSchema,
   ExtensionCardSchema,
+  FileCardSchema,
   ...SCENE_CARD_SCHEMAS,
 ]);
 

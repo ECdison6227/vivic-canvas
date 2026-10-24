@@ -1,7 +1,7 @@
 import { expect, test, type BrowserContext } from "@playwright/test";
 import { testCards } from "../../src/cards/__tests__/fixtures";
 import type { CardRecord } from "../../src/contracts";
-import { activeCanvasId, controlDispatch, showChat } from "./helpers1";
+import { activeCanvasId, controlDispatch, showChat, openPreferences } from "./helpers1";
 
 const runtimeErrors = new WeakMap<BrowserContext, string[]>();
 test.beforeEach(({ context }) => {
@@ -26,10 +26,10 @@ test("TEST weather source attribution is available on demand without adding a fo
   await display.goto(`/display?canvasId=${canvasId}`);
   await controlDispatch(page, "TEST-weather-attribution", canvasId, [
     { type: "stage.awaken" },
-    { type: "card.create", card: { ...testCards.WeatherCard, sources: [{ title: "TEST Open-Meteo", url: "https://api.open-meteo.com/v1/forecast", fetchedAt: "2026-10-15T08:00:00.000Z", provider: "open-meteo/forecast", readFullPage: false }] } },
+    { type: "card.create", card: { ...testCards.WeatherCard, sources: [{ title: "TEST GeoNames", url: "https://geocoding-api.open-meteo.com/v1/search", fetchedAt: "2026-10-15T08:00:00.000Z", provider: "open-meteo/geocoding", readFullPage: false }, { title: "TEST Open-Meteo", url: "https://api.open-meteo.com/v1/forecast", fetchedAt: "2026-10-15T08:00:00.000Z", provider: "open-meteo/forecast", readFullPage: false }] } },
   ]);
   const card = display.locator('[data-card-id="TEST-weather"]');
-  await expect(card).toHaveText("-3.5°C");
+  await expect(card.locator('[data-aui="text"]')).toHaveText("-3.5°C");
   await expect(display.locator("[data-vivic-weather-attribution]")).toHaveCount(0);
   const source = card.locator("[data-vivic-weather-source]");
   await expect(source).toHaveAttribute("href", "https://open-meteo.com/en/licence");
@@ -42,7 +42,7 @@ test("TEST weather source attribution is available on demand without adding a fo
   await expect(detail).toContainText("映射为图标");
   await display.mouse.move(1, 1);
   await expect(detail).toHaveCount(0);
-  await expect(card).toHaveText("-3.5°C");
+  await expect(card.locator('[data-aui="text"]')).toHaveText("-3.5°C");
   await display.close();
 });
 
@@ -61,6 +61,7 @@ test.describe("TEST scheduled theme", () => {
       { type: "stage.awaken" }, { type: "card.create", card: testCards.NoteCard },
     ]);
     // New installs default to dark (2026-10-17); the day schedule belongs to 自动.
+    await openPreferences(page, true);
     await page.getByRole("radio", { name: "自动", exact: true }).click();
     await page.getByLabel("白天开始时间", { exact: true }).fill("06:00");
     await page.getByLabel("白天结束时间", { exact: true }).fill("07:00");
@@ -74,7 +75,9 @@ test.describe("TEST scheduled theme", () => {
     await expect(stage).toHaveAttribute("data-vivic-theme", "light");
     await page.reload();
     await expect(page.locator("[data-vivic-control]")).toHaveAttribute("data-vivic-owner", "owner");
+    await openPreferences(page, true);
     await expect(page.getByRole("radio", { name: "浅色", exact: true })).toBeChecked();
+    await openPreferences(page, true);
     await page.getByRole("radio", { name: "自动", exact: true }).click();
     await expect(page.getByLabel("白天开始时间", { exact: true })).toHaveValue("06:00");
     await expect(page.getByLabel("白天结束时间", { exact: true })).toHaveValue("07:00");

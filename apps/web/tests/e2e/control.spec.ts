@@ -7,7 +7,7 @@ import {
   gotoControl,
   gotoDisplay,
   sendCommand,
-  showSettings,
+  openSpace,
   todoCardRecord,
 } from "./helpers1";
 
@@ -27,10 +27,16 @@ test("Scenario 1: minimal countdown via text commands", async ({ browser }) => {
   await sendCommand(A, "十分钟倒计时");
   await expect(B.locator(".vivic-card")).toHaveCount(1, { timeout: 8000 });
   const countdown = B.locator(".vivic-card").first();
-  const digits = ((await countdown.textContent()) ?? "").trim();
+  const digits = ((await countdown.locator('[data-aui="text"]').textContent()) ?? "").trim();
   expect(digits).toMatch(/^\d{1,2}:\d{2}$/);
   expect(digits).toMatch(/^[\d:\s]+$/); // no labels around the digits
   await B.screenshot({ path: path.join(EVIDENCE1, "display-countdown-command.png") });
+
+  // Creating a card now auto-focuses it. End that focus chain before measuring
+  // a fresh manual-pan → focus → restore sequence (restore preserves a chain's
+  // original camera, rather than replacing it on every repeated focus).
+  await sendCommand(A, "显示全部");
+  await expect.poll(() => B.evaluate(() => window.__vivic!.getState().focus)).toBeNull();
 
   // A single card already at the center may legitimately keep its camera.
   // Pan the real viewport first so this scenario tests an actual focus move.
@@ -59,7 +65,7 @@ test("Scenario 1: minimal countdown via text commands", async ({ browser }) => {
   }).toBeLessThan(2);
   expect(await B.evaluate(() => window.__vivic!.getState().cards[0]!.record)).toEqual(record);
   // Card text unchanged in kind (digit-only); the value keeps ticking.
-  expect(((await countdown.textContent()) ?? "").trim()).toMatch(/^[\d:\s]+$/);
+  expect(((await countdown.locator('[data-aui="text"]').textContent()) ?? "").trim()).toMatch(/^[\d:\s]+$/);
 
   await sendCommand(A, "恢复原视图");
   await expect.poll(transform).toBe(before);
@@ -67,11 +73,11 @@ test("Scenario 1: minimal countdown via text commands", async ({ browser }) => {
   // 删除这个 + confirm-free unique hit, then 撤销 restores. No duplicates.
   await sendCommand(A, "删除这个");
   await expect(B.locator(".vivic-card")).toHaveCount(0, { timeout: 5000 });
-  await showSettings(A);
+  await openSpace(A);
   await A.locator("[data-vivic-undo]").click();
   await expect(B.locator(".vivic-card")).toHaveCount(1, { timeout: 5000 });
   await expect(B.locator(".vivic-card")).toHaveCount(1);
-  const restored = ((await B.locator(".vivic-card").first().textContent()) ?? "").trim();
+  const restored = ((await B.locator(".vivic-card").first().locator('[data-aui="text"]').textContent()) ?? "").trim();
   expect(restored).toMatch(/^[\d:\s]+$/);
   await context.close();
 });
@@ -103,7 +109,7 @@ test("B05: ambiguous delete clarifies, never deletes blindly", async ({
   await A.locator("[data-vivic-clarify-candidate]").first().click();
   await expect(B.locator(".vivic-card")).toHaveCount(1, { timeout: 5000 });
   await expect(A.locator("[data-vivic-clarify]")).toHaveCount(0);
-  await showSettings(A);
+  await openSpace(A);
   await A.locator("[data-vivic-undo]").click();
   await expect(B.locator(".vivic-card")).toHaveCount(2, { timeout: 5000 });
   await A.screenshot({ path: path.join(EVIDENCE1, "control-page.png") });
@@ -117,6 +123,7 @@ test("B06: canvases persist across reload, switch keeps per-canvas state", async
   test.setTimeout(90_000);
   const context = await browser.newContext();
   const A = await gotoControl(context);
+  await openSpace(A);
   await expect(A.locator("[data-vivic-canvas-list] li")).toHaveCount(1);
 
   // Create + switch to a new canvas, put a card on it.
@@ -125,7 +132,7 @@ test("B06: canvases persist across reload, switch keeps per-canvas state", async
   await sendCommand(A, "十分钟倒计时");
   await A.waitForTimeout(800);
   const secondCanvasId = await activeCanvasId(A);
-  await showSettings(A);
+  await openSpace(A);
 
   // Rename it. (Entering edit mode swaps the row contents, so re-locate.)
   const row = A.locator(`[data-vivic-canvas-item="${secondCanvasId}"]`).locator("..");
@@ -140,6 +147,7 @@ test("B06: canvases persist across reload, switch keeps per-canvas state", async
   await A.waitForTimeout(800); // debounced autosave
   await A.reload();
   await A.waitForSelector('[data-vivic-control="ready"]');
+  await openSpace(A);
   await expect(A.locator(`[data-vivic-canvas-item="${secondCanvasId}"]`)).toContainText(
     "演示画布",
   );
@@ -181,6 +189,7 @@ test("pinned display stays on its canvas when the owner switches", async ({
   ]);
   await expect(B.locator('[data-card-id="pin-todo"]')).toContainText("固定画布任务");
 
+  await openSpace(A);
   await A.locator("[data-vivic-canvas-create]").click();
   const secondCanvas = await activeCanvasId(A);
   expect(secondCanvas).not.toBe(firstCanvas);

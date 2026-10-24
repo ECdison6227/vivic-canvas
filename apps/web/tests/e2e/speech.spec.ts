@@ -1,5 +1,5 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
-import { sendCommand, showSettings } from "./helpers1";
+import { sendCommand, openVoice } from "./helpers1";
 
 const connected = async (page: Page) => {
   await page.route("**/api/providers/status", route => route.fulfill({ json: {
@@ -9,6 +9,7 @@ const connected = async (page: Page) => {
   await page.goto("/control");
   await page.waitForSelector('[data-vivic-control="ready"]');
   await expect(page.locator('[data-vivic-ai-badge]')).toContainText("已连接");
+  await openVoice(page, true);
 };
 
 const result = (route: Route) => route.fulfill({ json: {
@@ -37,15 +38,15 @@ test("TTS is opt-in and an unavailable Plan voice reports failure without blocki
   });
   await page.route("**/api/intent", result);
   await connected(page);
-  await expect(page.locator('[data-vivic-tts-toggle]')).not.toBeChecked();
+  await expect(page.getByRole("switch", { name: "语音回复", exact: true })).not.toBeChecked();
   await sendCommand(page, "显示全部");
-  await expect(page.locator('[data-vivic-command-feedback]')).toHaveText("已显示全部卡片");
+  await expect(page.locator('[data-vivic-command-feedback]')).toHaveText("已显示全部");
   expect(calls).toBe(0);
-  await showSettings(page);
-  await page.locator('[data-vivic-tts-toggle]').check();
+  await openVoice(page, true);
+  await page.getByRole("switch", { name: "语音回复", exact: true }).check();
   await sendCommand(page, "显示全部");
   await expect(page.locator('[data-vivic-tts-note]')).toContainText("HTTP 403");
-  await expect(page.locator('[data-vivic-command-feedback]')).toHaveText("已显示全部卡片");
+  await expect(page.locator('[data-vivic-command-feedback]')).toHaveText("已显示全部");
   expect(calls).toBe(1);
 });
 
@@ -74,7 +75,7 @@ test("new commands interrupt audio and displays never duplicate playback", async
     return route.fulfill({ contentType: "audio/mpeg", body: Buffer.from("ID3-test-audio") });
   });
   await connected(page);
-  await page.locator('[data-vivic-tts-toggle]').check();
+  await page.getByRole("switch", { name: "语音回复", exact: true }).check();
   await sendCommand(page, "显示全部");
   const stats = () => page.evaluate(() => (window as unknown as { __speechStats: { plays: number; pauses: number } }).__speechStats);
   await expect.poll(async () => (await stats()).plays).toBe(1);

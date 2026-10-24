@@ -3,6 +3,7 @@ import type { CardRecord, CardType } from "./cardRecord";
 export interface CardFieldPolicy { query: readonly string[]; result: readonly string[]; userState: readonly string[] }
 /** Paths are rooted in CardRecord. Unlisted old card types retain their current editing behavior. */
 export const CARD_FIELD_POLICY: Partial<Record<CardType, CardFieldPolicy>> = {
+  FileCard: { query: [], result: ["displayProps", "sourceData", "sources"], userState: [] },
   TravelOffersCard: {
     query: ["displayProps.query"],
     result: ["displayProps.items", "displayProps.fetchedAt", "displayProps.mode", "displayProps.status", "sourceData", "sources"],

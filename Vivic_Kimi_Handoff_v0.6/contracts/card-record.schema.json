@@ -137,6 +137,24 @@
         "metadata": {
           "type": "object",
           "properties": {
+            "section": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60
+            },
+            "priority": {
+              "type": "string",
+              "enum": [
+                "high",
+                "normal",
+                "low"
+              ]
+            },
+            "dueDate": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
             "createdAt": {
               "type": "string",
               "format": "date-time",
@@ -614,6 +632,24 @@
         "metadata": {
           "type": "object",
           "properties": {
+            "section": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60
+            },
+            "priority": {
+              "type": "string",
+              "enum": [
+                "high",
+                "normal",
+                "low"
+              ]
+            },
+            "dueDate": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
             "createdAt": {
               "type": "string",
               "format": "date-time",
@@ -874,6 +910,24 @@
         "metadata": {
           "type": "object",
           "properties": {
+            "section": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60
+            },
+            "priority": {
+              "type": "string",
+              "enum": [
+                "high",
+                "normal",
+                "low"
+              ]
+            },
+            "dueDate": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
             "createdAt": {
               "type": "string",
               "format": "date-time",
@@ -1119,6 +1173,24 @@
         "metadata": {
           "type": "object",
           "properties": {
+            "section": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60
+            },
+            "priority": {
+              "type": "string",
+              "enum": [
+                "high",
+                "normal",
+                "low"
+              ]
+            },
+            "dueDate": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
             "createdAt": {
               "type": "string",
               "format": "date-time",
@@ -1381,6 +1453,24 @@
         "metadata": {
           "type": "object",
           "properties": {
+            "section": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60
+            },
+            "priority": {
+              "type": "string",
+              "enum": [
+                "high",
+                "normal",
+                "low"
+              ]
+            },
+            "dueDate": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
             "createdAt": {
               "type": "string",
               "format": "date-time",
@@ -1622,6 +1712,24 @@
         "metadata": {
           "type": "object",
           "properties": {
+            "section": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60
+            },
+            "priority": {
+              "type": "string",
+              "enum": [
+                "high",
+                "normal",
+                "low"
+              ]
+            },
+            "dueDate": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
             "createdAt": {
               "type": "string",
               "format": "date-time",
@@ -1875,6 +1983,24 @@
         "metadata": {
           "type": "object",
           "properties": {
+            "section": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60
+            },
+            "priority": {
+              "type": "string",
+              "enum": [
+                "high",
+                "normal",
+                "low"
+              ]
+            },
+            "dueDate": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
             "createdAt": {
               "type": "string",
               "format": "date-time",
@@ -2147,6 +2273,24 @@
         "metadata": {
           "type": "object",
           "properties": {
+            "section": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60
+            },
+            "priority": {
+              "type": "string",
+              "enum": [
+                "high",
+                "normal",
+                "low"
+              ]
+            },
+            "dueDate": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
             "createdAt": {
               "type": "string",
               "format": "date-time",
@@ -2570,6 +2714,24 @@
         "metadata": {
           "type": "object",
           "properties": {
+            "section": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60
+            },
+            "priority": {
+              "type": "string",
+              "enum": [
+                "high",
+                "normal",
+                "low"
+              ]
+            },
+            "dueDate": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
             "createdAt": {
               "type": "string",
               "format": "date-time",
@@ -2851,6 +3013,322 @@
         "metadata": {
           "type": "object",
           "properties": {
+            "section": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60
+            },
+            "priority": {
+              "type": "string",
+              "enum": [
+                "high",
+                "normal",
+                "low"
+              ]
+            },
+            "dueDate": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
+            "createdAt": {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+            },
+            "updatedAt": {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+            },
+            "aliases": {
+              "maxItems": 12,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 80
+              }
+            },
+            "subcards": {
+              "maxItems": 24,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "itemId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  },
+                  "anchor": {
+                    "type": "string",
+                    "maxLength": 128
+                  },
+                  "text": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  }
+                },
+                "required": [
+                  "id",
+                  "text"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "createdAt",
+            "updatedAt"
+          ],
+          "additionalProperties": false,
+          "description": "Subcard IDs must be unique within the parent; enforced by the runtime MetadataSchema."
+        },
+        "type": {
+          "type": "string",
+          "const": "FileCard"
+        },
+        "displayProps": {
+          "type": "object",
+          "properties": {
+            "fileId": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9_-]{1,128}$"
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 240,
+              "pattern": "^[^\\p{Cc}]+$"
+            },
+            "mediaType": {
+              "type": "string",
+              "enum": [
+                "text/plain",
+                "text/markdown",
+                "text/csv",
+                "application/pdf",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "application/json"
+              ]
+            },
+            "sizeBytes": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10000000
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "previewText": {
+              "type": "string",
+              "maxLength": 1600
+            },
+            "pageCount": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100000
+            },
+            "parseStatus": {
+              "type": "string",
+              "enum": [
+                "ready",
+                "partial",
+                "empty",
+                "unsupported",
+                "error"
+              ]
+            }
+          },
+          "required": [
+            "fileId",
+            "name",
+            "mediaType",
+            "sizeBytes",
+            "sha256",
+            "parseStatus"
+          ],
+          "additionalProperties": false
+        },
+        "sourceData": {
+          "type": "object",
+          "properties": {},
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "id",
+        "variant",
+        "sources",
+        "layout",
+        "metadata",
+        "type",
+        "displayProps",
+        "sourceData"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "variant": {
+          "type": "string",
+          "enum": [
+            "minimal",
+            "standard",
+            "expanded"
+          ]
+        },
+        "sources": {
+          "maxItems": 15,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string",
+                "maxLength": 500
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "web",
+                  "service"
+                ]
+              },
+              "url": {
+                "type": "string",
+                "pattern": "^https?:\\/\\/"
+              },
+              "fetchedAt": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              "provider": {
+                "type": "string",
+                "maxLength": 80
+              },
+              "readFullPage": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "title",
+              "fetchedAt",
+              "provider",
+              "readFullPage"
+            ],
+            "additionalProperties": false,
+            "anyOf": [
+              {
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "const": "service"
+                  }
+                }
+              },
+              {
+                "required": [
+                  "url"
+                ]
+              }
+            ]
+          }
+        },
+        "layout": {
+          "type": "object",
+          "properties": {
+            "x": {
+              "type": "number"
+            },
+            "y": {
+              "type": "number"
+            },
+            "width": {
+              "type": "number",
+              "minimum": 80
+            },
+            "height": {
+              "type": "number",
+              "minimum": 56
+            },
+            "pinned": {
+              "type": "boolean"
+            },
+            "surface": {
+              "type": "string",
+              "enum": [
+                "display",
+                "user"
+              ]
+            },
+            "userPos": {
+              "type": "object",
+              "properties": {
+                "x": {
+                  "type": "number",
+                  "minimum": -100000,
+                  "maximum": 100000
+                },
+                "y": {
+                  "type": "number",
+                  "minimum": -100000,
+                  "maximum": 100000
+                }
+              },
+              "required": [
+                "x",
+                "y"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "x",
+            "y",
+            "width",
+            "height",
+            "pinned"
+          ],
+          "additionalProperties": false
+        },
+        "metadata": {
+          "type": "object",
+          "properties": {
+            "section": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60
+            },
+            "priority": {
+              "type": "string",
+              "enum": [
+                "high",
+                "normal",
+                "low"
+              ]
+            },
+            "dueDate": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
             "createdAt": {
               "type": "string",
               "format": "date-time",
@@ -3142,6 +3620,24 @@
         "metadata": {
           "type": "object",
           "properties": {
+            "section": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60
+            },
+            "priority": {
+              "type": "string",
+              "enum": [
+                "high",
+                "normal",
+                "low"
+              ]
+            },
+            "dueDate": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
             "createdAt": {
               "type": "string",
               "format": "date-time",
@@ -3412,6 +3908,24 @@
         "metadata": {
           "type": "object",
           "properties": {
+            "section": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60
+            },
+            "priority": {
+              "type": "string",
+              "enum": [
+                "high",
+                "normal",
+                "low"
+              ]
+            },
+            "dueDate": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
             "createdAt": {
               "type": "string",
               "format": "date-time",
@@ -3696,6 +4210,24 @@
         "metadata": {
           "type": "object",
           "properties": {
+            "section": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60
+            },
+            "priority": {
+              "type": "string",
+              "enum": [
+                "high",
+                "normal",
+                "low"
+              ]
+            },
+            "dueDate": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
             "createdAt": {
               "type": "string",
               "format": "date-time",
@@ -4001,6 +4533,24 @@
         "metadata": {
           "type": "object",
           "properties": {
+            "section": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60
+            },
+            "priority": {
+              "type": "string",
+              "enum": [
+                "high",
+                "normal",
+                "low"
+              ]
+            },
+            "dueDate": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
             "createdAt": {
               "type": "string",
               "format": "date-time",
@@ -4275,6 +4825,24 @@
         "metadata": {
           "type": "object",
           "properties": {
+            "section": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60
+            },
+            "priority": {
+              "type": "string",
+              "enum": [
+                "high",
+                "normal",
+                "low"
+              ]
+            },
+            "dueDate": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
             "createdAt": {
               "type": "string",
               "format": "date-time",
@@ -4549,6 +5117,24 @@
         "metadata": {
           "type": "object",
           "properties": {
+            "section": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60
+            },
+            "priority": {
+              "type": "string",
+              "enum": [
+                "high",
+                "normal",
+                "low"
+              ]
+            },
+            "dueDate": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
             "createdAt": {
               "type": "string",
               "format": "date-time",
@@ -4795,6 +5381,24 @@
         "metadata": {
           "type": "object",
           "properties": {
+            "section": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60
+            },
+            "priority": {
+              "type": "string",
+              "enum": [
+                "high",
+                "normal",
+                "low"
+              ]
+            },
+            "dueDate": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
             "createdAt": {
               "type": "string",
               "format": "date-time",
@@ -5062,6 +5666,24 @@
         "metadata": {
           "type": "object",
           "properties": {
+            "section": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60
+            },
+            "priority": {
+              "type": "string",
+              "enum": [
+                "high",
+                "normal",
+                "low"
+              ]
+            },
+            "dueDate": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
             "createdAt": {
               "type": "string",
               "format": "date-time",
@@ -5344,6 +5966,24 @@
         "metadata": {
           "type": "object",
           "properties": {
+            "section": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60
+            },
+            "priority": {
+              "type": "string",
+              "enum": [
+                "high",
+                "normal",
+                "low"
+              ]
+            },
+            "dueDate": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
             "createdAt": {
               "type": "string",
               "format": "date-time",
@@ -5602,6 +6242,24 @@
         "metadata": {
           "type": "object",
           "properties": {
+            "section": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60
+            },
+            "priority": {
+              "type": "string",
+              "enum": [
+                "high",
+                "normal",
+                "low"
+              ]
+            },
+            "dueDate": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
             "createdAt": {
               "type": "string",
               "format": "date-time",
@@ -5853,6 +6511,24 @@
         "metadata": {
           "type": "object",
           "properties": {
+            "section": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60
+            },
+            "priority": {
+              "type": "string",
+              "enum": [
+                "high",
+                "normal",
+                "low"
+              ]
+            },
+            "dueDate": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
             "createdAt": {
               "type": "string",
               "format": "date-time",
@@ -6128,6 +6804,24 @@
         "metadata": {
           "type": "object",
           "properties": {
+            "section": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60
+            },
+            "priority": {
+              "type": "string",
+              "enum": [
+                "high",
+                "normal",
+                "low"
+              ]
+            },
+            "dueDate": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
             "createdAt": {
               "type": "string",
               "format": "date-time",
@@ -6398,6 +7092,24 @@
         "metadata": {
           "type": "object",
           "properties": {
+            "section": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60
+            },
+            "priority": {
+              "type": "string",
+              "enum": [
+                "high",
+                "normal",
+                "low"
+              ]
+            },
+            "dueDate": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
             "createdAt": {
               "type": "string",
               "format": "date-time",
@@ -6728,6 +7440,24 @@
         "metadata": {
           "type": "object",
           "properties": {
+            "section": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60
+            },
+            "priority": {
+              "type": "string",
+              "enum": [
+                "high",
+                "normal",
+                "low"
+              ]
+            },
+            "dueDate": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
             "createdAt": {
               "type": "string",
               "format": "date-time",
@@ -6988,6 +7718,24 @@
         "metadata": {
           "type": "object",
           "properties": {
+            "section": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60
+            },
+            "priority": {
+              "type": "string",
+              "enum": [
+                "high",
+                "normal",
+                "low"
+              ]
+            },
+            "dueDate": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
             "createdAt": {
               "type": "string",
               "format": "date-time",
@@ -7263,6 +8011,24 @@
         "metadata": {
           "type": "object",
           "properties": {
+            "section": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60
+            },
+            "priority": {
+              "type": "string",
+              "enum": [
+                "high",
+                "normal",
+                "low"
+              ]
+            },
+            "dueDate": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            },
             "createdAt": {
               "type": "string",
               "format": "date-time",

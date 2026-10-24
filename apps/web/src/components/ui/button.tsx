@@ -32,6 +32,8 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     <button
       ref={ref}
       type={type}
+      data-vivic-button={variant ?? "default"}
+      data-vivic-button-size={size ?? "default"}
       className={cn(buttonVariants({ variant, size, className }))}
       {...props}
     />

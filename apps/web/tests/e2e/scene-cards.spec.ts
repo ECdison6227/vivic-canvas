@@ -3,7 +3,7 @@ import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { activeCanvasId, controlDispatch, gotoControl, gotoDisplay, sendCommand, showChat } from "./helpers1";
+import { activeCanvasId, controlDispatch, gotoControl, gotoDisplay, sendCommand, showChat, showSettings } from "./helpers1";
 
 /**
  * Scene cards end to end, in an isolated TEST browser context:
@@ -52,6 +52,8 @@ const startStub = async (answers: unknown[]) => {
 };
 
 const connectStubModel = async (control: Page) => {
+  await showSettings(control);
+  await control.getByRole("navigation", { name: "设置分组", exact: true }).getByRole("button", { name: "连接", exact: true }).click();
   await control.locator("[data-vivic-ai-key-input]").fill("TEST-scene-cards-key");
   await control.locator("[data-vivic-ai-connect]").click();
   await expect(control.locator("[data-vivic-ai-badge]")).toContainText("已连接", { timeout: 10_000 });

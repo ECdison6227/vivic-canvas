@@ -1,8 +1,9 @@
 import { useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Popover } from "radix-ui";
 import { motion, useReducedMotion } from "motion/react";
-import { Check, Copy, ExternalLink, PanelTopOpen, X } from "lucide-react";
+import { HarkIcon } from "@/components/hark/HarkPrimitives";
 import { SubcardThemeContext } from "../SubcardEditorContext";
+import { ControlOverlayContext } from "@/control/ControlOverlayContext";
 
 /**
  * Shared browse helpers for the reading cards (paper, news, quote, book,
@@ -21,7 +22,7 @@ const isHttps = (href: string) => /^https:\/\/[^\s<>"']+$/i.test(href);
 export function SceneLink({ href, children, className, label }: { href: string; children: ReactNode; className?: string; label?: string }) {
   if (!isHttps(href)) return <span className={`vivic-scene-muted min-w-0 ${className ?? ""}`}>{children}</span>;
   return <a className={`vivic-scene-link nodrag nopan min-w-0 max-w-full ${className ?? ""}`} href={href} target="_blank" rel="noopener noreferrer" aria-label={label} data-scene-link>
-    <span className="min-w-0 truncate">{children}</span><ExternalLink size={12} aria-hidden className="shrink-0" />
+    <span className="min-w-0 truncate">{children}</span><HarkIcon name="link-out" size={12} aria-hidden className="shrink-0" />
   </a>;
 }
 
@@ -42,6 +43,7 @@ export function DetailPopover({ heading, children, label = "详情", triggerLabe
 }) {
   const longHeading = heading.length > 80;
   const theme = useContext(SubcardThemeContext);
+  const overlayHost = useContext(ControlOverlayContext);
   const trigger = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
   const [dark, setDark] = useState(false);
@@ -52,18 +54,18 @@ export function DetailPopover({ heading, children, label = "详情", triggerLabe
   }}>
     <Popover.Trigger asChild>
       <button ref={trigger} type="button" className="vivic-scene-action nodrag nopan" aria-label={triggerLabel} data-scene-detail-trigger>
-        <PanelTopOpen size={13} aria-hidden />{label}
+        <HarkIcon name="expand" size={13} aria-hidden />{label}
       </button>
     </Popover.Trigger>
-    <Popover.Portal>
+    <Popover.Portal container={overlayHost ?? undefined}>
       <Popover.Content side="bottom" align="end" sideOffset={8} collisionPadding={12} hideWhenDetached
-        className={`${dark ? "dark " : ""}vivic-subcard-popover nodrag nopan nowheel flex flex-col overflow-hidden`} data-scene-detail-popover>
+        className={`${dark ? "dark " : ""}vh-hark vivic-subcard-popover nodrag nopan nowheel flex flex-col overflow-hidden`} data-appearance={dark ? "dark" : "light"} data-scene-detail-popover>
         {/* Bounded column: the heading stays put (clamped), everything else scrolls inside the popover. */}
         <motion.div className="flex min-h-0 flex-1 flex-col" initial={{ opacity: 0, y: reduced ? 0 : 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: reduced ? 0 : 0.16 }}>
           <div className="flex shrink-0 items-start justify-between gap-3">
             <div className="vivic-scene-clamp-3 min-w-0 text-[15px] font-semibold leading-snug" title={longHeading ? heading : undefined} data-scene-detail-heading>{heading}</div>
             <Popover.Close asChild>
-              <button type="button" className="vivic-scene-icon-button -mr-1 -mt-1 shrink-0" aria-label="关闭详情"><X size={16} aria-hidden /></button>
+              <button type="button" className="vivic-scene-icon-button -mr-1 -mt-1 shrink-0" aria-label="关闭详情"><HarkIcon name="close" size={16} aria-hidden /></button>
             </Popover.Close>
           </div>
           <div className="mt-3 grid min-h-0 flex-1 content-start gap-3.5 overflow-auto overscroll-contain pb-1 text-[13px] leading-relaxed select-text" data-scene-detail-body>
@@ -93,7 +95,7 @@ export function CopyButton({ text, label = "复制", ariaLabel }: { text: string
   };
   return <span className="inline-flex items-center gap-1.5">
     <button type="button" className="vivic-scene-action nodrag nopan" aria-label={ariaLabel} onClick={() => void copy()} data-scene-copy>
-      {status === "done" ? <Check size={13} aria-hidden /> : <Copy size={13} aria-hidden />}{label}
+      {status === "done" ? <HarkIcon name="check" size={13} aria-hidden /> : <HarkIcon name="copy" size={13} aria-hidden />}{label}
     </button>
     <span role="status" aria-live="polite" data-scene-copy-status={status}
       className={`text-[11.5px] ${status === "failed" ? "text-[var(--vivic-danger)]" : "text-[var(--vivic-positive)]"}`}>

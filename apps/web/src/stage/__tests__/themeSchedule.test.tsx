@@ -8,7 +8,7 @@ import { StageRoot } from "../StageRoot";
 
 // Keep real StageRoot, CanvasView, schedule resolution and preference store.
 // Replace GPU/motion/Flow rendering only; inspect the actual passed theme prop.
-const camera = vi.hoisted(() => ({ fitView: vi.fn(), setCenter: vi.fn(), setViewport: vi.fn() }));
+const camera = vi.hoisted(() => ({ fitView: vi.fn(), setCenter: vi.fn(), setViewport: vi.fn(), getViewport: () => ({ x: 0, y: 0, zoom: 1 }), viewportInitialized: true }));
 vi.mock("@xyflow/react", () => ({
   ReactFlowProvider: ({ children }: { children: ReactNode }) => children,
   ReactFlow: ({ colorMode }: { colorMode: string }) => <div data-test-flow-theme={colorMode} />,

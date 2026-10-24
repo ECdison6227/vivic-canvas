@@ -6,7 +6,7 @@ import { canvasStore, useVivicState, useDisplayPreferences } from "@/state/canva
 export const AWAKENING_TOTAL_MS = 960;
 
 /**
- * The Display shows the same 流光以太 background as the user page in every
+ * The Display shows the same Hark sky background as the user page in every
  * stage — no black standby veil (user request, 2026-10-17). Waking only
  * advances AWAKENING → WORKSPACE after a short beat; the orb and the cards'
  * own transitions provide the motion. Reduced motion advances sooner.

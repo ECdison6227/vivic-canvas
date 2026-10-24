@@ -40,6 +40,9 @@ export const LayoutSchema = z.strictObject({
 });
 
 export const MetadataSchema = z.strictObject({
+  section: z.string().trim().min(1).max(60).optional(),
+  priority: z.enum(["high", "normal", "low"]).optional(),
+  dueDate: z.iso.date().optional(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
   aliases: z.array(z.string().max(80)).max(12).optional(),
