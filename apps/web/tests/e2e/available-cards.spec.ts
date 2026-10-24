@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { ProvidersStatusResponse } from "../../src/ai/api";
 
-test("the card catalog follows the selected model, disconnects and backend availability without creating cards", async ({ page, context }) => {
+test("compact connections follow the selected model and availability without restoring the removed catalog or creating cards", async ({ page, context }) => {
   // Isolated TEST status fixtures; no model calls, real location or microphone.
   await context.addInitScript(() => {
     localStorage.setItem("vivic.deviceLocation.v1", "off");
@@ -14,34 +14,24 @@ test("the card catalog follows the selected model, disconnects and backend avail
     { name: "gpt", connected: true, capabilities: ["structured", "chat"], defaultModel: "TEST-gpt-cards", models: ["TEST-gpt-cards"] },
   ], degradations: [] };
   await page.route("**/api/providers/status", route => offline ? route.abort() : route.fulfill({ json: status }));
-  await context.route("https://edsionc.top/vivic/store", route => route.fulfill({ contentType: "text/html", body: "<title>TEST Vivic Store destination</title><p>TEST navigation fixture only; the store is not launched.</p>" }));
   page.on("request", request => { if (new URL(request.url()).pathname === "/api/intent") intents++; });
   await page.goto("/control");
-  const catalog = page.locator("[data-vivic-available-cards]");
-  await expect(catalog).toContainText("24 类已接入");
-  await expect(catalog.locator("[data-vivic-available-card]")).toHaveCount(24);
-  await expect(catalog.locator('[data-vivic-card-group="model"] [data-availability="ready"]')).toHaveCount(17);
-  await expect(catalog.locator('[data-vivic-available-card="WeatherCard"]')).toContainText("需联网");
-  await expect(catalog.locator('[data-vivic-available-card="TableCard"]')).toContainText("需提供数据");
-  await catalog.screenshot({ path: "../../evidence/settings/available-cards.png" });
-
-  const popupPromise = page.waitForEvent("popup");
-  await catalog.getByRole("link", { name: "打开 Vivic Store，添加新卡片（新标签页）", exact: true }).click();
-  const store = await popupPromise;
-  await expect(store).toHaveURL("https://edsionc.top/vivic/store");
-  await expect(page).toHaveURL(/\/control$/);
-  await store.close();
+  await expect(page.locator("[data-vivic-available-cards],[data-vivic-store-link]")).toHaveCount(0);
+  await expect(page.locator("[data-vivic-ai-badge]")).toHaveText("已连接");
+  await page.locator("[data-vivic-connection-options] > summary").click();
+  await expect(page.getByLabel("当前推理模型", { exact: true })).toHaveText("TEST-step-cards");
 
   status = { ...status, activeProvider: "gpt" };
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
-  await expect(catalog.locator("[data-vivic-card-model-status]")).toContainText("TEST-gpt-cards");
+  await expect(page.getByLabel("当前推理模型", { exact: true })).toHaveText("TEST-gpt-cards");
   status = { ...status, providers: status.providers.map(provider => provider.name === "gpt" ? { ...provider, connected: false } : provider) };
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
-  await expect(catalog.locator('[data-vivic-card-group="model"] [data-availability="requires-model"]')).toHaveCount(17);
-  await expect(catalog.locator('[data-vivic-card-group="local"] [data-availability="ready"]')).toHaveCount(3);
+  await expect(page.locator("[data-vivic-ai-badge]")).toHaveText("未连接");
+  await expect(page.getByLabel("当前推理模型", { exact: true })).toHaveCount(0);
   offline = true;
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
-  await expect(catalog.locator('[data-vivic-card-group="data"] [data-availability="requires-backend"]')).toHaveCount(4);
-  await expect(catalog.locator('[data-vivic-card-group="local"] [data-availability="ready"]')).toHaveCount(3);
+  await expect(page.locator("[data-vivic-ai-badge]")).toHaveText("服务不可用");
+  await expect(page.locator("[data-vivic-ai-note]")).toContainText("内置文字指令仍可使用");
+  expect(await page.evaluate(() => window.__vivic!.getState().cards.length)).toBe(0);
   expect(intents).toBe(0);
 });

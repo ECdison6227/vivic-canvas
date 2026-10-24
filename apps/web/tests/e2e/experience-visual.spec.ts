@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import path from "node:path";
-import { activeCanvasId, controlDispatch } from "./helpers1";
+import { activeCanvasId, controlDispatch, openPreferences } from "./helpers1";
 import { testCards } from "../../src/cards/__tests__/fixtures";
 
 test("TEST typography, materials, long text and fixed cards", async ({ page, context }, info) => {
@@ -11,6 +11,7 @@ test("TEST typography, materials, long text and fixed cards", async ({ page, con
   await page.goto("/control");
   await expect(page.locator("[data-vivic-control]")).toHaveAttribute("data-vivic-owner", "owner");
   const id = await activeCanvasId(page);
+  await openPreferences(page, true);
   await page.getByRole("radio", { name: "浅色", exact: true }).click();
   await page.getByRole("switch", { name: "减少动效" }).check();
   await controlDispatch(page, "TEST-visual", id, [{ type: "stage.awaken" }, ...[
@@ -53,6 +54,7 @@ test("TEST restores a legacy canvas with current reading metrics, preserves two 
     await db.setMeta("lastCanvasId", "TEST-legacy-canvas"); db.close();
   }, cards);
   await page.goto("/control"); await expect(page.locator("[data-vivic-control]")).toHaveAttribute("data-vivic-owner", "owner");
+  await openPreferences(page, true);
   await page.getByRole("radio", { name: "浅色", exact: true }).click(); await page.getByRole("switch", { name: "减少动效" }).check();
   const display = await context.newPage(); await display.goto("/display?canvasId=TEST-legacy-canvas");
   await expect(display.locator(".vivic-card")).toHaveCount(5);

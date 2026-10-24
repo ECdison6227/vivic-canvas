@@ -1,10 +1,14 @@
-import { useEffect } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { DevPanel } from "@/dev/DevPanel";
 import { applyUrlTheme } from "@/lib/urlTheme";
 import { StageRoot } from "@/stage/StageRoot";
 import { canvasStore } from "@/state/canvasStore";
-import { getDisplayRuntime, type DisplayRuntime } from "@/sync/browserRuntime";
+import { getDisplayRuntime, getDisplayStatus, subscribeDisplayStatus, type DisplayRuntime } from "@/sync/browserRuntime";
+import { FileScopeContext } from "@/files/FileScopeContext";
 import { FullscreenHint } from "./FullscreenHint";
+import { useResolvedTheme } from "@/stage/useResolvedTheme";
+import "@/components/hark/hark.css";
+import "@/control/hark-control.css";
 
 declare global {
   interface Window {
@@ -26,6 +30,8 @@ const pinnedCanvasId = params.get("canvasId") ?? undefined;
  * No persistent nav/settings chrome. ?dev=1 is restricted to development builds.
  */
 export const DisplayApp = () => {
+  const theme = useResolvedTheme();
+  const fileCanvasId = useSyncExternalStore(subscribeDisplayStatus, () => getDisplayStatus()?.canvasId ?? null);
   useEffect(() => {
     let runtime: DisplayRuntime | undefined;
     applyUrlTheme();
@@ -49,10 +55,10 @@ export const DisplayApp = () => {
   }, []);
 
   return (
-    <>
-      <StageRoot />
+    <div className="vh-hark vivic-display-root" data-appearance={theme}>
+      <FileScopeContext value={fileCanvasId}><StageRoot /></FileScopeContext>
       <FullscreenHint />
       {isDevPanel && <DevPanel />}
-    </>
+    </div>
   );
 };

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { CardRecordSchema, type CardRecord } from "@/contracts";
 import { VivicCard } from "../VivicCard";
 import type { ChartCard, WeatherCard } from "../dataCardTypes";
@@ -28,9 +28,19 @@ class TestResizeObserver {
 
 let host: HTMLDivElement;
 let root: Root;
-const render = async (node: ReactNode) => { await act(async () => root.render(node)); };
+const render = async (node: ReactNode) => {
+  await act(async () => {
+    root.render(node);
+    await Promise.all([import("../ChartCardView"), import("../scene/views/TravelOffersCardView"), import("@/extensions/ExtensionCardView")]);
+  });
+  expect(host.textContent).not.toContain("正在加载卡片…");
+};
 const chart = (chartKind: ChartCard["displayProps"]["chartKind"], points: ChartCard["displayProps"]["points"] = testCards.ChartCard.displayProps.points): ChartCard => ({
   ...testCards.ChartCard, displayProps: { ...testCards.ChartCard.displayProps, chartKind, points },
+});
+
+beforeAll(async () => {
+  await Promise.all([import("../ChartCardView"), import("../scene/views/TravelOffersCardView"), import("@/extensions/ExtensionCardView")]);
 });
 
 beforeEach(() => {
@@ -57,7 +67,7 @@ afterEach(async () => {
 
 describe("data card renderers", () => {
   it("renders all seven validated registry types without adding frames or controls", async () => {
-    const records = Object.values(testCards).map(record => CardRecordSchema.parse(record));
+    const records = Object.values(testCards).filter(record => record.type !== "ExtensionCard" && record.type !== "FileCard").map(record => CardRecordSchema.parse(record));
     await render(<>{records.map(record => <section key={record.id} data-test-type={record.type}><VivicCard record={record} /></section>)}</>);
     for (const record of records) {
       expect(host.querySelector(`[data-test-type="${record.type}"]`)?.childElementCount).toBeGreaterThan(0);
@@ -166,7 +176,7 @@ describe("data card renderers", () => {
   });
 
   it("renders only selected displayProps and expands Note only through its stored variant", async () => {
-    for (const record of Object.values(testCards) as CardRecord[]) {
+    for (const record of Object.values(testCards).filter(card => card.type !== "FileCard") as CardRecord[]) {
       await render(<VivicCard record={record} />);
       expect(host.textContent).not.toMatch(/hidden location|hidden source data|TEST \/ DEMO source/);
       expect(host.querySelector("button")).toBeNull();

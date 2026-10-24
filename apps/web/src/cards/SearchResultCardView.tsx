@@ -21,7 +21,7 @@ export const SearchResultCardView = ({ card }: { card: SearchResultCard }) => {
     ],
   })}
   </div>
-  {source ? <a href={source.url} target="_blank" rel="noopener noreferrer" className="mt-2 block shrink-0 truncate text-xs text-neutral-500 underline-offset-2 hover:underline" data-vivic-source-link>
+  {source?.url ? <a href={source.url} target="_blank" rel="noopener noreferrer" className="mt-2 block shrink-0 truncate text-xs text-neutral-500 underline-offset-2 hover:underline" data-vivic-source-link>
     {renderVivicSpec({ _type: "Caption", value: card.displayProps.sourceLabel })}
   </a> : renderVivicSpec({ _type: "Caption", value: card.displayProps.sourceLabel })}
   </div>;

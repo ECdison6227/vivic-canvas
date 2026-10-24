@@ -55,6 +55,15 @@ const seed = () => {
 };
 
 describe("layout business invariants", () => {
+  it("retains records and array identity when relayout does not change geometry", () => {
+    const placed = relayout(entries(mixedCards()));
+    const repeated = relayout(placed);
+    expect(repeated).toBe(placed);
+    repeated.forEach((entry, index) => {
+      expect(entry).toBe(placed[index]);
+      expect(entry.record).toBe(placed[index]!.record);
+    });
+  });
   it("uses valid fixtures spanning all seven types and long, multiline content", () => {
     expect(new Set(mixedCards().map(c => c.type)).size).toBe(7);
     for (const card of [...mixedCards(), ...obstacles()]) expect(CardRecordSchema.safeParse(card).success, card.id).toBe(true);

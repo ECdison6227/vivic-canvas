@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { ArrowUp, LoaderCircle, Volume2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { ComposerMenu } from "./ComposerMenu";
+import { HarkIcon, HarkSurface } from "@/components/hark/HarkPrimitives";
 import { getSpeechSnapshot, subscribeSpeech } from "@/ai/speech";
 import type { ResolvedCard } from "@/commands/references";
 import type { CommandClarifyAction } from "@/commands/parse";
@@ -10,6 +11,7 @@ import type { Attachment } from "@/ai/attachments";
 import { getProvidersStatus } from "@/ai/api";
 import { LocalWakeInput } from "./LocalSpeechSettings";
 import { getVoiceConfiguration, subscribeVoiceConfiguration } from "@/ai/voiceConfig";
+import { consumeTemplateDraft, readTemplateDraft } from "./draftTransfer";
 
 export interface ClarifyState {
   action: CommandClarifyAction;
@@ -18,9 +20,12 @@ export interface ClarifyState {
   prompt: string;
   choiceId?: string;
   expiresAt?: number;
+  taskId?: string;
+  numbers?: number[];
 }
 
 interface ChatComposerProps {
+  menuActions?: (close: () => void) => ReactNode;
   disabled: boolean;
   clarify: ClarifyState | null;
   suggestions?: string[];
@@ -50,11 +55,26 @@ export const ChatComposer = ({
   busy,
   onCancel,
   ownerKey = "control",
+  menuActions,
 }: ChatComposerProps) => {
-  const [text, setText] = useState("");
+  const templateDraft = useMemo(readTemplateDraft, []);
+  const [text, setText] = useState(templateDraft);
+  useEffect(() => { if (templateDraft) consumeTemplateDraft(templateDraft); }, [templateDraft]);
   const composing = useRef(false);
   const [elapsed, setElapsed] = useState(0);
   const latestDraft = useRef(text); latestDraft.current = text;
+  const [templateNotice, setTemplateNotice] = useState("");
+  useEffect(() => {
+    const receive = (event: Event) => {
+      const draft: unknown = (event as CustomEvent).detail;
+      if (typeof draft !== "string" || draft.length > 2000) return;
+      if (latestDraft.current.trim()) setTemplateNotice("已有草稿已保留。发送或清空后，可再次从新手引导选择示例。");
+      else { setText(draft); setTemplateNotice(""); }
+      consumeTemplateDraft(draft);
+    };
+    window.addEventListener("vivic:template-draft", receive);
+    return () => window.removeEventListener("vivic:template-draft", receive);
+  }, []);
   const draftAtVoiceStart = useRef("");
   const [unappliedVoice, setUnappliedVoice] = useState<string | null>(null);
   const [autoVoice, setAutoVoice] = useState(true);
@@ -110,19 +130,18 @@ export const ChatComposer = ({
     else setUnappliedVoice(value);
   };
 
-  const modePill =
-    backendOnline === null
-      ? { text: "意图路由检查中…", tone: "checking" }
-      : backendOnline
-        ? modelConnection?.connected ? { text: `已连接 · ${modelConnection.name}`, tone: "connected" }
-          : { text: "模型未连接 · 可用本地指令", tone: "warning" }
-        : { text: "离线本地模式", tone: "warning" };
+  const modePill = backendOnline === false
+    ? { text: "服务暂不可用 · 可用内置指令", tone: "warning" }
+    : backendOnline && modelConnection?.connected === false
+      ? { text: "模型未连接 · 请在设置中连接", tone: "warning" }
+      : null;
   const sendDisabled = disabled || !text.trim() || imageProcessing || Boolean(attachment && !visionAvailable);
 
   return (
-    <ImageAttachment disabled={disabled} ownerKey={ownerKey} resetKey={imageReset} visionAvailable={visionAvailable}
+    <ImageAttachment disabled={disabled} ownerKey={ownerKey} resetKey={imageReset} visionAvailable={visionAvailable} menuTrigger
       onChange={setAttachment} onProcessingChange={setImageProcessing}>{parts => <div className="vivic-composer" data-vivic-composer>
       <div className="vivic-composer-stack">
+        {templateNotice && <p className="vivic-composer-card-hint" role="status">{templateNotice}</p>}
         {clarify && <div className="vivic-chip-row" data-vivic-clarify>
           {clarify.candidates.map((c, index) => (
             <button key={c.card.id} type="button" className="vivic-chip"
@@ -131,7 +150,7 @@ export const ChatComposer = ({
               onFocus={() => onPreviewClarify?.(c)}
               data-vivic-clarify-candidate
             >
-              {index + 1}号 · {c.label}
+              {clarify.numbers?.[index] ?? index + 1}号 · {c.label}
             </button>
           ))}
           <button type="button" className="vivic-chip vivic-chip-quiet" onClick={onCancelClarify}>取消</button>
@@ -140,14 +159,14 @@ export const ChatComposer = ({
           {suggestions.map(suggestion => <button key={suggestion} type="button" className="vivic-chip"
             disabled={disabled || busy} onClick={() => { setText(""); onSubmit(suggestion); }}>{suggestion}</button>)}
         </div>}
-        {unappliedVoice && <div className="vivic-composer-card" data-vivic-unapplied-voice>
+        {unappliedVoice && <HarkSurface className="vivic-composer-card" data-vivic-unapplied-voice>
           <p>{unappliedVoice}</p>
           <p className="vivic-composer-card-hint">你在识别期间改过输入，已保留现有文字。</p>
           <button type="button" className="vivic-chip" onClick={() => { setText(unappliedVoice); setUnappliedVoice(null); }}>使用这段转写</button>
-        </div>}
+        </HarkSurface>}
         {(busy || speech.status === "loading" || speech.status === "playing") && <div className="vivic-composer-progress" data-vivic-command-progress>
-          {speech.status === "playing" && !busy ? <Volume2 className="h-4 w-4" aria-hidden="true" /> : <LoaderCircle className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />}
-          <span>{busy ? "正在理解并安排你的指令" : speech.status === "loading" ? "正在准备语音" : "正在说话"}</span>
+          {speech.status === "playing" && !busy ? <HarkIcon name="volume" size={16} aria-hidden="true" /> : <HarkIcon name="refresh" className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />}
+          <span>{busy ? "正在处理…" : speech.status === "loading" ? "正在准备语音" : "正在说话"}</span>
           {busy && <span className="vivic-composer-progress-time" data-vivic-wait-seconds>{elapsed} 秒</span>}
           {busy && <button type="button" className="vivic-chip vivic-chip-quiet" onClick={() => { setWakeCancelKey(value => value + 1); onCancel(); }} data-vivic-command-cancel>
             取消
@@ -159,6 +178,7 @@ export const ChatComposer = ({
           {parts.status}
         </div>
       </div>
+      <HarkSurface className="vivic-composer-shell">
       <form
         className="vivic-composer-bar"
         onSubmit={(e) => {
@@ -186,22 +206,28 @@ export const ChatComposer = ({
             if (event.key === "Escape" && clarify) { event.preventDefault(); onCancelClarify(); }
           }}
         />
-        {parts.trigger}
-        <VoiceInput disabled={disabled || (backendOnline === false && voiceConfig.stt === "stepfun")} autoExecute={autoVoice}
-          onBegin={() => { setWakeCancelKey(value => value + 1); beginVoiceDraft(); }} onTranscript={receiveTranscript} />
+        <ComposerMenu>{close => <>
+          {parts.trigger}
+          {menuActions?.(close)}
+          {voiceConfig.stt !== "none" && <label className="vivic-composer-menu-toggle">
+            <span>语音自动发送</span><input type="checkbox" checked={autoVoice} disabled={disabled}
+              onChange={event => setAutoVoice(event.target.checked)} data-vivic-voice-auto />
+          </label>}
+        </>}</ComposerMenu>
+        <div hidden={Boolean(text.trim()) && voiceConfig.stt === "none"}>
+          <VoiceInput disabled={disabled || (backendOnline === false && voiceConfig.stt === "stepfun")} autoExecute={autoVoice}
+            onBegin={() => { setWakeCancelKey(value => value + 1); beginVoiceDraft(); }} onTranscript={receiveTranscript} />
+        </div>
         <button type="submit" className="vivic-composer-send" disabled={sendDisabled}
+          hidden={!text.trim()}
           aria-label={busy ? "发送新指令" : "发送"} title={busy ? "发送新指令" : "发送"} data-vivic-command-send>
-          <ArrowUp className="h-[18px] w-[18px]" aria-hidden="true" />
+          <HarkIcon name="up" size={16} aria-hidden="true" />
         </button>
       </form>
+      </HarkSurface>
       <div className="vivic-composer-meta">
-        <span className="vivic-mode-pill" data-tone={modePill.tone} data-vivic-intent-mode>{modePill.text}</span>
-        <label className="vivic-toggle">
-          <input type="checkbox" checked={autoVoice}
-            disabled={disabled} onChange={event => setAutoVoice(event.target.checked)} data-vivic-voice-auto />
-          识别后自动发送
-        </label>
-        {voiceConfig.stt !== "none" && <LocalWakeInput compact ownerKey={ownerKey} cancelKey={wakeCancelKey}
+        {modePill && <span className="vivic-mode-pill" role="status" data-tone={modePill.tone} data-vivic-intent-mode>{modePill.text}</span>}
+        {voiceConfig.wakeEnabled && voiceConfig.stt !== "none" && <LocalWakeInput compact ownerKey={ownerKey} cancelKey={wakeCancelKey}
           disabled={disabled || busy || (backendOnline === false && voiceConfig.stt === "stepfun")}
           speaking={speech.loading || speech.playing} recognition={voiceConfig.stt === "local" ? "local" : "segment"}
           onBegin={beginVoiceDraft} onTranscript={receiveTranscript}

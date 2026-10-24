@@ -1,11 +1,13 @@
 import { randomUUID, timingSafeEqual } from "node:crypto";
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
+import { streamSSE } from "hono/streaming";
 import { cors } from "hono/cors";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import type { LocalApiConfig } from "./config.js";
 import { CredentialStore } from "./credentials.js";
-import { runIntent } from "./intent/pipeline.js";
+import { runIntent, type PipelineDeps } from "./intent/pipeline.js";
+import { safeDiagnostic, type DiagnosticSink } from "./diagnostics.js";
 import {
   IntentRequestSchema,
   WeatherHereRequestSchema,
@@ -27,7 +29,21 @@ import { validateImageAttachment, imageInputErrorMessage, type ImageDecoder } fr
 import { decodeImage } from "./imageDecoder.js";
 import { DecisionManager } from "./decision/manager.js";
 import { DecisionRouter, HttpDecisionProvider, decisionTimeout, type DecisionProvider } from "./decision/provider.js";
+import { HttpNativeV2Provider, type NativeV2Provider } from "./decision/nativeV2.js";
+import { DecisionTaskManager } from "./decision/taskV2.js";
 import type { PreferenceStore } from "./preferences.js";
+import { TravelQuerySchema } from "@vivic/contracts";
+import { buildTravelCard, demoTravelProvider, queryTravel, type TravelProvider } from "./providers/travel.js";
+import { ManagedStartluxRuntime } from "./runtime/startluxRuntime.js";
+import { ManagedLocalTts, validateLocalWav } from "./runtime/localTts.js";
+import path from "node:path";
+import { homedir, totalmem, freemem } from "node:os";
+import { STARTLUX_DEFAULT_PROFILE_ID, STARTLUX_PROFILES, recommendStartluxProfile } from "./runtime/startluxProfiles.js";
+import { MobileSessionBroker } from "./mobile/session.js";
+import { ConnectionManager } from "./connections/manager.js";
+import { createConnectionRoutes } from "./connections/routes.js";
+import { ConnectionError } from "./connections/types.js";
+import { createFileReadRoutes, FILE_READ_BODY_LIMIT } from "./files/routes.js";
 
 /**
  * Vivic local decision API. Loopback only, bearer-guarded, zod on every
@@ -36,6 +52,8 @@ import type { PreferenceStore } from "./preferences.js";
  */
 
 export interface AppDeps {
+  /** Online sessions never inherit the operator's local files or runtimes. */
+  mode?: "local" | "online";
   config: LocalApiConfig;
   credentials?: CredentialStore;
   fetchImpl?: typeof fetch;
@@ -46,8 +64,13 @@ export interface AppDeps {
   decision?: DecisionManager;
   /** Optional independent DEC-01 API/local provider. */
   decisionProvider?: DecisionProvider;
+  decisionV2Provider?: NativeV2Provider;
+  onDiagnostic?: DiagnosticSink;
+  travel?: TravelProvider;
   /** Remembers the chosen connection across restarts; absent in tests. */
   preferences?: PreferenceStore;
+  mobileBroker?: Pick<MobileSessionBroker, "status" | "create" | "dispose">;
+  localTts?: Pick<ManagedLocalTts, "status" | "prepare" | "enable" | "stop" | "clear" | "synthesize">;
 }
 
 const tokenOk = (presented: string, expected: string): boolean => {
@@ -62,13 +85,25 @@ const firstIssue = (error: z.ZodError): string =>
     .map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`)
     .join("; ");
 
+type AppContext = Context<{ Variables: { requestId: string } }>;
+
 export const createApp = (deps: AppDeps) => {
   const { config } = deps;
+  const online = deps.mode === "online";
+  const connections = new ConnectionManager({ fetchImpl: deps.fetchImpl });
+  let localTts = online ? undefined : deps.localTts;
+  const localTtsRuntime = () => online ? undefined : localTts ??= new ManagedLocalTts(path.join(homedir(), ".vivic", "runtime", "local-tts"));
+  const mobileBroker = online ? { status: async () => ({ configured: false, mobileUrl: null }),
+    create: async (): Promise<never> => { throw new Error("unavailable_online"); }, dispose: () => undefined }
+    : deps.mobileBroker ?? new MobileSessionBroker(path.join(homedir(), ".vivic", "mobile-relay.json"));
   const credentials = deps.credentials ?? new CredentialStore();
   const gpt = deps.gpt ?? new GptProvider({ fetchImpl: deps.fetchImpl });
-  const data = deps.data ?? createDataClient({ fetchImpl: deps.fetchImpl });
+  const data = deps.data ?? createDataClient({ fetchImpl: deps.fetchImpl,
+    ...(online ? { config: { deviceLocation: true, networkRegionFallback: false } } : {}) });
   let decisionConfigurationError: string | undefined;
-  const configuredProvider = deps.decisionProvider ?? (() => {
+  // Even status() on the legacy manager inspects its cache. A disabled,
+  // non-local provider avoids all filesystem/process work for cloud sessions.
+  const configuredProvider: DecisionProvider | undefined = online ? { decide: async () => ({ state: "disabled" }) } : deps.decisionProvider ?? (() => {
     if (deps.decision || !config.decisionProviderUrl) return undefined;
     try {
     const primary = new HttpDecisionProvider(config.decisionProviderUrl, {
@@ -85,17 +120,31 @@ export const createApp = (deps: AppDeps) => {
       // Never echo the configured URL, token, or upstream exception.
       decisionConfigurationError = "决策服务配置无效，已回退到原有指令流程。请检查地址、协议、服务类型和模型名称后重启。";
       console.warn(JSON.stringify({ event: "decision.configuration_invalid" }));
+      safeDiagnostic(deps.onDiagnostic, { event: "decision.configuration_invalid" });
       return undefined;
     }
   })();
-  const decision = deps.decision ?? new DecisionManager(undefined, configuredProvider, {
-    enabled: config.decisionProviderEnabled !== false,
+  const managed = !online && !deps.decision && !configuredProvider && !decisionConfigurationError && config.managedDecisionEnabled === true
+    ? new ManagedStartluxRuntime(config.managedDecisionRoot ?? path.join(homedir(), ".vivic", "runtime", "startlux-decision")) : undefined;
+  const decision = (!online && deps.decision) || new DecisionManager(undefined, configuredProvider ?? managed, {
+    enabled: !online && config.decisionProviderEnabled !== false,
     timeoutMs: 2 * decisionTimeout(config.decisionProviderTimeoutMs),
+    modelLabel: online ? "在线决策未配置" : config.decisionProviderProtocol === "startlux" ? "StartLux · 服务端选型" : undefined,
   });
-  const { preferences } = deps;
+  let nativeV2 = deps.decisionV2Provider;
+  if (!nativeV2 && config.decisionV2Url) {
+    try { nativeV2 = new HttpNativeV2Provider(config.decisionV2Url, { fetchImpl: deps.fetchImpl,
+      timeoutMs: config.decisionV2TimeoutMs, getToken: () => config.decisionV2Token }); }
+    catch { safeDiagnostic(deps.onDiagnostic, { event: "decision.configuration_invalid" }); }
+  }
+  const decisionTasks = new DecisionTaskManager({ provider: nativeV2, gate: { executionEnabled: config.decisionV2ExecutionEnabled === true } });
+  const preferences = online ? undefined : deps.preferences;
   const saved = preferences?.read() ?? {};
   let activeProvider: "stepfun" | "gpt" = saved.activeProvider ?? "stepfun";
   let providerRevision = 0;
+  let connectionRevision = 0;
+  let connectionAttempt: AbortController | undefined;
+  let disposed = false;
   // Lets the page tell "the backend restarted and dropped the in-memory key"
   // apart from a key that stopped working.
   const instance = randomUUID();
@@ -110,10 +159,10 @@ export const createApp = (deps: AppDeps) => {
     const ok = await gpt.connect(source, saved.gptModel) || (saved.gptModel ? await gpt.connect(source) : false);
     if (ok) { providerRevision++; rememberGpt(); }
   })().catch(() => undefined).finally(() => { restoringGpt = undefined; }) : undefined;
-  const searchProxy = config.searchProxy ? cachedProxy(() => resolveSearchProxy(config.searchProxy, process.env)) : undefined;
+  const searchProxy = !online && config.searchProxy ? cachedProxy(() => resolveSearchProxy(config.searchProxy, process.env)) : undefined;
   const search = deps.search ?? (config.searchEnabled ? createSearchClient({ credentials, fetchImpl: deps.fetchImpl,
     config: { publicDnsFallback: config.publicDnsFallback === true },
-    gpt: { connected: () => gpt.status().connected, preferred: () => activeProvider === "gpt",
+    gpt: { connected: () => !online && gpt.status().connected, preferred: () => !online && activeProvider === "gpt",
       search: (query, signal) => searchGpt(gpt, query, signal, deps.fetchImpl) },
     searchProxy: () => searchProxy?.()?.url,
     captureSession: () => { const version = providerRevision; return () => version === providerRevision; },
@@ -124,8 +173,21 @@ export const createApp = (deps: AppDeps) => {
     timeoutMs: config.requestTimeoutMs,
   };
 
-  const app = new Hono();
-  app.onError((_error, c) => c.json({ ok: false, error: "本地服务暂时无法完成请求。" }, 500));
+  const app = new Hono<{ Variables: { requestId: string } }>();
+  app.use("*", async (c, next) => {
+    const requestId = randomUUID(), started = performance.now();
+    c.set("requestId", requestId);
+    c.header("X-Request-Id", requestId);
+    await next();
+    safeDiagnostic(deps.onDiagnostic, { event: "request.complete", requestId,
+      method: c.req.method, route: c.req.routePath, status: c.res.status,
+      elapsedMs: Math.round(performance.now() - started) });
+  });
+  app.onError((_error, c) => {
+    safeDiagnostic(deps.onDiagnostic, { event: "request.error", requestId: c.get("requestId"),
+      method: c.req.method, route: c.req.routePath, status: 500 });
+    return c.json({ ok: false, error: "本地服务暂时无法完成请求。" }, 500);
+  });
 
   // unauthenticated liveness probe (process manager / playwright webServer)
   app.get("/healthz", (c) => c.json({ ok: true, service: "vivic-local-api" }));
@@ -143,12 +205,21 @@ export const createApp = (deps: AppDeps) => {
 
   // Hard body size cap before any parsing.
   app.use("/api/*", async (c, next) => {
+    if (disposed) return c.json({ ok: false, error: "会话已结束，请重新连接。" }, 410);
     if (c.req.method === "POST") {
       const len = Number(c.req.header("content-length") ?? 0);
-      const limit = c.req.path === "/api/transcribe" ? ASR_BODY_LIMIT_BYTES : c.req.path === "/api/intent" ? 6 * 1024 * 1024 : config.bodyLimitBytes;
+      const limit = c.req.path === "/api/transcribe" ? ASR_BODY_LIMIT_BYTES : c.req.path === "/api/files/read" ? FILE_READ_BODY_LIMIT : /^\/api\/intent(?:\/stream)?$/.test(c.req.path) ? 6 * 1024 * 1024 : config.bodyLimitBytes;
       if (len > limit) {
         return c.json({ ok: false, error: "请求体过大" }, 413);
       }
+    }
+    await next();
+  });
+
+  if (online) app.use("/api/*", async (c, next) => {
+    if (c.req.path.startsWith("/api/gpt/") || c.req.path.startsWith("/api/mobile/") || c.req.path.startsWith("/api/local-tts/")
+      || c.req.path.startsWith("/api/decision/") && c.req.path !== "/api/decision/status") {
+      return c.json({ ok: false, code: "unavailable-online", error: "此功能仅在本地模式提供。" }, 404);
     }
     await next();
   });
@@ -172,6 +243,26 @@ export const createApp = (deps: AppDeps) => {
     await next();
   });
 
+  app.route("/api/connections", createConnectionRoutes(connections, async (messages, signal) => {
+    if (restoringGpt && activeProvider === "gpt") await restoringGpt;
+    const version = providerRevision, selected = activeProvider, credential = credentials.getSecret(), gptVersion = gpt.generation();
+    const result = selected === "gpt" ? await gpt.generate(messages, signal)
+      : credential ? await chatJson(credential, messages, { ...stepfun, signal }, { maxTokens: 2048 }) : undefined;
+    if (disposed || version !== providerRevision || selected === "gpt" && !gpt.isCurrent(gptVersion) || selected !== "gpt" && credentials.getSecret() !== credential) throw new ConnectionError("model-changed", "模型连接已改变，请重新查询。", 409);
+    if (!result?.ok) throw new ConnectionError("planner-unavailable", "语言模型暂不可用，请检查连接或使用指定查询。", 409);
+    return result.value;
+  }));
+  app.route("/api/files", createFileReadRoutes(async () => {
+    if (restoringGpt && activeProvider === "gpt") await restoringGpt;
+    const version = providerRevision, selected = activeProvider, credential = credentials.getSecret(), gptVersion = gpt.generation();
+    return {
+      isCurrent: () => !disposed && version === providerRevision && (selected === "gpt" ? gpt.isCurrent(gptVersion) : credentials.getSecret() === credential),
+      generate: (messages, signal) => selected === "gpt" ? gpt.generate(messages, signal)
+        : credential ? chatJson(credential, messages, { ...stepfun, signal }, { maxTokens: 4096 })
+          : Promise.resolve({ ok: false as const, code: "provider" as const, error: "模型未连接" }),
+    };
+  }));
+
   app.post("/api/credentials/stepfun/validate", async (c) => {
     let raw: unknown;
     try {
@@ -186,9 +277,17 @@ export const createApp = (deps: AppDeps) => {
         400,
       );
     }
+    const revision = ++connectionRevision;
+    connectionAttempt?.abort();
+    const controller = new AbortController(); connectionAttempt = controller;
     const result = await validateConnection(parsed.data.apiKey, {
       ...stepfun, timeoutMs: config.connectionTimeoutMs ?? 12000,
-    });
+      signal: AbortSignal.any([c.req.raw.signal, controller.signal]),
+    }).finally(() => { if (connectionAttempt === controller) connectionAttempt = undefined; });
+    if (disposed || revision !== connectionRevision || c.req.raw.signal.aborted) {
+      return c.json({ ok: false, connected: false, error: "连接请求已取消或被新的连接替代。" }, 409);
+    }
+    providerRevision++;
     if (!result.ok) {
       // A failed key must not leave stale credentials around (fail closed).
       credentials.clear();
@@ -202,6 +301,8 @@ export const createApp = (deps: AppDeps) => {
   });
 
   app.post("/api/credentials/stepfun/disconnect", (c) => {
+    connectionRevision++; providerRevision++;
+    connectionAttempt?.abort(); connectionAttempt = undefined;
     credentials.clear();
     return c.json({ ok: true, connected: false });
   });
@@ -214,7 +315,7 @@ export const createApp = (deps: AppDeps) => {
     return c.json({
       activeProvider, instance,
       ...(restoringGpt ? { restoring: "gpt" } : {}),
-      providers: [status, gpt.status()],
+      providers: online ? [status] : [status, gpt.status()],
       degradations: (activeProvider === "stepfun" ? status.connected : gpt.status().connected)
         ? []
         : [
@@ -230,6 +331,7 @@ export const createApp = (deps: AppDeps) => {
   app.post("/api/providers/select", async c => {
     const body = z.strictObject({ provider: z.enum(["stepfun", "gpt"]) }).safeParse(await readJson(c));
     if (!body.success) return c.json({ ok: false, error: "仅支持 StepFun Coding Plan 或 GPT。" }, 400);
+    if (online && body.data.provider === "gpt") return c.json({ ok: false, error: "线上模式暂支持 StepFun。" }, 400);
     if (activeProvider !== body.data.provider) { activeProvider = body.data.provider; providerRevision++; }
     preferences?.update({ activeProvider });
     return c.json({ ok: true, activeProvider });
@@ -237,6 +339,7 @@ export const createApp = (deps: AppDeps) => {
   app.post("/api/providers/model", async c => {
     const body = z.strictObject({ provider: z.enum(["stepfun", "gpt"]), model: z.string().regex(/^[a-zA-Z0-9_.-]{1,128}$/) }).safeParse(await readJson(c));
     if (!body.success) return c.json({ ok: false, error: "模型选择无效。" }, 400);
+    if (online && body.data.provider === "gpt") return c.json({ ok: false, error: "线上模式暂支持 StepFun。" }, 400);
     if (body.data.provider === "gpt") {
       const source = gpt.status().source;
       if (!source) return c.json({ ok: false, error: "请先连接 GPT。" }, 503);
@@ -246,8 +349,8 @@ export const createApp = (deps: AppDeps) => {
     const credential = credentials.getSecret();
     if (!credential || !credential.models.includes(body.data.model) || !PLAN_CHAT_MODELS.includes(body.data.model)) return c.json({ ok: false, error: "请选择已连接套餐中的推理模型。" }, 400);
     const candidate = { ...credential, defaultModel: body.data.model };
-    const probe = await chatJson(candidate, [{ role: "system", content: '只输出JSON {"ok":true}' }, { role: "user", content: "测试连接" }], { ...stepfun, timeoutMs: config.connectionTimeoutMs ?? 12000 }, { maxTokens: 256 });
-    if (credentials.getSecret() !== credential) return c.json({ ok: false, error: "连接已变更，请重新选择。" }, 409);
+    const probe = await chatJson(candidate, [{ role: "system", content: '只输出JSON {"ok":true}' }, { role: "user", content: "测试连接" }], { ...stepfun, timeoutMs: config.connectionTimeoutMs ?? 12000, signal: c.req.raw.signal }, { maxTokens: 256 });
+    if (disposed || c.req.raw.signal.aborted || credentials.getSecret() !== credential) return c.json({ ok: false, error: "连接已变更，请重新选择。" }, 409);
     if (!probe.ok && !probeAnswered(probe)) return c.json({ ok: false, error: probe.error });
     credentials.set({ ...candidate, checkedAt: new Date().toISOString() }); providerRevision++;
     return c.json({ ok: true, ...credentials.status() });
@@ -330,11 +433,58 @@ export const createApp = (deps: AppDeps) => {
   const decisionStatus = (status = decision.status()) => decisionConfigurationError
     ? { ...status, configurationError: decisionConfigurationError, error: status.error ?? decisionConfigurationError }
     : status;
-  app.get("/api/decision/status", c => c.json(decisionStatus()));
+  app.get("/api/decision/status", c => c.json({ ...decisionStatus(), v2: decisionTasks.status() }));
+  app.get("/api/decision/models", c => c.json({
+    defaultProfileId: STARTLUX_DEFAULT_PROFILE_ID,
+    recommendation: recommendStartluxProfile({ totalMemoryBytes: totalmem(), freeMemoryBytes: freemem() }),
+    profiles: STARTLUX_PROFILES,
+    // Metadata is advisory. Only /status describes what is actually running.
+    selectionMode: managed ? "managed-startlux" : "official-startlux-service", installationState: managed ? "managed" : "not-inspected",
+  }));
+  app.post("/api/decision/profile", async c => {
+    if (!managed) return c.json({ ok: false, error: "当前使用外部决策服务，模型由该服务选择。" }, 404);
+    const body = z.strictObject({ profileId: z.enum(["startlux-0.8b", "startlux-2b", "startlux-4b", "startlux-9b"]) }).safeParse(await readJson(c));
+    if (!body.success) return c.json({ ok: false, error: "请选择有效的本地模型。" }, 400);
+    try { return c.json(managed.selectProfile(body.data.profileId)); }
+    catch { return c.json({ ok: false, error: "请先停止当前模型或等待准备完成，再切换模型。" }, 409); }
+  });
   app.post("/api/decision/prepare", c => c.json(decisionStatus(decision.prepare())));
   app.post("/api/decision/stop", c => c.json(decisionStatus(decision.stop())));
+  app.get("/api/local-tts/status", c => c.json(localTtsRuntime()!.status()));
+  for (const operation of ["prepare", "enable", "stop", "clear"] as const) {
+    app.post(`/api/local-tts/${operation}`, c => c.json(localTtsRuntime()![operation]()));
+  }
+  app.post("/api/local-tts/synthesize", async c => {
+    const body = z.strictObject({ text: z.string().trim().min(1).max(200).refine(s => !/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(s)), speed: z.number().finite().min(.5).max(2).optional() }).safeParse(await readJson(c));
+    if (!body.success) return c.json({ ok: false, error: "语音只接受 1–200 个可见字符与有效语速。" }, 400);
+    try {
+      const audio = validateLocalWav(await localTtsRuntime()!.synthesize(body.data.text, body.data.speed, c.req.raw.signal));
+      c.header("content-type", "audio/wav"); c.header("cache-control", "no-store"); c.header("x-content-type-options", "nosniff");
+      return c.body(new Uint8Array(audio).buffer, 200);
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "local_tts_failed";
+      if (code === "local_tts_busy") return c.json({ ok: false, error: "本地语音正在处理上一条请求，请稍后重试。" }, 409);
+      if (code === "local_tts_not_ready") return c.json({ ok: false, error: "请先在本地能力中准备并启动音色。" }, 409);
+      if (code === "local_tts_cancelled" || c.req.raw.signal.aborted) return new Response(JSON.stringify({ ok: false, error: "语音请求已取消。" }), { status: 499, headers: { "content-type": "application/json", "cache-control": "no-store" } });
+      return c.json({ ok: false, error: "本地语音未能完成，文字内容仍然可用。" }, 502);
+    }
+  });
   app.post("/api/decision/clear", c => c.json(decisionStatus(decision.clear())));
   app.post("/api/decision/enable", c => c.json(decisionStatus(decision.enable())));
+  app.get("/api/mobile/status", async c => { c.header("Cache-Control", "no-store"); return c.json(await mobileBroker.status()); });
+  app.post("/api/mobile/session", async c => {
+    c.header("Cache-Control", "no-store");
+    try { return c.json(await mobileBroker.create()); }
+    catch { return c.json({ error: "手机中继暂不可用，请稍后重试或检查本机中继配置。" }, 503); }
+  });
+
+  app.post("/api/travel/refresh", async c => {
+    const parsed = z.strictObject({ query: TravelQuerySchema }).safeParse(await readJson(c));
+    if (!parsed.success) return c.json({ kind: "error", message: "旅游查询参数不正确。" }, 400);
+    const lookup = await queryTravel(deps.travel ?? demoTravelProvider, parsed.data.query, c.req.raw.signal);
+    if (!lookup.ok) return c.json({ kind: "error", message: lookup.message });
+    return c.json({ kind: "travel", card: buildTravelCard(lookup.result) });
+  });
 
   // Live refresh of a "where I am" weather card. Returns verified card fields
   // only; Control replaces the card body locally, so no Action is involved.
@@ -366,9 +516,7 @@ export const createApp = (deps: AppDeps) => {
     }
   });
 
-  app.post("/api/intent", bodyLimit({ maxSize: 6 * 1024 * 1024,
-    onError: c => c.json({ ok: false, error: "图片指令请求过大。" }, 413),
-  }), async (c) => {
+  const handleIntent = async (c: AppContext) => {
     let raw: unknown;
     try {
       raw = await c.req.json();
@@ -398,20 +546,79 @@ export const createApp = (deps: AppDeps) => {
         return c.json({ kind: "error", message: "模型连接已变更，图片请求已取消。" });
       }
     }
-    const result = await runIntent(parsed.data, { credentials, stepfun, search, data, decision,
+    const requestId = c.get("requestId");
+    const observeStage: NonNullable<PipelineDeps["onStage"]> = event => safeDiagnostic(deps.onDiagnostic, {
+      event: "intent.stage", requestId, stage: event.stage, state: event.status,
+      ...(event.elapsedMs !== undefined ? { elapsedMs: Math.round(event.elapsedMs) } : {}),
+    });
+    const execute = (signal: AbortSignal, onStage = observeStage) => {
+      const pipeline: PipelineDeps = { credentials, stepfun, search, data, decision, onStage, travel: deps.travel,
       isSessionCurrent: () => version === providerRevision,
       ...(activeProvider === "gpt" ? { planner: { provider: "gpt" as const, connected: gpt.status().connected,
         generate: (messages, signal) => gpt.generate(messages, signal), isCurrent: () => gpt.isCurrent(gptVersion) } } : {}),
-    }, c.req.raw.signal);
+      };
+      if (!nativeV2 && !parsed.data.task) return runIntent(parsed.data, pipeline, signal);
+      return decisionTasks.run(parsed.data, {
+        legacy: (request, taskSignal, plannerOnly) => runIntent({ ...request,
+          offlineReferenceCompatibility: request.offlineReferenceCompatibility === true
+            && (online || !configuredProvider && !deps.decision && !decision.status().enabled),
+        }, pipeline, taskSignal, false, plannerOnly),
+        isCurrent: () => version === providerRevision,
+        tools: {
+          weather: (city, canvasContext, taskSignal) => runIntent({ text: `${city}天气`, canvasContext, deviceLocation: parsed.data.deviceLocation }, { ...pipeline, decision: undefined }, taskSignal, true),
+          ...(search ? { search: (query: string, canvasContext: typeof parsed.data.canvasContext, taskSignal: AbortSignal) => runIntent({ text: `搜索 ${query}`, canvasContext }, { ...pipeline, decision: undefined }, taskSignal, true) } : {}),
+        },
+      }, signal);
+    };
+    if (c.req.path.endsWith("/stream") || c.req.header("accept")?.includes("text/event-stream")) {
+      c.header("X-Accel-Buffering", "no");
+      return streamSSE(c, async stream => {
+        const controller = new AbortController();
+        stream.onAbort(() => controller.abort());
+        const signal = AbortSignal.any([c.req.raw.signal, controller.signal]);
+        let delivery = Promise.resolve();
+        try {
+          await stream.writeSSE({ event: "accepted", data: JSON.stringify({ requestId }) });
+          const result = await execute(signal, event => {
+            observeStage(event);
+            if (signal.aborted || stream.closed) return;
+            delivery = delivery.then(async () => {
+              if (!signal.aborted && !stream.closed) await stream.writeSSE({ event: "progress", data: JSON.stringify({ requestId, ...event }) });
+            }).catch(() => controller.abort());
+          });
+          const wire = IntentResponseSchema.safeParse(result);
+          await delivery;
+          if (!signal.aborted && !stream.closed) await stream.writeSSE({ event: "result", data: JSON.stringify(wire.success
+            ? wire.data : { kind: "error", message: "内部结果未能通过响应校验。" }) });
+        } catch {
+          safeDiagnostic(deps.onDiagnostic, { event: "request.error", requestId, route: "/api/intent/stream", status: 500 });
+          if (!signal.aborted && !stream.closed) {
+            try { await stream.writeSSE({ event: "result", data: JSON.stringify({ kind: "error", message: "本地服务暂时无法完成请求。" }) }); } catch { /* Reader already disconnected. */ }
+          }
+        } finally { controller.abort(); }
+      });
+    }
+    const result = await execute(c.req.raw.signal);
     const wire = IntentResponseSchema.safeParse(result);
     if (!wire.success) {
       return c.json({ ok: false, error: "内部结果未能通过响应校验" }, 500);
     }
     return c.json(wire.data);
+  };
+  const intentLimit = bodyLimit({ maxSize: 6 * 1024 * 1024,
+    onError: c => c.json({ ok: false, error: "图片指令请求过大。" }, 413),
   });
+  app.post("/api/intent", intentLimit, handleIntent);
+  app.post("/api/intent/stream", intentLimit, handleIntent);
 
   app.route("/api", createAsrRoutes({ config, credentials, fetchImpl: deps.fetchImpl }));
   if (search) app.route("/api", createSearchRoutes({ client: search }));
   else app.post("/api/search", c => c.json({ ok: false, error: "联网查询未启用。" }, 503));
-  return Object.assign(app, { dispose: () => decision.stop() });
+  return Object.assign(app, { dispose: () => {
+    if (disposed) return;
+    disposed = true; connectionRevision++; providerRevision++;
+    connectionAttempt?.abort(); connectionAttempt = undefined;
+    connections.dispose();
+    credentials.clear(); gpt.dispose(); mobileBroker.dispose(); decision.stop(); decisionTasks.dispose(); localTts?.stop();
+  } });
 };

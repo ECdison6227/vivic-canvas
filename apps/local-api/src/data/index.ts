@@ -5,7 +5,7 @@ import type { CanvasContext } from "../schemas.js";
 import type { IntentResult } from "../intent/pipeline.js";
 import { aborted, bounded, DataError } from "./transport.js";
 import { CitySchema, deviceRegionPrompt, lookupWeather, lookupWeatherAt, lookupWeatherNear, type WeatherEvidence, type WeatherResult } from "./weather.js";
-import { createRegionLocator, isFreshPosition, placeLabel, regionLabel, reversePlace, type DevicePosition, type PositionPlace } from "./deviceRegion.js";
+import { createRegionLocator, isFreshPosition, regionLabel, reversePlace, type DevicePosition, type PositionPlace } from "./deviceRegion.js";
 import { parseNumericIntent } from "./numeric.js";
 import { parseWeatherInput } from "./weatherInput.js";
 import { transformDataIntent } from "./transform.js";
@@ -22,6 +22,8 @@ const Config = z.strictObject({
   requestsPerMinute: z.number().int().min(1).max(30).default(10),
   /** Locate the device (its geolocation fix, else its network region) when a weather request names no city. */
   deviceLocation: z.boolean().default(true),
+  /** Server egress is never the visitor's position in an online session. */
+  networkRegionFallback: z.boolean().default(true),
 });
 export type DataConfig = z.infer<typeof Config>;
 export interface LocaleEvidence {
@@ -96,6 +98,7 @@ export function createDataClient(options: { fetchImpl?: typeof fetch; config?: P
     async weatherHere(position, parent) {
       if (!config.deviceLocation) return { kind: "clarify", message: deviceRegionPrompt, candidates: [] };
       if (position && isFreshPosition(position)) return admit(parent, provider => lookupWeatherAt(position, provider));
+      if (!config.networkRegionFallback) return { kind: "clarify", message: deviceRegionPrompt, candidates: [] };
       // One deadline covers locating the region and both weather calls.
       return admit(parent, async provider => {
         let region;
@@ -109,6 +112,7 @@ export function createDataClient(options: { fetchImpl?: typeof fetch; config?: P
     },
     async locale(position, parent) {
       if (!config.deviceLocation) return { kind: "clarify", message: deviceRegionPrompt };
+      if (!config.networkRegionFallback && (!position || !isFreshPosition(position))) return { kind: "clarify", message: deviceRegionPrompt };
       return admit(parent, async provider => {
         if (position && isFreshPosition(position)) {
           // An unusable naming response still answers with the fix's own position.

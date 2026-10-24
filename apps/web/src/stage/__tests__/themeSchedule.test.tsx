@@ -8,14 +8,15 @@ import { StageRoot } from "../StageRoot";
 
 // Keep real StageRoot, CanvasView, schedule resolution and preference store.
 // Replace GPU/motion/Flow rendering only; inspect the actual passed theme prop.
-const camera = vi.hoisted(() => ({ fitView: vi.fn(), setCenter: vi.fn(), setViewport: vi.fn() }));
+const camera = vi.hoisted(() => ({ fitView: vi.fn(), setCenter: vi.fn(), setViewport: vi.fn(), getViewport: () => ({ x: 0, y: 0, zoom: 1 }), viewportInitialized: true }));
 vi.mock("@xyflow/react", () => ({
   ReactFlowProvider: ({ children }: { children: ReactNode }) => children,
   ReactFlow: ({ colorMode }: { colorMode: string }) => <div data-test-flow-theme={colorMode} />,
   useReactFlow: () => camera,
 }));
 vi.mock("@/cards/VivicCard", () => ({ VivicCard: () => null }));
-vi.mock("@/sync/browserRuntime", () => ({ beginCanvasDrag: vi.fn(), commitCanvasDrag: vi.fn() }));
+vi.mock("@/sync/browserRuntime", () => ({ beginCanvasDrag: vi.fn(), commitCanvasDrag: vi.fn(), getDisplayStatus: vi.fn(() => null), subscribeDisplayStatus: vi.fn(() => () => {}),
+  requestCardSurface: vi.fn(), requestCardFocus: vi.fn(), requestCanvasFit: vi.fn(), requestFocusRestore: vi.fn() }));
 vi.mock("../BackgroundLayer", () => ({ BackgroundLayer: ({ theme }: { theme: string }) => <div data-test-background-theme={theme} /> }));
 vi.mock("../AwakeningClock", () => ({ AwakeningClock: () => null }));
 vi.mock("../OrbLayer", () => ({ OrbLayer: () => null }));

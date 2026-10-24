@@ -353,7 +353,7 @@ describe("speech preferences and audition", () => {
     speech.setSpeechEnabled(true);
     const pending = speech.speakShortFeedback("我看看", { requestId: "plan:checking" });
     await vi.waitFor(() => expect(speech.getSpeechSnapshot().playing).toBe(true));
-    expect(vi.mocked(fetch).mock.calls[0]).toMatchObject(["/voice-feedback/checking.mp3", { method: "GET" }]);
+    expect(vi.mocked(fetch).mock.calls[0]).toMatchObject(["/voice-feedback/stepfun/checking.mp3", { method: "GET" }]);
     expect(vi.mocked(fetch).mock.calls[0]![1]?.body).toBeUndefined();
     expect(speech.getSpeechSnapshot().source).toBe("prerecorded");
     speech.cancelShortFeedback("another-plan"); expect(speech.getSpeechSnapshot().playing).toBe(true);

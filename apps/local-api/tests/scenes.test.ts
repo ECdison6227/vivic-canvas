@@ -8,6 +8,7 @@ import { isReminderCreation } from "../src/intent/reminders.js";
 import { buildSceneActions, explicitScene, looksLikeDateCountdown, sceneSourceUrl, sceneUpdateIssue } from "../src/scenes/index.js";
 import { buildCorpus, groundedDate, groundedNumber, groundedTime, parseChineseNumber } from "../src/scenes/grounding.js";
 import { parseScenePayload } from "../src/scenes/payload.js";
+import { buildProviderSceneActions } from "../src/scenes/travel.js";
 import { chatOk, emptyContext, fetchStub } from "./helpers.js";
 import { CONFUSABLE_CASES, SCENE_CASES, SCENE_NOW, SCENE_ZONE } from "./sceneCases.js";
 
@@ -19,10 +20,10 @@ const build = (scene: SceneId, input: string, data: Record<string, unknown>) => 
 afterEach(() => vi.useRealTimers());
 
 describe("scene registry", () => {
-  it("maps 20 scene ids to 20 distinct card types, both ways", () => {
-    expect(SCENES).toHaveLength(20);
-    expect(new Set(SCENE_IDS).size).toBe(20);
-    expect(new Set(SCENES.map(scene => scene.cardType)).size).toBe(20);
+  it("maps 21 scene ids to 21 distinct card types, both ways", () => {
+    expect(SCENES).toHaveLength(21);
+    expect(new Set(SCENE_IDS).size).toBe(21);
+    expect(new Set(SCENES.map(scene => scene.cardType)).size).toBe(21);
     for (const scene of SCENES) expect(SCENE_CARD_TYPE[scene.id]).toBe(scene.cardType);
   });
   it("every registered card type has a contract schema", () => {
@@ -79,9 +80,9 @@ describe("grounding evidence", () => {
   });
 });
 
-describe("20 scenes build validated cards from grounded payloads", () => {
-  it.each(SCENE_CASES)("$scene → its registered card type", ({ scene, input, payload }) => {
-    const result = build(scene, input, payload);
+describe("21 scenes build validated cards from grounded payloads", () => {
+  it.each(SCENE_CASES)("$scene → its registered card type", async ({ scene, input, payload }) => {
+    const result = await buildProviderSceneActions([{ scene_id: scene, data: payload }], request(input));
     expect(result.ok, result.ok ? "" : result.issue).toBe(true);
     if (!result.ok) return;
     const [card] = created(result.actions);

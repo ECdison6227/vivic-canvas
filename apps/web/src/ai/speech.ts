@@ -1,6 +1,7 @@
 import { routeAudioOutput } from "./audioOutput";
 import { getVoiceConfiguration } from "./voiceConfig";
 import { createBrowserTtsAdapter } from "./localSpeech/browserTts";
+import { synthesizeLocalSpeech } from "./localSpeech/localTts";
 import { decodeSpeechEnvelope, readTimedSpeech, speechFrame, type SpeechEnvelope, type SpeechRange } from "./speechTelemetry";
 import type { SpeechWord } from "@vivic/contracts";
 import { feedbackPhrase } from "./shortFeedback";
@@ -63,7 +64,7 @@ export interface SpeechSnapshot {
   requestId: string | null;
   text: string | null;
   kind: "feedback" | "preview" | "phrase" | null;
-  source: "stepfun" | "browser" | "prerecorded" | null;
+  source: "stepfun" | "browser" | "local" | "prerecorded" | null;
   amplitude: number;
   wordRange: SpeechRange | null;
   error: string | null;
@@ -251,8 +252,8 @@ const playText = (
     const run = async () => {
       try {
         const voiceConfig = getVoiceConfiguration();
-        const phrase = kind !== "preview" ? feedbackPhrase(spokenText) : null;
-        if (kind === "phrase" && !phrase) { job.finish({ status: "skipped" }); return; }
+        const phrase = kind !== "preview" && voiceConfig.tts !== "local" ? feedbackPhrase(spokenText, voice) : null;
+        if (kind === "phrase" && !phrase && voiceConfig.tts !== "local") { job.finish({ status: "skipped" }); return; }
         if (!phrase && voiceConfig.tts === "browser") {
           update({ source: "browser" });
           browserTts.setEnabled(true);
@@ -271,8 +272,9 @@ const playText = (
           });
           job.finish({ status: "completed" }); return;
         }
-        update({ source: phrase ? "prerecorded" : "stepfun" });
-        const response = await fetch(phrase?.url ?? "/api/speech", {
+        const local = getVoiceConfiguration().tts === "local";
+        update({ source: phrase ? "prerecorded" : local ? "local" : "stepfun" });
+        const response = local ? await synthesizeLocalSpeech(spokenText, speed, controller.signal) : await fetch(phrase?.url ?? "/api/speech", {
           method: phrase ? "GET" : "POST",
           headers: { "content-type": "application/json" },
           ...(phrase ? {} : { body: JSON.stringify({ text: spokenText, voice, speed,
@@ -294,7 +296,7 @@ const playText = (
         const blob = timed?.blob ?? await response.blob();
         words = timed?.words ?? [];
         if (job.done) return;
-        if (!blob.size || blob.size > 4 * 1024 * 1024 || !/^audio\/(mpeg|mp3)(;|$)/i.test(blob.type)) {
+        if (!blob.size || blob.size > 4 * 1024 * 1024 || !(local ? /^audio\/wav(;|$)/i.test(blob.type) : /^audio\/(mpeg|mp3)(;|$)/i.test(blob.type))) {
           job.finish({ status: "error", error: "语音服务未返回有效音频。" });
           return;
         }
@@ -331,7 +333,7 @@ const playText = (
         const blocked = error instanceof DOMException && error.name === "NotAllowedError";
         job.finish({ status: "error", error: blocked
           ? "浏览器阻止了语音播放，请在控制页交互后重试。"
-          : "语音不可用：本地服务连接失败或请求超时。" });
+          : getVoiceConfiguration().tts === "local" && error instanceof Error ? error.message : "语音不可用：本地服务连接失败或请求超时。" });
       }
     };
     void run();

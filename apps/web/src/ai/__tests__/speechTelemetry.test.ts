@@ -46,12 +46,26 @@ describe("measured playback feedback without recording or audio output", () => {
     const manifest = JSON.parse(readFileSync(new URL("manifest.json", root), "utf8"));
     expect(manifest.files).toHaveLength(3);
     for (const file of manifest.files) {
-      expect(feedbackPhrase(file.text)?.url).toBe(`/voice-feedback/${file.file}`);
       const bytes = readFileSync(new URL(file.file, root));
       expect(bytes.length).toBe(file.bytes); expect(bytes.length).toBeLessThan(16000);
       expect(createHash("sha256").update(bytes).digest("hex")).toBe(file.sha256);
     }
     expect(feedbackPhrase("用户任意文本")).toBeNull(); expect(feedbackPhrase("__proto__")).toBeNull();
+  });
+  it("bundles the authored StepFun voice and respects a different selected voice", () => {
+    const root = new URL("../../../public/voice-feedback/stepfun/", import.meta.url);
+    const manifest = JSON.parse(readFileSync(new URL("manifest.json", root), "utf8"));
+    expect(manifest.voice).toBe("wenrounvsheng");
+    expect(manifest.model).toBe("stepaudio-2.5-tts");
+    expect(manifest.files).toHaveLength(16);
+    for (const file of manifest.files) {
+      expect(feedbackPhrase(file.text)?.url).toBe(`/voice-feedback/stepfun/${file.file}`);
+      expect(feedbackPhrase(file.text, "cixingnansheng")).toBeNull();
+      const bytes = readFileSync(new URL(file.file, root));
+      expect(bytes.length).toBe(file.bytes); expect(bytes.length).toBeLessThan(100000);
+      expect(createHash("sha256").update(bytes).digest("hex")).toBe(file.sha256);
+    }
+    expect(feedbackPhrase("已保存一份用户文件")).toBeNull();
   });
   it("cancels a stalled timeline body on abort", async () => {
     let cancelled = false;

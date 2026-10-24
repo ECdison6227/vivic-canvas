@@ -134,10 +134,10 @@ function BookTools({ card }: { card: BookCard }) {
   };
   const commitPage = (raw: string) => {
     const text = raw.trim();
-    if (!text) { if (currentPage !== undefined) save({ currentPage: undefined }); return; }
+    if (!text) return currentPage === undefined || save({ currentPage: undefined });
     const value = Number(text);
-    if (!Number.isFinite(value)) { setError("请输入页码数字。"); return; }
-    save({ currentPage: Math.min(max, Math.max(0, Math.round(value))) });
+    if (!Number.isFinite(value)) { setError("请输入页码数字。"); return false; }
+    return save({ currentPage: Math.min(max, Math.max(0, Math.round(value))) });
   };
   const commitTotal = (raw: string) => {
     const value = Number(raw.trim());
@@ -153,8 +153,8 @@ function BookTools({ card }: { card: BookCard }) {
         <input className="vivic-scene-input w-16 text-center tabular-nums" inputMode="numeric" aria-label="当前页码"
           value={pageDraft ?? (currentPage === undefined ? "" : String(currentPage))} placeholder="—"
           onChange={event => setPageDraft(event.target.value)}
-          onBlur={() => { if (pageDraft !== null) { commitPage(pageDraft); setPageDraft(null); } }}
-          onKeyDown={event => { if (event.key === "Enter") event.currentTarget.blur(); }} />页
+          onBlur={() => { if (pageDraft !== null && commitPage(pageDraft)) setPageDraft(null); }}
+          onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); event.currentTarget.blur(); } if (event.key === "Escape") { setPageDraft(null); setError(null); } }} />页
       </label>
       {totalPages !== undefined
         ? <span className="vivic-scene-muted tabular-nums">共 {totalPages} 页</span>

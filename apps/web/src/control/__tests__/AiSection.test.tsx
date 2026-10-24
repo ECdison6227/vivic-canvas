@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProvidersStatusResponse } from "@/ai/api";
 import { AiSection } from "../AiSection";
 import { CARD_TYPE_LABELS } from "@/contracts";
+import { getSpeechSnapshot, setSpeechEnabled } from "@/ai/speech";
 
 // TEST status replies only; no backend, key, microphone or audio output.
 let root: Root, container: HTMLDivElement;
@@ -19,6 +20,7 @@ beforeEach(async () => {
 });
 afterEach(async () => {
   await act(async () => root.unmount());
+  setSpeechEnabled(false);
   container.remove(); vi.unstubAllGlobals();
 });
 const refresh = () => act(async () => { window.dispatchEvent(new Event("focus")); await new Promise(resolve => setTimeout(resolve, 0)); });
@@ -26,6 +28,16 @@ const note = () => container.querySelector("[data-vivic-ai-note]")?.textContent 
 const badge = () => container.querySelector("[data-vivic-ai-badge]")?.textContent ?? "";
 
 describe("AI connection panel across backend restarts", () => {
+  it("preserves explicit local feedback opt-in while the cloud connection is unavailable", async () => {
+    status = { activeProvider: "stepfun", providers: [stepfun(false), gpt(false)], degradations: [] };
+    await act(async () => root.render(<AiSection />)); await refresh();
+    await act(async () => setSpeechEnabled(true));
+    await refresh();
+    expect(getSpeechSnapshot().enabled).toBe(true);
+    expect(container.querySelector<HTMLInputElement>("[data-vivic-tts-toggle]")?.checked).toBe(true);
+    vi.mocked(fetch).mockRejectedValue(new Error("TEST offline")); await refresh();
+    expect(getSpeechSnapshot().enabled).toBe(true);
+  });
   it("explains that a restart cleared the in-memory StepFun key", async () => {
     status = { activeProvider: "stepfun", instance: "TEST-a", providers: [stepfun(true), gpt(false)], degradations: [] };
     await act(async () => root.render(<AiSection />)); await refresh();
@@ -77,7 +89,8 @@ describe("AI connection panel across backend restarts", () => {
     status = { activeProvider: "stepfun", providers: [stepfun(true), gpt(false)], degradations: [] };
     await act(async () => root.render(<AiSection />)); await refresh();
     vi.mocked(fetch).mockRejectedValue(new Error("TEST offline")); await refresh();
-    expect(container.querySelectorAll('[data-vivic-available-card][data-availability="ready"]')).toHaveLength(3);
+    expect([...container.querySelectorAll('[data-vivic-available-card][data-availability="ready"]')].map(card => card.getAttribute("data-vivic-available-card")).sort())
+      .toEqual(["CountdownCard", "FileCard", "NoteCard", "TodoCard"]);
     expect(container.querySelector('[data-vivic-available-card="ProgressRingCard"]')?.getAttribute("data-availability")).toBe("requires-model");
     expect(container.querySelector('[data-vivic-available-card="ChartCard"]')?.getAttribute("data-availability")).toBe("requires-backend");
   });

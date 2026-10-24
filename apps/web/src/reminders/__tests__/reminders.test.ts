@@ -76,7 +76,8 @@ describe("reminder delivery owned by the controller", () => {
     expect(host.getSnapshot().activeCanvasId).toBe(other);
     const card = displayStore.getState().cards[0]!.record;
     expect(card.type === "CountdownCard" && card.sourceData.notifiedAt).toBeTruthy();
-    expect((await db.getCanvas(canvasId))!.cardsById.hidden!.sourceData.notifiedAt).toBeTruthy();
+    const persistedHidden = (await db.getCanvas(canvasId))!.cardsById.hidden!;
+    expect(persistedHidden.type === "CountdownCard" && persistedHidden.sourceData.notifiedAt).toBeTruthy();
     expect(host.getSnapshot().reminderNotices).toHaveLength(1);
     display.stop();
   });
@@ -154,7 +155,13 @@ describe("reminder delivery owned by the controller", () => {
     expect(host.undo()).toBe(true); await flushChannel();
     expect(store.getState().cards.map(c => c.record.id)).toEqual(["a", "b", "c"]);
     expect(displayStore.getState().cards.map(c => c.record.id)).toEqual(["a", "b", "c"]);
+    // General history now also includes the earlier grouped creation.
+    expect(host.undo()).toBe(true); await flushChannel();
+    expect(store.getState().cards).toHaveLength(0);
+    expect(displayStore.getState().cards).toHaveLength(0);
     expect(host.undo()).toBe(false);
+    expect(host.redo()).toBe(true); await flushChannel();
+    expect(displayStore.getState().cards.map(c => c.record.id)).toEqual(["a", "b", "c"]);
     display.stop();
   });
 
@@ -171,7 +178,7 @@ describe("reminder delivery owned by the controller", () => {
     expect(reader.getSnapshot().reminderNotices).toHaveLength(1);
     host.stop(); await flushChannel();
     const persisted = (await db.getCanvas(canvasId))!.cardsById.once!;
-    expect(persisted.sourceData.notifiedAt).toBeTruthy();
+    expect(persisted.type === "CountdownCard" && persisted.sourceData.notifiedAt).toBeTruthy();
     await reader.checkReminders();
     expect(reader.getSnapshot().reminderNotices).toHaveLength(1);
   });

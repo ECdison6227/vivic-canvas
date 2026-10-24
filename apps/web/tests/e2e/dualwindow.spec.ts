@@ -6,6 +6,7 @@ import {
   controlDispatch,
   gotoControl,
   gotoDisplay,
+  showChat,
   todoCardRecord,
 } from "./helpers1";
 
@@ -135,21 +136,22 @@ test("B01: 打开 Vivic 展示窗口 opens a pinned display window", async ({
   await context.route("https://huggingface.co/**", route => route.abort());
   const A = await gotoControl(context);
   const canvasId = await activeCanvasId(A);
+  await showChat(A);
   const [popup] = await Promise.all([
     context.waitForEvent("page"),
-    A.locator('[data-vivic-open-display]').click(),
+    A.getByRole("button", { name: "展示窗口", exact: true }).click(),
   ]);
   await popup.waitForLoadState("domcontentloaded");
   expect(popup.url()).toContain("/display");
   expect(popup.url()).toContain(`canvasId=${encodeURIComponent(canvasId)}`);
   await expect(popup.getByRole("button", { name: "点击隐藏顶部栏", exact: true })).toBeVisible();
-  await expect(A.getByText(/拖到第二屏/)).toBeVisible();
+  await expect(popup.locator("[data-vivic-stage]")).toBeVisible();
   await popup.close();
   await context.close();
 });
 
-/** B02: dismissing the temporary hint leaves zero persistent chrome in either stage. */
-test("B02: /display has no settings/nav/debug chrome after closing its fullscreen hint", async ({ browser }) => {
+/** B02: standby stays empty; workspace exposes only the explicitly requested canvas controls. */
+test("B02: /display exposes portal/view controls without settings or debug chrome", async ({ browser }) => {
   const context = await browser.newContext();
   await context.addInitScript(() => {
     localStorage.setItem("vivic.deviceLocation.v1", "off");
@@ -165,7 +167,8 @@ test("B02: /display has no settings/nav/debug chrome after closing its fullscree
   expect((await standby.evaluate(() => document.body.innerText.trim()))).toBe("");
   await standby.close();
 
-  // Synced workspace: only card content, no buttons/nav/devpanel/labels.
+  // Workspace permits the portal, fit/restore and two per-card actions.
+  // Exact counts still reject additional persistent settings/debug controls.
   const A = await gotoControl(context);
   const canvasId = await activeCanvasId(A);
   const B = await gotoDisplay(context, canvasId);
@@ -175,8 +178,20 @@ test("B02: /display has no settings/nav/debug chrome after closing its fullscree
     { type: "card.create", card: todoCardRecord("b02-todo", ["任务甲"]) },
   ]);
   await expect(B.locator('[data-card-id="b02-todo"]')).toContainText("任务甲");
-  await expect(B.locator("button")).toHaveCount(0);
-  await expect(B.locator("nav")).toHaveCount(0);
+  const controls = B.getByRole("navigation", { name: "展示画布操作", exact: true });
+  await expect(controls).toBeVisible();
+  await expect(controls.locator("button")).toHaveCount(3);
+  const portal = controls.getByRole("button", { name: "卡片传送门", exact: true });
+  await expect(portal).toBeVisible();
+  await expect(portal.locator(".vivic-portal-count")).toHaveText("1");
+  await expect(controls.getByRole("button", { name: "显示全部", exact: true })).toBeEnabled();
+  await expect(controls.getByRole("button", { name: "恢复视图", exact: true })).toBeDisabled();
+  const cardActions = B.getByRole("group", { name: "任务甲的操作", exact: true });
+  await expect(cardActions.locator("button")).toHaveCount(2);
+  await expect(cardActions.getByRole("button", { name: "聚焦：任务甲", exact: true })).toBeEnabled();
+  await expect(cardActions.getByRole("button", { name: "传送到用户页：任务甲", exact: true })).toBeEnabled();
+  await expect(B.locator("button")).toHaveCount(5);
+  await expect(B.locator("nav")).toHaveCount(1);
   await expect(B.locator("[data-vivic-devpanel]")).toHaveCount(0);
   const text = await B.evaluate(() => document.body.innerText);
   expect(text).not.toMatch(/设置|控制端|DEV|debug|Vivic 控制|token|模型/i);

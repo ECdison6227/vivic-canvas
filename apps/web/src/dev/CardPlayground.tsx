@@ -6,11 +6,14 @@ import { CardActionsContext, CardModeContext, type CardActions } from "@/cards/s
 import { buildEdgeFixtures, buildSceneFixtures } from "@/cards/scene/fixtures";
 import { storePhotos } from "@/cards/scene/photos";
 import { SubcardThemeContext } from "@/cards/SubcardEditorContext";
+import { HarkBackdrop, HarkSurface } from "@/components/hark/HarkPrimitives";
 import "@/cards/scene/sceneCards.css";
 import "@/control/userCardLayer.css";
+import "@/control/hark-control.css";
 
 /** One test utterance per scene — type it into the real Control input to exercise the AI path. */
 const SAMPLE_INPUT: Record<SceneId, string> = {
+  travel_offers: "下周去杭州住两晚，预算 500",
   countdown: "距离我的生日还有 25 天，帮我做个倒计时",
   academic_paper: "帮我整理一下这篇论文：Attention Is All You Need，作者 Ashish Vaswani……",
   photo_gallery: "把这几张一起拍的照片做成照片墙：https://… https://…",
@@ -50,9 +53,12 @@ export function CardPlayground() {
   });
   const scenes = useMemo(() => buildSceneFixtures(), []);
   const edges = useMemo(() => buildEdgeFixtures(), []);
-  const [selected, setSelected] = useState<SceneId | "all" | "edge">("all");
-  const [theme, setTheme] = useState<Theme>("light");
-  const [width, setWidth] = useState<Width>("desktop");
+  const [selected, setSelected] = useState<SceneId | "all" | "edge">(() => {
+    const value = new URLSearchParams(window.location.search).get("scene");
+    return value === "edge" ? "edge" : SCENES.find(scene => scene.id === value)?.id ?? "all";
+  });
+  const [theme, setTheme] = useState<Theme>(() => new URLSearchParams(window.location.search).get("theme") === "dark" ? "dark" : "light");
+  const [width, setWidth] = useState<Width>(() => new URLSearchParams(window.location.search).get("width") === "mobile" ? "mobile" : "desktop");
   const [log, setLog] = useState<string[]>([]);
 
   const latest = useRef(cards);
@@ -82,13 +88,14 @@ export function CardPlayground() {
     : selected === "edge" ? edges.map(item => ({ label: item.label, card: cards[item.card.id]! }))
     : [{ label: `${selected} → ${SCENE_BY_ID[selected].cardType}`, card: cards[scenes[selected].id]! }];
 
-  return <div className={`min-h-screen ${theme === "dark" ? "dark bg-neutral-950 text-neutral-100" : "bg-neutral-100 text-neutral-900"}`} data-card-playground>
+  return <div className={`vh-hark min-h-screen relative ${theme === "dark" ? "dark" : ""}`} data-appearance={theme} data-card-playground>
+    <HarkBackdrop theme={theme} />
     <div className="mx-auto flex max-w-[1500px] gap-6 p-5">
       <aside className="sticky top-5 hidden h-[calc(100vh-40px)] w-64 shrink-0 overflow-auto md:block">
         <h1 className="text-base font-semibold">Card Playground</h1>
         <p className="mt-1 text-xs opacity-70">示例数据，仅在本页内存中；不连接真实画布。</p>
         <nav className="mt-4 grid gap-1 text-sm">
-          <button type="button" className="rounded-md px-2 py-1.5 text-left hover:bg-black/5 dark:hover:bg-white/10" aria-pressed={selected === "all"} onClick={() => setSelected("all")}>全部 20 张</button>
+          <button type="button" className="rounded-md px-2 py-1.5 text-left hover:bg-black/5 dark:hover:bg-white/10" aria-pressed={selected === "all"} onClick={() => setSelected("all")}>全部 {SCENES.length} 个场景</button>
           <button type="button" className="rounded-md px-2 py-1.5 text-left hover:bg-black/5 dark:hover:bg-white/10" aria-pressed={selected === "edge"} onClick={() => setSelected("edge")}>边界样例（长文本 / 空数据 / 坏图片）</button>
           {SCENES.map(scene => <button key={scene.id} type="button" className="rounded-md px-2 py-1.5 text-left hover:bg-black/5 dark:hover:bg-white/10"
             aria-pressed={selected === scene.id} data-playground-scene={scene.id} onClick={() => setSelected(scene.id)}>
@@ -100,7 +107,7 @@ export function CardPlayground() {
       <main className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <select className="rounded-md border border-current/20 bg-transparent px-2 py-1 md:hidden" value={selected} onChange={event => setSelected(event.target.value as SceneId)} aria-label="选择场景">
-            <option value="all">全部 20 张</option><option value="edge">边界样例</option>
+            <option value="all">全部 {SCENES.length} 个场景</option><option value="edge">边界样例</option>
             {SCENES.map(scene => <option key={scene.id} value={scene.id}>{scene.label}</option>)}
           </select>
           {(["light", "dark"] as const).map(value => <button key={value} type="button" className="rounded-md border border-current/20 px-3 py-1" aria-pressed={theme === value}
@@ -113,21 +120,21 @@ export function CardPlayground() {
         <div className="mt-4 grid gap-8">
           {shown.map(({ label, card }) => <section key={card.id} className="grid gap-2" data-playground-card={card.type}>
             <h2 className="text-xs font-semibold tracking-wide opacity-70">{label}{selected !== "all" && selected !== "edge" && <span className="ml-2 font-normal">示例输入：{SAMPLE_INPUT[selected]}</span>}</h2>
-            <div className="flex flex-wrap items-start gap-6">
+            <div className="grid min-w-0 grid-cols-1 items-start gap-6 xl:grid-cols-2">
               <SubcardThemeContext.Provider value={theme}>
-                <div className="rounded-2xl p-6" style={{ background: theme === "dark" ? "radial-gradient(circle at 30% 20%, #3a3a46, #121216)" : "radial-gradient(circle at 30% 20%, #f4f4f6, #d9d9de)" }}
+                <div className="min-w-0 w-full rounded-2xl p-3"
                   data-playground-surface="display">
                   <CardModeContext.Provider value="display">
-                    <div className="vivic-card" style={{ width: card.layout.width }}>
+                    <HarkSurface className="vivic-card" style={{ width: width === "mobile" ? Math.min(card.layout.width, 327) : card.layout.width, maxWidth:"100%" }}>
                       <VivicCard record={card} height={fixedContentHeight(card)} />
-                    </div>
+                    </HarkSurface>
                   </CardModeContext.Provider>
                 </div>
               </SubcardThemeContext.Provider>
-              <div style={{ width: width === "mobile" ? 375 : Math.max(340, card.layout.width + 40) }} data-playground-surface="control">
+              <div className="min-w-0 w-full" style={{ maxWidth: width === "mobile" ? 351 : Math.max(340, card.layout.width + 40) }} data-playground-surface="control">
                 <CardModeContext.Provider value="control">
                   <CardActionsContext.Provider value={actions}>
-                    <article className="vivic-user-card"><VivicCard record={card} /></article>
+                    <HarkSurface className="vivic-user-card" style={{ position: "relative", width: "100%" }}><VivicCard record={card} /></HarkSurface>
                   </CardActionsContext.Provider>
                 </CardModeContext.Provider>
               </div>

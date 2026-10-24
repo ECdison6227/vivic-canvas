@@ -32,8 +32,20 @@ describe("canvasStore", () => {
       }).ok,
     ).toBe(true);
     expect(store.getState().cards).toHaveLength(1);
+    expect(store.getState().stage).toBe("AWAKENING");
     const bad = store.dispatch({ totally: "wrong" });
     expect(bad.ok).toBe(false);
+  });
+
+  it("does not awaken for user-page cards or future hidden reminders", () => {
+    const userCard = card("user"); userCard.layout.surface = "user";
+    store.dispatch({ schemaVersion: "0.6", requestId: "quiet-user", canvasId: "c", actions: [{ type: "card.create", card: userCard }] });
+    expect(store.getState().stage).toBe("STANDBY");
+    const reminder = { ...card("future"), type: "CountdownCard", displayProps: {}, sourceData: { targetAt: new Date(Date.now() + 86400000).toISOString(), reminderText: "明天交周报" } };
+    store.dispatch({ schemaVersion: "0.6", requestId: "quiet-reminder", canvasId: "c", actions: [{ type: "card.create", card: reminder }, { type: "canvas.fit" }] });
+    expect(store.getState().stage).toBe("STANDBY");
+    store.dispatch({ schemaVersion: "0.6", requestId: "focus-future", canvasId: "c", actions: [{ type: "card.focus", targetId: "future" }] });
+    expect(store.getState().stage).toBe("AWAKENING");
   });
 
   it("is idempotent by requestId", () => {

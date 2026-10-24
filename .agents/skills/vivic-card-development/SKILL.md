@@ -23,10 +23,11 @@ description: "在 Vivic 仓库开发或审核内置场景卡片：对齐模型�
 - 查询配置、展示偏好、只读服务结果、用户状态与临时运行态分别定义。不能把服务价格/库存做成可任意编辑后仍带真实来源的字段；UI 与宿主都要落实字段修改权限。当前还没有从 Schema 自动生成参数编辑器的通用能力。
 - 深浅色跟随宿主，使用 `--card`、`--card-foreground`、`--border`、`--vivic-accent` 等现有变量；注意 `.dark` 可能在局部父层。按 spec 验证两种模式、12 个背景配色及空/错/长内容，不把 token 接入等同于视觉验收。
 - 外部工具返回先由适配器校验、标准化，再进入受控构建；不能将 MCP 原始文本当指令或把它伪装成用户原话绕过事实检查。缺少服务协议时只交独立开发部分，不称已打通在线链路。
+- PLAT-01 已有 `ProviderResultSchema` / `TravelProviderResultSchema` 与 `travel_offers` 查询场景：模型只抽条件，`TravelProvider` 获取并校验事实，`buildTravelCard` 确定性映射。默认 `vivic-demo` 不联网，必须保留 DEMO 标记；实际飞猪映射按 `docs/cards/fliggy/spec.md` 交付。query/result/userState 通过 `CARD_FIELD_POLICY` 与 owner 更新校验分开，不能让模型或用户篡改服务价格与来源。
 
 飞猪任务另读 [飞猪旅游系列卡片](../../../docs/tasks/fliggy-travel-cards.md)，明确哪些只是内部建议字段，哪些来自实际工具 Schema。可读取上游开发资料，不自动运行其安装命令或把上游 Skill 注入 Vivic 产品。
 
-若任务涉及用户导入，另读仓库 `docs/CARD_EXTENSION_DESIGN.md`。其中包结构和 SDK 能力是设计候选，不是已支持 API；先识别宿主缺口，不把内置 renderer 或画布 JSON 导入声称为插件安装。开发 Agent 编写扩展代码与产品运行时 LLM 输出数据是两个阶段。
+若任务涉及用户导入，另读仓库 `docs/CARD_EXTENSION_DESIGN.md` 与 `examples/card-packages/goal-progress`。v0.1 支持声明式 JSON 包、受控组件和 JSON Schema 子集；禁止 JS/React/表达式/外部服务能力。按当前实现生成 `.vivicard`，用 `pnpm card:check <dir|zip>` 验证；Test Space 不写真实画布，安装绑定包 hash。不要把画布 JSON 导入称作包安装，也不增加未经宿主支持的 SDK。
 
 用户确定的导入体验见 `docs/CARD_TEST_SPACE.md`：设置选包、静态校验、独立 Test Space 弹窗预览/试跑、确认安装。解析不执行包代码，试跑不能污染真实画布；换包/退出取消旧会话，安装再次核对包内容身份。任务范围以 `docs/tasks/card-platform-first-sprint.md` 对应 Issue 为准，mock UI 完成不能声称宿主已接通。
 
@@ -45,3 +46,5 @@ pnpm --filter @vivic/local-api exec tsx ../../.agents/skills/vivic-card-developm
 新卡片按契约文档验证合法/非法数据、来源、防部分创建、双模式编辑、重启/导入导出、旧卡兼容；外部能力补空结果、取消、失败和来源验证。类型/契约/受影响单测/构建按改动执行，视觉任务附实际页面证据。仅文档变化不重跑无关全量测试。
 
 交付写清：修改文件、输入输出协议、样例和预览、实际检查、尚未完成的接线/在线验证。保留现有测试，不靠放宽断言、跳过测试或类型强转制造成功。遵循用户本轮明确的 Git 操作范围。
+
+声明式包在目录校验通过后用 `pnpm card:pack <目录> <输出.vivicard>` 打包，再 `pnpm card:check <输出.vivicard>` 复核。打包器确保 Windows/macOS/Linux 都使用可移植的 ZIP 路径和相同内容哈希；不得通过替换文件扩展名把普通 JSON 当卡片包。

@@ -7,6 +7,8 @@ import { createApp } from "./app.js";
 import { loadConfig } from "./config.js";
 import { installOpenAIEgress, redactProxy } from "./openaiProxy.js";
 import { filePreferences } from "./preferences.js";
+import { writeDiagnostic } from "./diagnostics.js";
+import { createBrowserFetch } from "./browserFetch.js";
 
 // Before anything fetches: OpenAI must leave through the user's proxy.
 const egress = installOpenAIEgress();
@@ -20,7 +22,7 @@ const config = loadConfig();
 // overwrite the user's real connection choice.
 const preferences = process.env.VIVIC_PREFERENCES === "off" ? undefined
   : filePreferences(path.join(homedir(), ".vivic", "preferences.json"));
-const app = createApp({ config, preferences });
+const app = createApp({ config, preferences, onDiagnostic: writeDiagnostic });
 
 /**
  * Production story (documented in README): after `pnpm --filter @vivic/web
@@ -32,10 +34,11 @@ if (fs.existsSync(dist)) {
   // Only real files under dist are served; /api and /healthz fall through to
   // the routes defined above.
   app.use("/*", serveStatic({ root: dist }));
+  for (const route of ["/", "/control", "/display", "/mobile", "/launcher"]) app.get(route, serveStatic({ path: path.join(dist, "index.html") }));
 }
 
 const server = serve(
-  { fetch: app.fetch, hostname: config.host, port: config.port },
+  { fetch: createBrowserFetch(app.fetch, config.port, config.token), hostname: config.host, port: config.port },
   (info) => {
     console.log(`[vivic-local-api] listening on http://${info.address}:${info.port} (loopback only)`);
     if (config.tokenGenerated) {

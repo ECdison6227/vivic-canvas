@@ -2,6 +2,13 @@ import { z } from "zod";
 import { ReminderConditionSchema, ReminderScheduleSchema, TimeZoneSchema } from "./reminderSchedule";
 import { CardVariantSchema, CommonShape, EvidenceRefSchema, OpenSourceData } from "./cardCommon";
 import { ClockTimeSchema, IsoDateSchema, SCENE_CARD_SCHEMAS } from "./sceneCards";
+import { TravelOffersCardSchema } from "./providers";
+import { ExtensionCardDisplayPropsSchema } from "./extensionCard";
+import { FileCardSchema } from "./files";
+
+export const ExtensionCardSchema = z.strictObject({ ...CommonShape, type: z.literal("ExtensionCard"),
+  displayProps: ExtensionCardDisplayPropsSchema, sourceData: z.strictObject({}) });
+export type ExtensionCard = z.infer<typeof ExtensionCardSchema>;
 
 export { CardSurfaceSchema, CardVariantSchema, EvidenceRefSchema, LayoutSchema, MetadataSchema, SubcardSchema, type CardSurface, type Subcard } from "./cardCommon";
 
@@ -141,6 +148,9 @@ export const CardRecordSchema = z.discriminatedUnion("type", [
   SearchResultCardSchema,
   TableCardSchema,
   ChartCardSchema,
+  TravelOffersCardSchema,
+  ExtensionCardSchema,
+  FileCardSchema,
   ...SCENE_CARD_SCHEMAS,
 ]);
 

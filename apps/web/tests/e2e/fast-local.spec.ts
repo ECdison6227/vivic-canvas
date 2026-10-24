@@ -1,8 +1,8 @@
 import { expect, test } from "@playwright/test";
-import { activeCanvasId, controlDispatch, sendCommand, todoCardRecord } from "./helpers1";
-test("exact view and reference actions make zero intent/LLM calls, while ambiguity stays local", async ({ page, context }) => {
+import { readIntentResult, activeCanvasId, controlDispatch, sendCommand, todoCardRecord } from "./helpers1";
+test("exact view and reference actions route through the backend without LLM generation; ambiguity remains safe", async ({ page, context }) => {
   let requests = 0;
-  await page.route("**/api/intent", route => { requests++; return route.fulfill({ json: { kind: "unknown", message: "TEST unexpected model request" } }); });
+  page.on("response", async response => { if (response.url().endsWith("/api/intent")) { const result = await readIntentResult(response); if (result.usedProvider === "stepfun" || result.usedProvider === "gpt") requests++; } });
   await page.goto("/control"); await expect(page.locator("[data-vivic-control]")).toHaveAttribute("data-vivic-owner", "owner");
   const canvasId = await activeCanvasId(page);
   await controlDispatch(page, "TEST-fast", canvasId, [{ type: "stage.awaken" },

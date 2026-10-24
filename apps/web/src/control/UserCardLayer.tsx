@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type DragEvent, type RefObject } from "react";
-import { GripHorizontal, MonitorUp, Trash2 } from "lucide-react";
+import { GripHorizontal } from "lucide-react";
+import { HarkIcon, HarkSurface } from "@/components/hark/HarkPrimitives";
 import { cardTitle, onUserSurface, type CardRecord } from "@/contracts";
 import { canvasStore, useVivicState } from "@/state/canvasStore";
 import { VivicCard } from "@/cards/VivicCard";
@@ -11,6 +12,7 @@ import { newId } from "@/lib/id";
 import type { ControlHost } from "@/sync/controlHost";
 import "@/cards/scene/sceneCards.css";
 import "./userCardLayer.css";
+import { FileScopeContext } from "@/files/FileScopeContext";
 
 const MAX_PHOTOS = 36;
 const EDGE = 8;
@@ -115,6 +117,11 @@ export function UserCardLayer({ host, theme, layerRef, receiving, notice, onNoti
       if (ok) onNotice("已删除，可输入「撤销」恢复。");
       return ok;
     },
+    refresh: async cardId => {
+      const result = await host.refreshTravelCard(cardId);
+      onNotice(result.ok ? "已刷新旅游结果。" : result.error);
+      return result.ok;
+    },
     addPhotos: async files => {
       const { images, errors } = await storePhotos(files, MAX_PHOTOS);
       onNotice(errors[0] ?? (images.length ? `已在本机保存 ${images.length} 张照片` : null));
@@ -129,7 +136,7 @@ export function UserCardLayer({ host, theme, layerRef, receiving, notice, onNoti
 
   return <div ref={layerRef} className={`vivic-user-layer${theme === "dark" ? " dark" : ""}`} data-vivic-user-layer data-receiving={receiving || undefined}>
     {receiving && <div className="vivic-user-layer-drop" data-vivic-drop-overlay="user">松开，把卡片放在这里</div>}
-    <SubcardThemeContext.Provider value={theme}>
+    <FileScopeContext value={snapshot.activeCanvasId}><SubcardThemeContext.Provider value={theme}>
       <CardModeContext.Provider value="control">
         <CardActionsContext.Provider value={actions}>
           {docked.map((card, index) => {
@@ -138,7 +145,7 @@ export function UserCardLayer({ host, theme, layerRef, receiving, notice, onNoti
             const wanted = card.layout.userPos ?? fallback;
             const left = Math.round(Math.min(Math.max(EDGE, wanted.x), Math.max(EDGE, size.width - width - EDGE)));
             const top = Math.round(Math.max(EDGE, Math.min(wanted.y, Math.max(EDGE, size.height - 96))));
-            return <article key={card.id} className="vivic-user-card" style={{ left, top, width }} data-vivic-user-card={card.id} data-scene-type={card.type}>
+            return <HarkSurface as="article" key={card.id} className="vivic-user-card" style={{ left, top, width }} data-vivic-user-card={card.id} data-scene-type={card.type}>
               <span className="vivic-move-handle" draggable role="button" tabIndex={-1} title="拖动位置，或拖回副屏"
                 aria-label={`拖动「${cardTitle(card).slice(0, 40)}」：在本页换位置，或拖回副屏`} data-vivic-user-handle={card.id}
                 onDragStart={event => {
@@ -151,16 +158,16 @@ export function UserCardLayer({ host, theme, layerRef, receiving, notice, onNoti
                 }}><GripHorizontal size={14} aria-hidden /></span>
               <div className="vivic-user-card-tools">
                 <button type="button" className="vivic-scene-icon-button" disabled={!editable} onClick={() => sendToDisplay(card)}
-                  aria-label={`把「${cardTitle(card).slice(0, 40)}」放回副屏`} title="放回副屏" data-vivic-send-display={card.id}><MonitorUp size={15} /></button>
+                  aria-label={`把「${cardTitle(card).slice(0, 40)}」放回副屏`} title="传送到展示页" data-vivic-send-display={card.id}><HarkIcon name="share" size={15} /><span className="text-xs">传送到展示页</span></button>
                 <button type="button" className="vivic-scene-icon-button" disabled={!editable} onClick={() => actions.remove?.(card.id)}
-                  aria-label={`删除「${cardTitle(card).slice(0, 40)}」（可撤销）`} title="删除（可撤销）"><Trash2 size={15} /></button>
+                  aria-label={`删除「${cardTitle(card).slice(0, 40)}」（可撤销）`} title="删除（可撤销）"><HarkIcon name="trash" size={15} /></button>
               </div>
               <VivicCard record={card} />
-            </article>;
+            </HarkSurface>;
           })}
         </CardActionsContext.Provider>
       </CardModeContext.Provider>
-    </SubcardThemeContext.Provider>
+    </SubcardThemeContext.Provider></FileScopeContext>
     {notice && <p role="status" className="vivic-user-layer-notice" data-vivic-user-notice>{notice}</p>}
   </div>;
 }

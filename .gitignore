@@ -1,5 +1,8 @@
 node_modules/
 dist/
+dist-online/
+dist-online-android-full/
+dist-ui/
 .vite/
 *.log
 .DS_Store
@@ -10,7 +13,8 @@ evidence/
 .env
 .env.*
 # Downloaded models, isolated environments and local PoC output
-/.cache/
+.cache/
+/apps/web/public/downloads/
 __pycache__/
 *.py[cod]
 .venv/

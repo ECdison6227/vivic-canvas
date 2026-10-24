@@ -23,6 +23,7 @@ function respond(settings: {
   headers?: Record<string, string | undefined>;
   chunks?: Buffer[];
   stall?: boolean;
+  abortOnDestroy?: boolean;
 } = {}) {
   https.mockImplementation(((url: URL, options: RequestOptions, callback: (res: IncomingMessage) => void) => {
     urlSeen = url; optionsSeen = options;
@@ -31,6 +32,10 @@ function respond(settings: {
     req.end = (() => {
       queueMicrotask(() => {
         const response = new PassThrough();
+        if (settings.abortOnDestroy) {
+          const destroy = response.destroy.bind(response);
+          response.destroy = ((error?: Error) => { response.emit("aborted"); return destroy(error); }) as typeof response.destroy;
+        }
         responseSeen = response;
         Object.assign(response, { statusCode: settings.status ?? 200,
           headers: { "content-type": "text/plain; charset=utf-8", ...settings.headers } });
@@ -84,6 +89,11 @@ describe("public-only URL and address policy", () => {
 });
 
 describe("actual HTTPS request boundary (wire primitives stubbed, policy real)", () => {
+  it("retains the byte-limit explanation when socket teardown synchronously emits aborted", async () => {
+    respond({ chunks: [Buffer.alloc(80), Buffer.alloc(80)], abortOnDestroy: true });
+    await expect(get()).rejects.toMatchObject({ code: "search-too-large", message: "网页响应超过大小限制。" });
+    expect(responseSeen.destroyed).toBe(true);
+  });
   it.each([
     [{ address: "127.0.0.1", family: 4 }],
     [{ address: "198.18.0.187", family: 4 }],

@@ -3,12 +3,12 @@ import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { activeCanvasId, controlDispatch, gotoControl, gotoDisplay, sendCommand, showChat } from "./helpers1";
+import { activeCanvasId, controlDispatch, gotoControl, gotoDisplay, sendCommand, showChat, showSettings } from "./helpers1";
 
 /**
  * Scene cards end to end, in an isolated TEST browser context:
  * chat → (stubbed) model scene payload → server-built card → Display;
- * all 20 card types on the stage and after reload; Display ⇄ user page by
+ * all 21 card types on the stage and after reload; Display ⇄ user page by
  * native drag-and-drop between two windows; user-page edits synced back.
  * No real model, microphone, speaker or user canvas is involved.
  */
@@ -52,6 +52,8 @@ const startStub = async (answers: unknown[]) => {
 };
 
 const connectStubModel = async (control: Page) => {
+  await showSettings(control);
+  await control.getByRole("navigation", { name: "设置分组", exact: true }).getByRole("button", { name: "连接", exact: true }).click();
   await control.locator("[data-vivic-ai-key-input]").fill("TEST-scene-cards-key");
   await control.locator("[data-vivic-ai-connect]").click();
   await expect(control.locator("[data-vivic-ai-badge]")).toContainText("已连接", { timeout: 10_000 });
@@ -83,6 +85,12 @@ const displayCard = (display: Page, id: string) => display.locator(`.react-flow_
 const storedLayout = (display: Page, id: string) => display.evaluate(cardId =>
   (window as unknown as { __vivic: { getState: () => { cards: Array<{ record: { id: string; layout: Record<string, unknown> } }> } } })
     .__vivic.getState().cards.find(entry => entry.record.id === cardId)?.record.layout, id);
+const persistedCard = (page: Page, canvasId: string, cardId: string) => page.evaluate(async ({ canvasId, cardId }) => {
+  const modulePath = "/src/persistence/db.ts";
+  const { openVivicDB } = await import(/* @vite-ignore */ modulePath);
+  const db = await openVivicDB();
+  try { return (await db.getCanvas(canvasId))?.cardsById[cardId]; } finally { db.close(); }
+}, { canvasId, cardId });
 
 test.beforeEach(async () => { await api("/api/credentials/stepfun/disconnect", { method: "POST" }).catch(() => undefined); });
 
@@ -127,24 +135,24 @@ test("a model guess without user evidence never becomes a card", async ({ contex
   } finally { await stub.close(); }
 });
 
-test("all 20 scene cards render on the Display and survive reloads of both windows", async ({ context }) => {
+test("all 21 scene cards render on the Display and survive reloads of both windows", async ({ context }) => {
   const control = await gotoControl(context);
   const canvasId = await activeCanvasId(control);
   const fixtures = await loadFixtures(control);
-  expect(fixtures).toHaveLength(20);
+  expect(fixtures).toHaveLength(21);
   await controlDispatch(control, "scene-all", canvasId, [{ type: "stage.awaken" }, ...fixtures.slice(0, 11).map(card => ({ type: "card.create", card }))]);
   await controlDispatch(control, "scene-all-2", canvasId, [...fixtures.slice(11).map(card => ({ type: "card.create", card })), { type: "canvas.fit" }]);
   const display = await gotoDisplay(context, canvasId);
   for (const card of fixtures) await expect(displayCard(display, card.id)).toBeVisible({ timeout: 10_000 });
   await expect(display.locator("[data-card-render-error]")).toHaveCount(0);
   await display.waitForTimeout(1500);
-  await display.screenshot({ path: path.join(EVIDENCE, "display-all-20.png") });
+  await display.screenshot({ path: path.join(EVIDENCE, "display-all-21.png") });
   await display.reload();
   for (const card of fixtures) await expect(displayCard(display, card.id)).toBeVisible({ timeout: 10_000 });
   await control.reload();
   await control.waitForSelector('[data-vivic-control="ready"]');
   const restored = await control.evaluate(() => (window as unknown as { __vivic: { getState: () => { cards: Array<{ record: { type: string } }> } } }).__vivic.getState().cards.map(entry => entry.record.type));
-  expect(new Set(restored).size).toBe(20);
+  expect(new Set(restored).size).toBe(21);
 });
 
 test("drag Display → user page drop point, move it there, edit, drag back to the stage drop point; state persists", async ({ context }) => {
@@ -198,6 +206,8 @@ test("drag Display → user page drop point, move it there, edit, drag back to t
 
   // Button path and persistence after a reload of both windows.
   await dropOn(control, "[data-vivic-chat]", await dragFrom(display, `[data-vivic-move-handle="${ring.id}"]`), { x: 700, y: 180 });
+  await expect(control.locator(`[data-vivic-user-card="${ring.id}"]`)).toBeVisible();
+  await expect.poll(() => persistedCard(control, canvasId, ring.id)).toMatchObject({ layout: { surface: "user" } });
   await control.reload();
   await control.waitForSelector('[data-vivic-control="ready"]');
   await showChat(control);
@@ -207,6 +217,10 @@ test("drag Display → user page drop point, move it there, edit, drag back to t
   await expect(control.locator(`[data-vivic-user-card="${ring.id}"] [data-progress-values]`)).toContainText("19 / 50");
   await control.locator(`[data-vivic-user-card="${ring.id}"]`).hover();
   await control.locator(`[data-vivic-send-display="${ring.id}"]`).click();
+  await expect.poll(async () => {
+    const saved = await persistedCard(control, canvasId, ring.id);
+    return saved?.layout.surface !== "user" && saved?.displayProps.current === 19;
+  }).toBe(true);
   await display.reload();
   await expect(displayCard(display, ring.id)).toBeVisible({ timeout: 10_000 });
   await expect(displayCard(display, ring.id).locator("[data-progress-values]")).toContainText("19 / 50");

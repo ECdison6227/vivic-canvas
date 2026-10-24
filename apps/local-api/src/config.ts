@@ -44,10 +44,17 @@ export interface LocalApiConfig {
   decisionProviderKind?: "api" | "local";
   decisionProviderEnabled?: boolean;
   decisionProviderTimeoutMs?: number;
-  decisionProviderProtocol?: "adapter" | "local-chat";
+  decisionProviderProtocol?: "adapter" | "local-chat" | "startlux";
   decisionProviderModel?: string;
   decisionProviderToken?: string;
+  /** Independent native multi-stage protocol. Never fed through the seven-label adapter. */
+  decisionV2Url?: string;
+  decisionV2Token?: string;
+  decisionV2ExecutionEnabled?: boolean;
+  decisionV2TimeoutMs?: number;
   bodyLimitBytes: number;
+  managedDecisionEnabled?: boolean;
+  managedDecisionRoot?: string;
 }
 
 const ENV_FILE = ".env.local";
@@ -83,12 +90,14 @@ export const loadConfig = (
   return {
     publicDnsFallback: env.VIVIC_PUBLIC_DNS_FALLBACK !== "0",
     port: Number(env.PORT ?? 8787),
+    managedDecisionEnabled: env.VIVIC_MANAGED_DECISION !== "off" && (process.platform === "win32" && process.arch === "x64" || process.platform === "darwin" && ["arm64", "x64"].includes(process.arch)),
+    managedDecisionRoot: env.VIVIC_RUNTIME_ROOT?.trim() || undefined,
     host: "127.0.0.1",
     token,
     tokenPath: path.join(dir, ENV_FILE),
     tokenGenerated: generated,
     allowedOrigins: (env.VIVIC_ALLOWED_ORIGINS ??
-      "http://localhost:5175,http://127.0.0.1:5175,http://localhost:5173,http://localhost:5174,http://127.0.0.1:5173,http://127.0.0.1:5174")
+      `http://localhost:5175,http://127.0.0.1:5175,http://localhost:5173,http://localhost:5174,http://127.0.0.1:5173,http://127.0.0.1:5174,http://localhost:${Number(env.PORT ?? 8787)},http://127.0.0.1:${Number(env.PORT ?? 8787)}`)
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean),
@@ -104,9 +113,13 @@ export const loadConfig = (
     decisionProviderKind: env.VIVIC_DECISION_PROVIDER_KIND === "local" ? "local" : "api",
     decisionProviderEnabled: env.VIVIC_DECISION_PROVIDER_ENABLED !== "false",
     decisionProviderTimeoutMs: boundedTimeout(env.VIVIC_DECISION_PROVIDER_TIMEOUT_MS, 2000),
-    decisionProviderProtocol: env.VIVIC_DECISION_PROVIDER_PROTOCOL === "local-chat" ? "local-chat" : "adapter",
+    decisionProviderProtocol: env.VIVIC_DECISION_PROVIDER_PROTOCOL === "startlux" ? "startlux" : env.VIVIC_DECISION_PROVIDER_PROTOCOL === "local-chat" ? "local-chat" : "adapter",
     decisionProviderModel: env.VIVIC_DECISION_PROVIDER_MODEL?.trim() || undefined,
     decisionProviderToken: env.VIVIC_DECISION_PROVIDER_TOKEN || undefined,
+    decisionV2Url: env.VIVIC_DECISION_V2_URL?.trim() || undefined,
+    decisionV2Token: env.VIVIC_DECISION_V2_TOKEN || undefined,
+    decisionV2ExecutionEnabled: env.VIVIC_DECISION_V2_EXECUTION_ENABLED === "true",
+    decisionV2TimeoutMs: boundedTimeout(env.VIVIC_DECISION_V2_TIMEOUT_MS, 10_000),
     bodyLimitBytes: 64 * 1024,
   };
 };

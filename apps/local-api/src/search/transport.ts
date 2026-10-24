@@ -67,7 +67,9 @@ export async function requestPublicHttps(raw: string, options: {
       const status = res.statusCode ?? 0;
       const contentType = String(res.headers["content-type"] ?? "").split(";")[0].trim().toLowerCase();
       const location = res.headers.location;
-      const fail = (error: SearchError) => { res.destroy(); req.destroy(); reject(error); };
+      // Destroying an incoming response may synchronously emit "aborted".
+      // Preserve the actual policy/size error before teardown emits that event.
+      const fail = (error: SearchError) => { reject(error); res.destroy(); req.destroy(); };
       // Cancel error/redirect bodies without buffering or draining an unbounded stream.
       if (status < 200 || status >= 300) {
         res.destroy();

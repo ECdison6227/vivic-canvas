@@ -410,4 +410,8 @@ export class GptProvider {
     // Disconnecting a reused Pi login must not sign the user's Pi CLI out.
     if (c?.source === "vivic") await c.storage.delete(c.route);
   }
+  /** End this process/session's work without deleting the user's saved OAuth. */
+  dispose() {
+    this.cancelLogin(); this.#invalidate(); this.#error = undefined;
+  }
 }

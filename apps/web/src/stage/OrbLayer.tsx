@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
 import SiriOrb from "@/components/smoothui/siri-orb";
 import { deriveOrb } from "@/motion/motionDirector";
 import { useVivicState, useDisplayPreferences } from "@/state/canvasStore";
 import { anchorCenter } from "./orbAnchor";
+import { orbPalette } from "./orbPalette";
+import { useMotionVisibility, useSystemReducedMotion } from "@/motion/useMotionVisibility";
 
 /**
  * The only orb surface. Standby: large breathing orb on pure black.
@@ -19,7 +21,8 @@ export const OrbLayer = () => {
   const listening = activity?.phase === "listening";
   const thinking = Boolean(activity && activity.phase !== "speaking" && !listening);
   const preferences = useDisplayPreferences();
-  const reduceMotion = useReducedMotion() || preferences.reducedMotion;
+  const { ref: motionRef, visible } = useMotionVisibility<HTMLDivElement>();
+  const reduceMotion = useSystemReducedMotion() || preferences.reducedMotion || !visible;
 
   const wrapRef = useRef<HTMLDivElement>(null);
   const [screen, setScreen] = useState({ width: 0, height: 0 });
@@ -50,7 +53,7 @@ export const OrbLayer = () => {
 
   return (
     <div
-      ref={wrapRef}
+      ref={element => { wrapRef.current = element; motionRef.current = element; }}
       className="pointer-events-none absolute inset-0 z-30"
       aria-hidden="true"
       data-vivic-layer="orb"
@@ -76,12 +79,15 @@ export const OrbLayer = () => {
                 : { duration: 0.35, ease: "easeOut" }
             }
           >
+            <div className="vivic-orb-halo" data-orb-phase={awakening ? "awakening" : directive.state} data-paused={reduceMotion || undefined} />
             <motion.div
               animate={thinking && !reduceMotion ? { scale: [1, 1.045, 1] } : { scale: 1 }}
               transition={thinking && !reduceMotion ? { duration: 1.8, repeat: Infinity, ease: "easeInOut" } : { duration: 0.2 }}
             ><SiriOrb
               size={directive.size}
               state={directive.state}
+              colors={orbPalette(preferences.orbPalette).colors}
+              reducedMotion={reduceMotion}
               amplitude={activity?.phase === "speaking" && !reduceMotion ? activity.speech?.amplitude ?? 0 : 0}
               animationDuration={thinking ? 12 : 24}
             /></motion.div>

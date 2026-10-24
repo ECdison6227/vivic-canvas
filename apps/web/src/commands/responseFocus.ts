@@ -18,6 +18,6 @@ export function focusResponseActions(actions: Action[], state: VivicState): Acti
   if (!create && actions.some(a => a.type === "canvas.fit")) return actions;
   const response = create ? actions.filter(a => a.type !== "canvas.fit") : actions;
   const record = create?.type === "card.create" ? create.card : state.cards.find(c => c.record.id === id)?.record;
-  if (!record || !reminderVisible({ record })) return response;
+  if (!record || record.layout.surface === "user" || !reminderVisible({ record })) return response;
   return [...response, { type: "card.focus", targetId: id }];
 }

@@ -141,9 +141,9 @@ function EventChip({ event, editable, onToggle }: { event: ScheduleEvent; editab
   </>;
   const label = `${time ? `${time} ` : ""}${event.title}${event.location ? ` · ${event.location}` : ""}`;
   return editable
-    ? <button type="button" role="checkbox" aria-checked={Boolean(event.done)} aria-label={`${label}（点按标记${event.done ? "未完成" : "完成"}）`}
+    ? <button type="button" role="checkbox" aria-checked={Boolean(event.done)} data-untimed={!event.start || undefined} aria-label={`${label}（点按标记${event.done ? "未完成" : "完成"}）`}
       className="vivic-week-event nodrag nopan" data-done={event.done || undefined} data-week-event={event.id} onClick={onToggle}>{content}</button>
-    : <div className="vivic-week-event" data-done={event.done || undefined} data-week-event={event.id} title={label}>{content}</div>;
+    : <div className="vivic-week-event" data-untimed={!event.start || undefined} data-done={event.done || undefined} data-week-event={event.id} title={label}>{content}</div>;
 }
 
 function AddEventForm({ events, defaultDay, onAdd }: { events: ScheduleEvent[]; defaultDay: number; onAdd: (next: ScheduleEvent[]) => boolean }) {

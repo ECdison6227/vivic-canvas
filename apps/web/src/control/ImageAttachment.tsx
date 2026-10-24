@@ -1,5 +1,5 @@
+import { HarkIcon } from "@/components/hark/HarkPrimitives";
 import { useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { ImagePlus, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ImageInputError, imageFilesFromTransfer, prepareImageAttachment } from "@/ai/attachments";
@@ -25,12 +25,13 @@ export interface ImageAttachmentProps {
   onProcessingChange?: (processing: boolean) => void;
   /** Must reflect verified capability; defaults to unavailable. Selection is still a local draft. */
   visionAvailable?: boolean;
+  menuTrigger?: boolean;
   /** Composer layout: wrap the whole input so pasting into it attaches; omit for the standalone panel. */
   children?: (parts: ImageAttachmentParts) => ReactNode;
 }
 
 /** Control-only attachment picker. Parent owns the explicit Send action; this component never sends. */
-export function ImageAttachment({ disabled = false, ownerKey, resetKey, onChange, onProcessingChange, visionAvailable = false, children }: ImageAttachmentProps) {
+export function ImageAttachment({ disabled = false, ownerKey, resetKey, onChange, onProcessingChange, visionAvailable = false, menuTrigger = false, children }: ImageAttachmentProps) {
   const id = useId();
   const input = useRef<HTMLInputElement>(null);
   const current = useRef<PreparedImageAttachment | null>(null);
@@ -88,14 +89,14 @@ export function ImageAttachment({ disabled = false, ownerKey, resetKey, onChange
           const files = Array.from(event.target.files ?? []); event.target.value = "";
           if (files.length) void select(files);
         }} />
-      {children ? <button type="button" className="vivic-composer-icon" disabled={disabled} onClick={() => input.current?.click()}
-        aria-label="添加图片" title="添加图片（也可粘贴或拖入）"><Plus className="h-[18px] w-[18px]" aria-hidden="true" /></button>
+      {children ? <button type="button" className={menuTrigger ? "vivic-menu-action" : "vivic-composer-icon"} disabled={disabled} onClick={() => input.current?.click()}
+        aria-label="添加图片" title="添加图片（也可粘贴或拖入）"><HarkIcon name={menuTrigger ? "photo" : "add"} size={18} />{menuTrigger && "添加图片"}</button>
         : <Button type="button" variant="outline" size="sm" disabled={disabled} onClick={() => input.current?.click()}>
-          <ImagePlus className="h-4 w-4" aria-hidden="true" />添加图片
+          <HarkIcon name="photo" className="h-4 w-4" aria-hidden="true" />添加图片
         </Button>}
     </>,
     remove: (preview || processing) ? <Button type="button" variant="ghost" size="sm" onClick={clear} aria-label="取消图片附件" className={children ? "vivic-chip" : undefined}>
-      <X className="h-4 w-4" aria-hidden="true" />{processing ? "取消处理" : "移除"}
+      <HarkIcon name="close" className="h-4 w-4" aria-hidden="true" />{processing ? "取消处理" : "移除"}
     </Button> : null,
     preview: preview ? <img src={preview.previewUrl} alt="待发送图片预览" className={children ? "vivic-attachment-thumb" : "mt-2 max-h-40 max-w-full rounded-md object-contain"} /> : null,
     status: <>

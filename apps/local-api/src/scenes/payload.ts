@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { SCENE_CARD_TYPE, SceneIdSchema, type SceneId } from "@vivic/contracts";
+import { SCENE_CARD_TYPE, SceneIdSchema, TravelQuerySchema, type SceneId } from "@vivic/contracts";
 
 /**
  * What the planner may return for a scene card: scene_id plus compact data.
@@ -18,6 +18,7 @@ const entry = <T extends z.ZodRawShape>(shape: T, key: keyof T & string) =>
   z.union([z.string().trim().min(1), z.strictObject(shape)]).transform(value => typeof value === "string" ? { [key]: value } : value);
 
 const SceneData = {
+  travel_offers: TravelQuerySchema,
   countdown: z.strictObject({ title: text(60), targetDate: date, targetTime: time.optional(), note: optional(120) }),
   academic_paper: z.strictObject({
     title: text(240), authors: z.array(text(80)).max(20).optional(), venue: optional(160), year: z.int().min(1000).max(2200).optional(),
@@ -95,18 +96,38 @@ export type ScenePayload = z.infer<typeof ScenePayloadSchema>;
 
 export type ParsedScene = { [S in SceneId]: { scene: S; data: SceneDataOf<S> } }[SceneId];
 
+const dataIssue = (scene: SceneId, error: z.ZodError): string => `${scene} 的 data 字段不合法（${error.issues.slice(0, 3).map(issue => {
+  const field = issue.path.join(".") || "data";
+  const message = issue.code === "invalid_type" ? `需要${issue.expected === "string" ? "单个字符串，不是数组或对象" : issue.expected}`
+    : issue.code === "unrecognized_keys" ? "含未登记字段，请使用不带问号的真实键名"
+      : issue.message.slice(0, 60);
+  return `${field}：${message}`;
+}).join("；")}）`;
+
+/** A closed-registry hint is used only to report all repairable errors together. */
+function repairHint(raw: unknown): string {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return "";
+  const input = raw as Record<string, unknown>;
+  const known = SceneIdSchema.safeParse(input.scene_id);
+  const byType = Object.entries(SCENE_CARD_TYPE).find(([, type]) => type === input.card_type)?.[0];
+  const fromType = SceneIdSchema.safeParse(byType ?? input.card_type);
+  const scene = known.success ? known.data : fromType.success ? fromType.data : undefined;
+  if (!scene) return "；scene_id是表内分类名，不是实例id，禁止拼接日期或随机编号";
+  const fields = (SceneData[scene] as z.ZodType).safeParse(input.data);
+  return `；此分类应为 scene_id=${scene}，card_type可省略或精确填写${SCENE_CARD_TYPE[scene]}${fields.success ? "" : `；${dataIssue(scene, fields.error)}`}`;
+}
+
 /** Structural validation with short, model-safe issue labels (never echo raw values). */
 export function parseScenePayload(raw: unknown): { ok: true; value: ParsedScene } | { ok: false; issue: string } {
   const outer = ScenePayloadSchema.safeParse(raw);
-  if (!outer.success) return { ok: false, issue: "cards 每项必须是 {scene_id, card_type?, data}，scene_id 必须是 20 个已登记场景之一" };
+  if (!outer.success) return { ok: false, issue: `cards 每项必须是 {scene_id, card_type?, data}，scene_id 必须是已登记场景之一${repairHint(raw)}` };
   const { scene_id: scene, card_type: cardType } = outer.data;
   if (cardType !== undefined && cardType !== SCENE_CARD_TYPE[scene]) {
-    return { ok: false, issue: `scene_id ${scene} 只能对应 card_type ${SCENE_CARD_TYPE[scene]}` };
+    return { ok: false, issue: `scene_id ${scene} 只能对应 card_type ${SCENE_CARD_TYPE[scene]}${repairHint(raw)}` };
   }
   const data = (SceneData[scene] as z.ZodType).safeParse(outer.data.data);
   if (!data.success) {
-    const first = data.error.issues[0];
-    return { ok: false, issue: `${scene} 的 data 字段不合法（${first?.path.join(".") || "data"}：${(first?.message ?? "格式错误").slice(0, 60)}）` };
+    return { ok: false, issue: dataIssue(scene, data.error) };
   }
   return { ok: true, value: { scene, data: data.data } as ParsedScene };
 }

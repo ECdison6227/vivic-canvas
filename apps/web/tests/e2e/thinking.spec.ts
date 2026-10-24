@@ -36,7 +36,7 @@ test("pending feedback reaches both windows, escalates, then clears on completio
   await sendCommand(page, "请仔细考虑如何整理这一页");
   await expect(page.locator('[data-vivic-command-feedback]')).toHaveText("正在理解你的指令…");
   await expect(display.locator('[data-vivic-ai-state="thinking"] .siri-orb')).toBeVisible();
-  await expect(page.locator('[data-vivic-command-progress]')).toContainText("正在理解并安排");
+  await expect(page.locator('[data-vivic-command-progress]')).toContainText("正在处理…");
   const orb = await display.locator('[data-vivic-ai-state="thinking"] .siri-orb').boundingBox();
   expect(orb!.width).toBeGreaterThanOrEqual(90);
   await expect(display.locator('[data-vivic-thinking]')).toHaveText("让我想想…");
@@ -44,7 +44,11 @@ test("pending feedback reaches both windows, escalates, then clears on completio
   // Snapshot, not just an already-open subscriber, must retain live feedback.
   const late = await context.newPage();
   await late.goto(`/display?canvasId=${canvasId}`);
-  await expect(late.locator('[data-vivic-thinking]')).toHaveText("让我想想…");
+  await expect.poll(async () => {
+    const current = await page.locator('[data-vivic-command-feedback]').textContent();
+    const observed = await late.locator('[data-vivic-thinking]').textContent().catch(() => null);
+    return (current === "让我想想…" || current === "响应较慢，仍在处理…") && observed === current;
+  }).toBe(true);
   await expect(page.locator('[data-vivic-command-feedback]')).toHaveText("响应较慢，仍在处理…", { timeout: 7000 });
   await expect(display.locator('[data-vivic-thinking]')).toHaveText("响应较慢，仍在处理…");
   const dir = path.resolve(process.cwd(), "../../evidence/voice-feedback/regression/thinking");
@@ -65,7 +69,14 @@ test("pending feedback reaches both windows, escalates, then clears on completio
 test("cancel and a newer command discard late model responses", async ({ page }) => {
   await ready(page);
   const held: Route[] = [];
-  await page.route("**/api/intent", route => { held.push(route); });
+  const cancelled: string[] = [];
+  await page.route("**/api/intent", async route => {
+    const body = route.request().postDataJSON();
+    if (body.task?.cancel === true) {
+      cancelled.push(body.task.id);
+      await route.continue();
+    } else held.push(route);
+  });
   await sendCommand(page, "第一条复杂指令");
   await expect.poll(() => held.length).toBe(1);
   await sendCommand(page, "第二条复杂指令");
@@ -76,6 +87,8 @@ test("cancel and a newer command discard late model responses", async ({ page })
   await expect(page.locator('[data-vivic-command-feedback]')).toHaveText("已取消本次请求");
   await respond(held[1]!, "取消后的结果");
   await expect(page.locator('[data-vivic-command-feedback]')).toHaveText("已取消本次请求");
+  await expect.poll(() => cancelled).toEqual(held.map(route => route.request().postDataJSON().task.id));
+  expect(held).toHaveLength(2);
   const ids = await page.evaluate(() => window.__vivic!.getState() as { processedRequestIds: string[] });
   expect(ids.processedRequestIds).not.toContain("result-过期的结果");
   expect(ids.processedRequestIds).not.toContain("result-取消后的结果");

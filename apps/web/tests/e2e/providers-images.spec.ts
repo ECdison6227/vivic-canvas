@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { showChat } from "./helpers1";
+import { showChat, openVoice } from "./helpers1";
 
 // Explicit TEST protocol fixtures. These tests do not log in, send images to a
 // provider, record a physical microphone or play audio.
@@ -19,14 +19,15 @@ test("TEST GPT/Pi connection keeps StepFun voice independent; text mode sends no
   await connectionFixture(page);
   const audioRequests: string[] = [];
   page.on("request", request => { if (/\/api\/(?:speech|transcribe)$/.test(request.url())) audioRequests.push(request.url()); });
-  await page.getByTestId("llm-provider").click(); await page.getByRole("option", { name: "GPT · Pi 登录", exact: true }).click();
+  await page.locator("[data-vivic-connection-options] > summary").click(); await page.getByLabel("LLM 连接方式").click(); await page.getByRole("option", { name: "GPT · Pi 登录", exact: true }).click();
   await page.locator("[data-vivic-gpt-use-pi]").click();
-  await expect(page.locator("[data-vivic-ai-badge]")).toContainText("gpt-6-luna");
+  await expect(page.getByLabel("当前推理模型")).toContainText("gpt-6-luna");
   // The StepFun connection is retained for independently selected voice.
   await expect(page.locator("[data-vivic-ai-disconnect]")).toBeEnabled();
-  await page.getByTestId("stt-provider").click(); await page.getByRole("option", { name: "仅文字输入", exact: true }).click();
-  await page.getByTestId("tts-provider").click(); await page.getByRole("option", { name: "仅卡片与字幕", exact: true }).click();
-  await expect(page.locator("[data-vivic-ptt]")).toBeDisabled(); await expect(page.locator("[data-vivic-tts-toggle]")).toBeDisabled();
+  await openVoice(page, true); await page.getByLabel("语音输入服务").click(); await page.getByRole("option", { name: "关闭", exact: true }).click();
+  await page.getByLabel("语音输出服务").click(); await page.getByRole("option", { name: "关闭", exact: true }).click();
+  await expect(page.getByRole("switch", { name: "语音回复", exact: true })).not.toBeChecked();
+  await showChat(page); await expect(page.locator("[data-vivic-ptt]")).toBeDisabled();
   let submitted = false;
   await page.route("**/api/intent", async route => {
     const body = route.request().postDataJSON(); submitted = true; expect(body).not.toHaveProperty("attachments");
@@ -92,7 +93,7 @@ test("TEST Continue with ChatGPT opens the authorization page in a popup without
   await context.route("https://auth.openai.com/**", route => route.fulfill({ contentType: "text/html", body: "<title>TEST OpenAI</title>TEST" }));
   await page.route("**/api/gpt/login/start", route => route.fulfill({ json: { ok: true, login: { phase: "waiting" } } }));
   await page.route("**/api/gpt/login/status", route => route.fulfill({ json: { login: { phase: "waiting", authUrl, needsInput: true } } }));
-  await page.getByTestId("llm-provider").click(); await page.getByRole("option", { name: "GPT · Pi 登录", exact: true }).click();
+  await page.locator("[data-vivic-connection-options] > summary").click(); await page.getByLabel("LLM 连接方式").click(); await page.getByRole("option", { name: "GPT · Pi 登录", exact: true }).click();
   const popupPromise = page.waitForEvent("popup");
   await page.locator("[data-vivic-gpt-login]").click();
   const popup = await popupPromise;

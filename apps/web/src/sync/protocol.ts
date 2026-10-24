@@ -2,6 +2,7 @@ import { z } from "zod";
 import { ActionEnvelopeSchema, VivicStateSchema } from "@/contracts";
 import { ActivitySchema, CardSurfaceSchema, TargetChoiceSchema } from "@vivic/contracts";
 import { DARK_PALETTE_IDS, LIGHT_PALETTE_IDS } from "@/components/atmosphere/palettes";
+import { ORB_PALETTE_IDS } from "@/stage/orbPalette";
 
 /**
  * BroadcastChannel('vivic:canvas:v1') message protocol — ARCHITECTURE §4.
@@ -37,19 +38,27 @@ export const CanvasInteractionSchema = z.discriminatedUnion("kind", [
     .refine(value => (value.x === undefined) === (value.y === undefined), "x 与 y 需同时提供"),
 ]);
 export type CanvasInteraction = z.infer<typeof CanvasInteractionSchema>;
-/** What a Display window may ask the owner for: drag on the canvas, or receive a card dropped from the user page. */
+/** Narrow Display requests: canvas drags, cross-tab portals, and view controls.
+ * The reader never receives pin, settings, or arbitrary ActionEnvelope authority. */
 export const DisplayInteractionSchema = z.union([
   CanvasInteractionSchema.options[0],
-  CanvasInteractionSchema.options[2].refine(value => value.surface === "display" && value.x !== undefined, "展示端只能把卡片放回画布的指定位置"),
+  CanvasInteractionSchema.options[2],
+  z.strictObject({ kind: z.literal("card.focus"), cardId: z.string().min(1).max(128), from: LayoutBaselineSchema }),
+  z.strictObject({ kind: z.literal("canvas.fit") }),
+  z.strictObject({ kind: z.literal("canvas.restore") }),
 ]);
+export type DisplayInteraction = z.infer<typeof DisplayInteractionSchema>;
 export const DisplayPreferencesSchema = z.strictObject({
   theme: z.enum(["auto", "light", "dark"]),
   reducedMotion: z.boolean(), subtitles: z.boolean(),
+  ambientMotion: z.enum(["off", "subtle", "vivid"]).optional(),
+  ambientIntensity: z.number().finite().min(0).max(1).optional(),
   dayStart: z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/).optional(),
   dayEnd: z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/).optional(),
   /** Background palette per appearance; absent means 午夜蓝紫 / 云朵蓝紫. The motion is fixed. */
   darkPalette: z.enum(DARK_PALETTE_IDS).optional(),
   lightPalette: z.enum(LIGHT_PALETTE_IDS).optional(),
+  orbPalette: z.enum(ORB_PALETTE_IDS).optional(),
 });
 export type DisplayPreferences = z.infer<typeof DisplayPreferencesSchema>;
 // New installs and resets follow the local daylight schedule by default.
@@ -66,6 +75,9 @@ const msgBase = {
 };
 
 export const SyncMessageSchema = z.discriminatedUnion("type", [
+  z.strictObject({ ...msgBase, type: z.literal("space-feedback"), payload: z.strictObject({
+    kind: z.enum(["saved", "transfer", "arrange", "undo", "redo"]), cardIds: z.array(z.string().min(1).max(128)).max(200).optional(),
+  }) }),
   z.strictObject({ ...msgBase, type: z.literal("target-choice"), payload: z.strictObject({ choice: TargetChoiceSchema.nullable() }) }),
   z.strictObject({
     ...msgBase, type: z.literal("local-data-reset"), canvasId: z.string().min(1).max(128),
@@ -74,8 +86,7 @@ export const SyncMessageSchema = z.discriminatedUnion("type", [
   z.strictObject({
     ...msgBase, type: z.literal("interaction"),
     payload: z.strictObject({ ownerEpoch: z.string().min(1).max(64),
-      // Display may request a move or take back a card dropped from the user
-      // page. Pin/settings and sending cards away stay Control-only.
+      // Display submits only these explicit interactions to the elected owner.
       interaction: DisplayInteractionSchema }),
   }),
   z.strictObject({

@@ -1,9 +1,9 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { gotoControl, sendCommand } from "./helpers1";
+import { sendCommand, openVoice } from "./helpers1";
 
 /**
  * Phase 2a: AI 连接 + backend-first intent routing.
@@ -91,7 +91,7 @@ test("AI section shows honest 未连接 when the backend has no key", async ({
   await page.goto("/control");
   await page.waitForSelector('[data-vivic-control="ready"]');
   await expect(page.locator("[data-vivic-ai-badge]")).toHaveText("未连接");
-  await expect(page.locator("[data-vivic-intent-mode]")).toHaveText("模型未连接 · 可用本地指令");
+  await expect(page.locator("[data-vivic-intent-mode]")).toHaveText("模型未连接 · 请在设置中连接");
 
   // Commands still route through the backend's local rules (usedProvider=rules).
   await sendCommand(page, "十分钟倒计时");
@@ -111,9 +111,10 @@ test("stubbed-healthy backend: connect shows connected badge; disconnect clears"
     await expect(page.locator("[data-vivic-ai-badge]")).toContainText("已连接", {
       timeout: 8000,
     });
-    await expect(page.locator("[data-vivic-ai-badge]")).toContainText("step-3");
-    await expect(page.locator("[data-vivic-ai-key-input]")).toHaveValue("");
-    await expect(page.locator("[data-vivic-ai-note]")).toContainText("Plan 推理验证已通过");
+    await page.locator("[data-vivic-connection-options] > summary").click();
+    await expect(page.getByLabel("当前推理模型", { exact: true })).toContainText("step-3");
+    await expect(page.locator("[data-vivic-ai-key-input]")).toHaveCount(0);
+    await expect(page.locator("[data-vivic-ai-note]")).toContainText("Key 仅保留在本机服务内存中");
 
     await page.locator("[data-vivic-ai-disconnect]").click();
     await expect(page.locator("[data-vivic-ai-badge]")).toHaveText("未连接");
@@ -135,8 +136,9 @@ test("model catalog success with Plan 403 shows the reason instead of a connecte
     await expect(page.locator("[data-vivic-ai-note]")).toContainText("No active Plan subscription");
     await expect(page.locator("[data-vivic-ai-note]")).toContainText("HTTP 403");
     await expect(page.locator("[data-vivic-ai-badge]")).toHaveText("未连接");
-    await expect(page.locator("[data-vivic-tts-toggle]")).not.toBeChecked();
-    await expect(page.locator("[data-vivic-tts-preview]")).toBeDisabled();
+    await openVoice(page);
+    await expect(page.getByRole("switch", { name: "语音回复", exact: true })).not.toBeChecked();
+    await expect(page.locator("[data-vivic-tts-preview]")).toHaveCount(0);
     await expect(page.locator("[data-vivic-ai-key-input]")).toHaveValue("");
     expect(await page.content()).not.toContain(SECRET_KEY);
   } finally {
@@ -158,7 +160,8 @@ test("backend-first planning: rules miss -> stubbed LLM envelope reaches the can
     });
 
     await sendCommand(page, "加待办:模型路由验证");
-    await page.waitForTimeout(600);
+    await expect.poll(() => page.evaluate(() => window.__vivic?.getState())
+      .then(state => (state as { cards?: unknown[] } | undefined)?.cards?.length ?? 0)).toBe(1);
     const cardId = await page.evaluate(
       () =>
         (
@@ -174,7 +177,7 @@ test("backend-first planning: rules miss -> stubbed LLM envelope reaches the can
       spokenText: "已聚焦它",
     };
     await sendCommand(page, "我想仔细研究这项任务的细节，请将它居中显示");
-    await page.waitForTimeout(600);
+    await expect(page.locator("[data-vivic-command-feedback]")).toContainText("已聚焦它");
     const focus = await page.evaluate(
       () =>
         (
@@ -197,8 +200,9 @@ test("offline mode: aborted /api falls back to in-browser rules with honest badg
   await page.waitForSelector('[data-vivic-control="ready"]');
   await page.route("**/api/**", (route) => route.abort());
   await sendCommand(page, "五分钟倒计时");
-  await page.waitForTimeout(800);
-  await expect(page.locator("[data-vivic-intent-mode]")).toContainText("离线本地模式");
+  await expect(page.locator("[data-vivic-intent-mode]")).toContainText("服务暂不可用 · 可用内置指令");
+  await expect.poll(() => page.evaluate(() => window.__vivic?.getState())
+    .then(state => (state as { cards?: unknown[] } | undefined)?.cards?.length ?? 0)).toBe(1);
   const cards = await page.evaluate(
     () =>
       (
@@ -212,7 +216,6 @@ test("offline mode: aborted /api falls back to in-browser rules with honest badg
 
 test("C10: StepFun key never lands in browser storage, DOM or display payload", async ({
   page,
-  browser,
 }) => {
   const stub = await startStepfunStub();
   try {

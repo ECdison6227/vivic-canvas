@@ -1,10 +1,19 @@
 import { expect, test } from "@playwright/test";
 import path from "node:path";
-import { activeCanvasId, controlDispatch, sendCommand, showSettings, todoCardRecord } from "./helpers1";
+import { activeCanvasId, controlDispatch, sendCommand, openData, openPreferences, openVoice, openSpace, todoCardRecord } from "./helpers1";
+
+async function openDanger(page: import("@playwright/test").Page) {
+  await openData(page);
+  const details = page.locator(".se-data-danger");
+  if (await details.getAttribute("open") === null) await details.locator(":scope > summary").click();
+}
 
 test.use({ video: { mode: "on", size: { width: 1440, height: 900 } } });
 
 test("explicit reset clears only isolated app data, cancels pending work, and refreshes all windows", async ({ page, context }, testInfo) => {
+  // Three recorded windows, an owner takeover and two full reloads need a
+  // larger total budget than a single UI transition on headless Windows.
+  test.setTimeout(180_000);
   const evidence = path.resolve(process.cwd(), "../../evidence/next-iteration-local-data", testInfo.project.name || "chromium");
   await context.addInitScript(() => {
     HTMLMediaElement.prototype.play = async () => { throw new Error("TEST audio disabled"); };
@@ -18,14 +27,15 @@ test("explicit reset clears only isolated app data, cancels pending work, and re
   ]);
   const display = await context.newPage(); await display.goto(`/display?canvasId=${originalId}`);
   await expect(display.locator(".vivic-card")).toHaveCount(1);
-  await page.getByRole("radio", { name: "深色", exact: true }).click();
+  await openPreferences(page); await page.getByRole("radio", { name: "深色", exact: true }).click();
+  await openVoice(page, true);
   await page.getByLabel("语音输入服务").click();
-  await page.getByRole("option", { name: "仅文字输入", exact: true }).click();
+  await page.getByRole("option", { name: "关闭", exact: true }).click();
   await page.getByLabel("语音输出服务").click();
-  await page.getByRole("option", { name: "仅卡片与字幕", exact: true }).click();
-  await page.locator("[data-vivic-tts-speed]").press("End");
-  await page.locator("[data-vivic-canvas-create]").click();
-  await expect(page.locator("[data-vivic-canvas-list] li")).toHaveCount(2);
+  await page.getByRole("option", { name: "关闭", exact: true }).click();
+  await page.getByLabel("语速", { exact: true }).press("End");
+  await openSpace(page); await page.locator("[data-vivic-canvas-create]").click();
+  await openSpace(page); await expect(page.locator("[data-vivic-canvas-list] li")).toHaveCount(2);
   await page.evaluate(async () => {
     localStorage.setItem("TEST.unrelated", "preserve");
     const open = indexedDB.open("vivic-local-speech-v1", 1);
@@ -40,32 +50,32 @@ test("explicit reset clears only isolated app data, cancels pending work, and re
   });
   const reader = await context.newPage(); await reader.goto("/control");
   await expect(reader.locator("[data-vivic-control]")).toHaveAttribute("data-vivic-owner", "readonly");
-  await expect(reader.locator("[data-vivic-clear-local-data]")).toBeDisabled();
+  await openDanger(reader); await expect(reader.locator("[data-vivic-clear-local-data]")).toBeDisabled();
   const before = await activeCanvasId(page);
-  await page.locator("[data-vivic-clear-local-data]").click();
+  await openDanger(page); await page.locator("[data-vivic-clear-local-data]").click();
   await expect(page.getByRole("alertdialog")).toContainText("此操作无法撤销");
   await page.getByRole("button", { name: "取消", exact: true }).click();
   expect(await activeCanvasId(page)).toBe(before);
-  await expect(page.locator("[data-vivic-canvas-list] li")).toHaveCount(2);
+  await openSpace(page); await expect(page.locator("[data-vivic-canvas-list] li")).toHaveCount(2);
 
   let held: import("@playwright/test").Route | undefined;
   await page.route("**/api/intent", route => { held = route; });
   await sendCommand(page, "TEST 等待中的复杂请求");
   await expect.poll(() => Boolean(held)).toBe(true);
-  await showSettings(page);
-  await page.locator("[data-vivic-clear-local-data]").click();
+  await openDanger(page);
+  await openDanger(page); await page.locator("[data-vivic-clear-local-data]").click();
   await page.getByRole("alertdialog").screenshot({ path: path.join(evidence, "TEST-confirmation.png") });
   await page.getByRole("button", { name: "清除全部", exact: true }).click();
   await expect(page.locator("[data-vivic-data-feedback]")).toContainText("已清除全部画布");
-  await expect(page.locator("[data-vivic-canvas-list] li")).toHaveCount(1);
-  await expect(reader.locator("[data-vivic-canvas-list] li")).toHaveCount(1);
+  await openSpace(page); await expect(page.locator("[data-vivic-canvas-list] li")).toHaveCount(1);
+  await openSpace(reader); await expect(reader.locator("[data-vivic-canvas-list] li")).toHaveCount(1);
   await expect(display.locator(".vivic-card")).toHaveCount(0);
   await expect(display.locator("[data-vivic-stage]")).toHaveAttribute("data-vivic-stage", "STANDBY");
   await expect(page.locator("[data-vivic-command-cancel]")).toHaveCount(0);
-  await expect(page.locator("[data-vivic-tts-toggle]")).not.toBeChecked();
-  await expect(page.getByLabel("语音输入服务")).toHaveText("StepFun Plan ASR");
-  await expect(reader.getByLabel("语音输入服务")).toHaveText("StepFun Plan ASR");
-  await expect(page.locator("[data-vivic-tts-speed]")).toHaveValue("1.3");
+  await openVoice(page, true); await expect(page.getByRole("switch", { name: "语音回复", exact: true })).not.toBeChecked();
+  await expect(page.getByLabel("语音输入服务")).toHaveText("StepFun");
+  await openVoice(reader, true); await expect(reader.getByLabel("语音输入服务")).toHaveText("StepFun");
+  await expect(page.getByLabel("语速", { exact: true })).toHaveValue("1.3");
   await expect(page.getByRole("radio", { name: "自动", exact: true })).toBeChecked();
   const stored = await page.evaluate(async () => {
     const open = indexedDB.open("vivic-local-speech-v1", 1);
@@ -83,11 +93,11 @@ test("explicit reset clears only isolated app data, cancels pending work, and re
   await page.reload();
   await expect(page.locator("[data-vivic-control]")).toHaveAttribute("data-vivic-owner", "owner");
   expect(await activeCanvasId(page)).toBe(freshId);
-  await expect(page.locator("[data-vivic-canvas-list] li")).toHaveCount(1);
+  await openSpace(page); await expect(page.locator("[data-vivic-canvas-list] li")).toHaveCount(1);
   await reader.locator("[data-vivic-takeover]").click();
   await expect(reader.locator("[data-vivic-control]")).toHaveAttribute("data-vivic-owner", "owner");
   expect(await activeCanvasId(reader)).toBe(freshId);
-  await reader.locator("[data-vivic-canvas-list]").screenshot({ path: path.join(evidence, "TEST-empty-canvas-list.png") });
+  await openSpace(reader); await reader.locator("[data-vivic-canvas-list]").screenshot({ path: path.join(evidence, "TEST-empty-canvas-list.png") });
   const video = display.video();
   await reader.close(); await display.close();
   if (video) await video.saveAs(path.join(evidence, "TEST-reset-display.webm"));

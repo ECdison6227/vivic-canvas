@@ -1,13 +1,14 @@
 import { useContext, useEffect, useState, type ReactNode } from "react";
 import { Popover } from "radix-ui";
 import { motion, useReducedMotion } from "motion/react";
-import { MessageSquarePlus, Pencil, Trash2, X } from "lucide-react";
+import { HarkIcon } from "@/components/hark/HarkPrimitives";
 import { cardTargets, sameCardTarget, type Action, type CardRecord, type CardTarget, type Subcard } from "@/contracts";
 import { Button } from "@/components/ui/button";
 import { newId } from "@/lib/id";
 import { getDisplayStatus } from "@/sync/browserRuntime";
 import { renderVivicSpec } from "./vivicGUILibrary";
 import { SubcardEditorContext, SubcardThemeContext, type SubcardEditor } from "./SubcardEditorContext";
+import { ControlOverlayContext } from "@/control/ControlOverlayContext";
 
 interface AnchorProps { card: CardRecord; itemId?: string; children?: ReactNode }
 
@@ -21,6 +22,7 @@ export const SubcardAnchor = (props: AnchorProps) => {
 
 const SubcardContent = ({ card, itemId, children, target, editor }: AnchorProps & { target?: CardTarget; editor: SubcardEditor | null }) => {
   const theme = useContext(SubcardThemeContext);
+  const overlayHost = useContext(ControlOverlayContext);
   const [open, setOpen] = useState(false);
   const [compact, setCompact] = useState(false);
   const [draft, setDraft] = useState("");
@@ -55,26 +57,26 @@ const SubcardContent = ({ card, itemId, children, target, editor }: AnchorProps 
       <Popover.Trigger asChild>
         <button type="button" className="nodrag nopan vivic-subcard-trigger" aria-label={`${subcards.length ? "查看" : "添加"}子卡片：${target.label.slice(0, 70)}`}
           data-vivic-subcard-trigger={itemId ?? "card"} data-has-subcards={subcards.length > 0 || undefined}>
-          <MessageSquarePlus size={16} aria-hidden />{subcards.length > 0 && <span>{subcards.length}</span>}
+          <HarkIcon name="chat" size={16} aria-hidden />{subcards.length > 0 && <span>{subcards.length}</span>}
         </button>
       </Popover.Trigger>
-      <Popover.Portal>
+      <Popover.Portal container={overlayHost ?? undefined}>
         <Popover.Content side={compact ? "bottom" : "right"} align="center" sideOffset={28} collisionPadding={12} updatePositionStrategy="always" hideWhenDetached
-          className={`${theme === "dark" ? "dark " : ""}vivic-subcard-popover nodrag nopan nowheel`} aria-label="行扩充子卡片" data-vivic-subcard-popover data-parent-id={card.id} data-item-id={itemId}>
+          className={`${theme === "dark" ? "dark " : ""}vh-hark vivic-subcard-popover nodrag nopan nowheel`} data-appearance={theme} aria-label="行扩充子卡片" data-vivic-subcard-popover data-parent-id={card.id} data-item-id={itemId}>
           <motion.div initial={{ opacity: 0, y: reduced ? 0 : 5 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: reduced ? 0 : 0.16 }}>
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0"><p className="text-sm font-semibold">{itemId ? "这一行的扩充" : "卡片扩充"}</p>
                 <p className="mt-1 break-words text-xs text-muted-foreground line-clamp-3">{target.label}</p></div>
-              <Popover.Close asChild><button type="button" className="rounded p-1 focus-visible:outline-2" aria-label="关闭子卡片"><X size={16} /></button></Popover.Close>
+              <Popover.Close asChild><button type="button" className="rounded p-1 focus-visible:outline-2" aria-label="关闭子卡片"><HarkIcon name="close" size={16} /></button></Popover.Close>
             </div>
             <div className="vivic-subcard-scroll">
               {subcards.map(item => <article key={item.id} data-vivic-subcard={item.id} className="border-b border-border py-3 last:border-0">
                 <div className="break-words text-sm leading-7 select-text">{renderVivicSpec({ _type: "Markdown", value: item.text })}</div>
                 {editor?.editable && <div className="mt-2 flex justify-end gap-1">
-                  <Button type="button" variant="ghost" size="sm" aria-label="编辑这张子卡片" onClick={() => { setEditingId(item.id); setDraft(item.text); }}><Pencil size={14} />编辑</Button>
+                  <Button type="button" variant="ghost" size="sm" aria-label="编辑这张子卡片" onClick={() => { setEditingId(item.id); setDraft(item.text); }}><HarkIcon name="edit" size={14} />编辑</Button>
                   <Button type="button" variant="ghost" size="sm" aria-label="删除这张子卡片" onClick={() => {
                     if (write({ type: "card.subcard.delete", targetId: card.id, subcardId: item.id }) && editingId === item.id) startNew();
-                  }}><Trash2 size={14} />删除</Button>
+                  }}><HarkIcon name="trash" size={14} />删除</Button>
                 </div>}
               </article>)}
               {editor?.editable && <form className="mt-3 space-y-2" onSubmit={event => {

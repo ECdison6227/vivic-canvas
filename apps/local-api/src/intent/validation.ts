@@ -6,11 +6,11 @@ const CREATABLE = new Set(["CountdownCard", "TodoCard", "NoteCard"]);
 const SCENE_ONLY = new Set<string>(SCENES.map(scene => scene.cardType).filter(type => !CREATABLE.has(type) && type !== "ChartCard"));
 // Data cards are created by verified adapters, but every registered renderer
 // supports safe focus/delete/highlight of an existing card.
-const TARGETABLE = new Set([...CREATABLE, "SearchResultCard", "WeatherCard", "TableCard", "ChartCard", ...SCENE_ONLY]);
+const TARGETABLE = new Set([...CREATABLE, "SearchResultCard", "WeatherCard", "TableCard", "ChartCard", "ExtensionCard", ...SCENE_ONLY]);
 /** Model edits re-validate the whole display schema; grounding is checked separately. */
 const UPDATABLE_SCENE = new Set([...SCENE_ONLY, "ChartCard"]);
 const displaySchemaOf = (type: string) => CardRecordSchema.options.find(option => option.shape.type.value === type)?.shape.displayProps;
-type Target = Pick<CanvasContext["cards"][number], "type" | "displayProps" | "sourceDataSummary">;
+type Target = Pick<CanvasContext["cards"][number], "type" | "displayProps" | "sourceDataSummary"> & { contextSummary?: { truncatedFields: string[] } };
 
 /** Validate against the same sequential state the reducer will consume. `prebuilt`
  * holds ids of scene cards the server already built and validated this turn. */
@@ -45,6 +45,7 @@ export const actionExecutionIssue = (actions: Action[], ctx: CanvasContext, preb
         }
       }
       if (action.type === "card.update") {
+        if (action.displayProps && target.contextSummary?.truncatedFields.some(key => Object.hasOwn(action.displayProps!, key))) return "目标字段仅有摘要，不能覆盖完整原文，请在卡片编辑器中修改";
         if (action.variant !== undefined) {
           if (target.type !== "NoteCard") return "只有便笺（NoteCard）可以更新 variant，其他卡片需澄清";
           if ((action.displayProps && Object.keys(action.displayProps).length) || (action.sourceData && Object.keys(action.sourceData).length)) {
@@ -54,6 +55,8 @@ export const actionExecutionIssue = (actions: Action[], ctx: CanvasContext, preb
           continue;
         }
         if (UPDATABLE_SCENE.has(target.type)) {
+          if (target.type === "TravelOffersCard" && (action.sourceData && Object.keys(action.sourceData).length
+            || action.displayProps && Object.keys(action.displayProps).some(key => key !== "selectedIds" && key !== "notes"))) return "旅游服务结果与查询条件不能由模型改写，请重新查询";
           if (!action.displayProps || (action.sourceData && Object.keys(action.sourceData).length)) return "场景卡片只能更新 displayProps 字段";
           const display = { ...target.displayProps, ...action.displayProps };
           if (!displaySchemaOf(target.type)?.safeParse(display).success) return "更新字段不符合卡片类型";

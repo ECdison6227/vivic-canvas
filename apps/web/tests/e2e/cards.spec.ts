@@ -8,10 +8,12 @@ import {
   internal,
   newEvidencePage,
   setTheme,
+  waitForDisplayRuntime,
 } from "./helpers";
 
 const boot = async (page: import("@playwright/test").Page) => {
   await page.goto("/display");
+  await waitForDisplayRuntime(page);
   await setTheme(page, "light");
   await awaken(page);
   await createDemoCards(page);
@@ -27,9 +29,11 @@ test("A04: three minimal cards render via the styled registry", async ({
     page.locator('[data-card-id="e2e-countdown"] [data-aui="text"]'),
   ).toBeVisible();
   const cardBg = await page
-    .locator('[data-card-id="e2e-countdown"]')
+    .locator('[data-card-id="e2e-todo"] > .hark-surface-fill')
     .evaluate((el) => getComputedStyle(el).backgroundColor);
   expect(cardBg).not.toBe("rgba(0, 0, 0, 0)");
+  // Pure countdown intentionally stays digit-only on the frozen Hark sky.
+  await expect(page.locator('[data-card-id="e2e-countdown"] > .hark-surface-fill')).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
 
   await page
     .locator('[data-card-id="e2e-countdown"]')
@@ -48,7 +52,7 @@ test("Scenario 1: countdown is only digits, focus changes the camera only", asyn
   await boot(page);
 
   const countdown = page.locator('[data-card-id="e2e-countdown"]');
-  const text = (await countdown.textContent())?.trim() ?? "";
+  const text = (await countdown.locator('[data-aui="text"]').textContent())?.trim() ?? "";
   expect(text).toMatch(/\d{1,2}:\d{2}/);
   // Nothing but digits, colons and whitespace — no labels, no footer.
   expect(text).toMatch(/^[\d:\s]+$/);
@@ -73,7 +77,7 @@ test("Scenario 1: countdown is only digits, focus changes the camera only", asyn
   // density must stay intact, rather than its changing clock text.
   expect(await countdownRecord()).toEqual(beforeRecord);
   // Focus must not change variant/density: markup of the countdown is digit-only.
-  expect(((await countdown.textContent()) ?? "").trim()).toMatch(/^[\d:\s]+$/);
+  expect(((await countdown.locator('[data-aui="text"]').textContent()) ?? "").trim()).toMatch(/^[\d:\s]+$/);
   await page.screenshot({ path: path.join(EVIDENCE, "focus.png") });
 
   await fire(page, "restore", [{ type: "canvas.restore" }]);

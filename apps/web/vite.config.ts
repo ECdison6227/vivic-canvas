@@ -25,8 +25,10 @@ const readLocalToken = (): string | undefined => {
   }
 };
 
-export default defineConfig({
-  plugins: [react(), tailwindcss()],
+export default defineConfig(({ mode }) => ({
+  plugins: [react(), tailwindcss(), { name: "vivic-online-build-marker", generateBundle() {
+    if (mode === "online") this.emitFile({ type: "asset", fileName: ".vivic-online-build.json", source: JSON.stringify({ mode: "online", version: 1 }) });
+  } }],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "src"),
@@ -37,7 +39,7 @@ export default defineConfig({
       // Second page: the beta landing at /landing/ (its own React entry, src/landing/).
       input: {
         main: path.resolve(__dirname, "index.html"),
-        landing: path.resolve(__dirname, "landing/index.html"),
+        ...(mode === "online" ? {} : { landing: path.resolve(__dirname, "landing/index.html") }),
       },
     },
   },
@@ -48,12 +50,12 @@ export default defineConfig({
     proxy: {
       "/api": {
         target: localApiTarget,
-        changeOrigin: true,
+        changeOrigin: mode !== "online",
         configure: (proxy) => {
           proxy.on("proxyReq", (proxyReq) => {
             // Lazy re-read per request: the API generates .env.local on its
             // first boot, possibly after this config was evaluated.
-            const token = readLocalToken();
+            const token = mode === "online" ? undefined : readLocalToken();
             if (token) {
               proxyReq.setHeader("authorization", `Bearer ${token}`);
             }
@@ -66,4 +68,4 @@ export default defineConfig({
     environment: "node",
     include: ["src/**/*.test.{ts,tsx}"],
   },
-});
+}));

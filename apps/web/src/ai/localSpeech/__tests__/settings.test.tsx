@@ -17,18 +17,18 @@ const fakeManager = () => {
 };
 afterEach(() => { document.body.innerHTML = ""; vi.unstubAllGlobals(); });
 describe("local speech settings", () => {
-  it("prepares models on mount while retaining explicit retry controls", async () => {
+  it("only inspects the cache on mount and downloads a model after an explicit click", async () => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     const container = document.createElement("div"); document.body.append(container);
     const root = createRoot(container), manager = fakeManager();
     await act(async () => root.render(<LocalSpeechSettings manager={manager as unknown as LocalSpeechModelManager} />));
-    expect(manager.prepareDefaultModels).toHaveBeenCalledTimes(1); expect(manager.prepareModel).not.toHaveBeenCalled();
+    expect(manager.refresh).toHaveBeenCalledTimes(1); expect(manager.prepareDefaultModels).not.toHaveBeenCalled(); expect(manager.prepareModel).not.toHaveBeenCalled();
     expect(container.textContent).toContain("vivic"); expect(container.textContent).toContain("默认不监听");
     expect(container.textContent).toContain("169.23 MB"); expect(container.textContent).toContain("13.08 MB");
     await act(async () => (container.querySelector('[data-local-speech-model="asr-zh"] button') as HTMLButtonElement).click());
     expect(manager.prepareModel).toHaveBeenCalledWith("asr-zh");
     await act(async () => root.unmount());
-    expect(manager.prepareDefaultModels.mock.calls[0]![0].signal?.aborted).toBe(true);
+    expect(manager.prepareDefaultModels).not.toHaveBeenCalled();
   });
   it("disables downloads for a read-only host and stops sessions before clearing", async () => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);

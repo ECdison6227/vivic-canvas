@@ -1,13 +1,19 @@
-import { useReducedMotion } from "motion/react";
-import { AtmosphereBackground } from "@/components/atmosphere/AtmosphereBackground";
+import { HarkCanvasBackdrop } from "@/components/hark/HarkCanvasBackdrop";
 import { paletteFor } from "@/components/atmosphere/palettes";
-import { useDisplayPreferences } from "@/state/canvasStore";
+import { useDisplayPreferences, useVivicState } from "@/state/canvasStore";
+import type { SpacePhase } from "@/motion/spaceMotion";
+import { useSystemReducedMotion } from "@/motion/useMotionVisibility";
 
-/** The 流光以太 atmosphere stays outside the React Flow transform; its static
- * palette wash also covers WebGL unavailability/loss without a React state
- * callback from the graphics driver (Firefox may dispatch that during another render). */
+/** Source sky and composited light stay outside React Flow, without a GPU context. */
 export const BackgroundLayer = ({ theme }: { theme: "light" | "dark" }) => {
   const preferences = useDisplayPreferences();
-  const reduced = useReducedMotion() || preferences.reducedMotion;
-  return <AtmosphereBackground theme={theme} palette={paletteFor(theme, preferences)} paused={reduced} layer="background" />;
+  const stage = useVivicState(state => state.stage);
+  const activity = useVivicState(state => state.activity);
+  const focused = useVivicState(state => !!state.focus);
+  const reduced = useSystemReducedMotion() || preferences.reducedMotion;
+  const phase: SpacePhase = stage === "AWAKENING" ? "awakening"
+    : activity ? activity.phase === "listening" ? "listening" : activity.phase === "speaking" ? "speaking" : "thinking"
+    : focused ? "focus" : "idle";
+  return <HarkCanvasBackdrop theme={theme} palette={paletteFor(theme, preferences)} paused={reduced} layer="background"
+    motionMode={preferences.ambientMotion} intensity={preferences.ambientIntensity} phase={phase} />;
 };

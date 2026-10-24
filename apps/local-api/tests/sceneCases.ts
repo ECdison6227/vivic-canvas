@@ -12,6 +12,8 @@ export const SCENE_ZONE = "Asia/Shanghai";
 export interface SceneCase { scene: SceneId; input: string; payload: Record<string, unknown> }
 
 export const SCENE_CASES: SceneCase[] = [
+  { scene: "travel_offers", input: "帮我做旅游结果卡：下周去杭州住两晚，预算500",
+    payload: { kind: "hotel", destination: "杭州", dateText: "下周", nights: 2, budget: 500 } },
   { scene: "countdown", input: "距离我的生日还有 25 天，帮我做个倒计时",
     payload: { title: "我的生日", targetDate: "2026-11-11" } },
   { scene: "academic_paper", input: "帮我整理一下这篇论文：Attention Is All You Need，作者 Ashish Vaswani、Noam Shazeer，发表在 NeurIPS 2017，DOI 10.48550/arXiv.1706.03762。摘要：我们提出了一种完全基于注意力机制的网络架构 Transformer，摒弃了循环和卷积，在机器翻译任务上效果更好，训练也更快。",

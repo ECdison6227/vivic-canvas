@@ -13,6 +13,7 @@ const state = vi.hoisted(() => ({
 vi.mock("../index", async importOriginal => {
   const actual = await importOriginal<typeof import("../index")>();
   return { ...actual,
+    localSpeechModels: { ...actual.localSpeechModels, prepareModel: vi.fn(async () => {}) },
     createLocalSpeechSession: (options: LocalSpeechOptions) => {
       const session = { options, start: vi.fn(async () => { options.onEvent({ type: "status", status: "listening" }); }),
         acceptPcm: vi.fn(async () => {}), dispose: vi.fn(), stop: vi.fn() };

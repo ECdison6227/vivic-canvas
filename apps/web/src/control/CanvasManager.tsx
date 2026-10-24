@@ -21,7 +21,9 @@ export const CanvasManager = ({
   const [editingTitle, setEditingTitle] = useState("");
 
   const commitRename = (id: string) => {
-    host.renameCanvas(id, editingTitle);
+    const title = editingTitle.trim();
+    if (readonly || !title || title.length > 120) return;
+    host.renameCanvas(id, title);
     setEditingId(null);
   };
 
@@ -65,10 +67,15 @@ export const CanvasManager = ({
                     onChange={(e) => setEditingTitle(e.target.value)}
                     className="h-7 text-xs"
                     aria-label="画布名称"
+                    maxLength={120}
+                    required
+                    disabled={readonly}
+                    onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); setEditingId(null); } }}
                   />
-                  <Button type="submit" size="sm" variant="secondary">
+                  <Button type="submit" size="sm" variant="secondary" disabled={readonly || !editingTitle.trim()}>
                     保存
                   </Button>
+                  <Button type="button" size="sm" variant="ghost" onClick={() => setEditingId(null)}>取消</Button>
                 </form>
               ) : (
                 <>

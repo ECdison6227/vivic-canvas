@@ -1,7 +1,7 @@
 import { expect, test, type Route } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { activeCanvasId, sendCommand, showSettings } from "./helpers1";
+import { activeCanvasId, sendCommand, openVoice } from "./helpers1";
 
 interface TestAudio {
   currentTime: number; paused: boolean; volume: number;
@@ -12,7 +12,9 @@ interface TestAudio {
 declare global { interface Window { __voiceTest: { audios: TestAudio[]; plays: number; pauses: number; utterances: SpeechSynthesisUtterance[]; cancels: number } } }
 
 const root = path.resolve(process.cwd(), "../../evidence/voice-feedback");
-test.use({ video: { mode: "on", size: { width: 1440, height: 900 } } });
+// Video is evidence only. Constrained Windows/Android co-verification can omit
+// encoding while retaining every audio, timing, sync and cancellation assertion.
+test.use({ video: process.env.VIVIC_E2E_VIDEO === "off" ? "off" : { mode: "on", size: { width: 1440, height: 900 } } });
 test.beforeEach(async ({ context, page }) => {
   // No real Audio.play, speaker graph, speech synthesis, or physical mic.
   // OfflineAudioContext may decode samples without creating an output graph.
@@ -46,6 +48,7 @@ test.beforeEach(async ({ context, page }) => {
   });
   await page.goto("/control");
   await expect(page.locator("[data-vivic-control]")).toHaveAttribute("data-vivic-owner", "owner");
+  await openVoice(page, true);
 });
 
 test("browser boundary callbacks highlight words and never claim PCM amplitude", async ({ page, context }) => {
@@ -54,8 +57,8 @@ test("browser boundary callbacks highlight words and never claim PCM amplitude",
   await page.route("**/api/intent", route => finish(route, "你好世界"));
   const display = await context.newPage(); await display.goto(`/display?canvasId=${await activeCanvasId(page)}`);
   await page.getByLabel("语音输出服务").click();
-  await page.getByRole("option", { name: "系统本地音色", exact: true }).click();
-  await page.locator("[data-vivic-tts-toggle]").check();
+  await page.getByRole("option", { name: "系统音色", exact: true }).click();
+  await page.getByRole("switch", { name: "语音回复", exact: true }).check();
   await sendCommand(page, "TEST 浏览器语音边界");
   await expect.poll(() => page.evaluate(() => window.__voiceTest.utterances.length)).toBe(1);
   await expect(display.locator("[data-vivic-speaking]")).toHaveCount(0);
@@ -81,7 +84,8 @@ test("browser boundary callbacks highlight words and never claim PCM amplitude",
   await expect(display.locator("[data-vivic-speaking]")).toHaveCount(0);
   expect(cloud).toBe(0); expect(await display.evaluate(() => window.__voiceTest.plays)).toBe(0);
   await page.reload();
-  await expect(page.locator("[data-vivic-tts-toggle]")).not.toBeChecked();
+  await openVoice(page, true);
+  await expect(page.getByRole("switch", { name: "语音回复", exact: true })).not.toBeChecked();
   await display.close();
 });
 
@@ -101,8 +105,8 @@ test("fixed cues are opt-in, restore thinking, and cancel with their owning requ
   await page.waitForTimeout(600);
   expect(assets).toBe(0); expect(cloud).toBe(0);
   await page.locator("[data-vivic-command-cancel]").click();
-  await showSettings(page);
-  await page.locator("[data-vivic-tts-toggle]").check();
+  await openVoice(page, true);
+  await page.getByRole("switch", { name: "语音回复", exact: true }).check();
   await sendCommand(page, "TEST 等待复杂规划");
   await expect.poll(() => assets).toBe(1);
   await expect.poll(() => page.evaluate(() => window.__voiceTest.audios.length)).toBe(1);
@@ -121,6 +125,15 @@ test("fixed cues are opt-in, restore thinking, and cancel with their owning requ
 });
 
 test("actual decoded PCM and the media clock drive word highlights in both displays", async ({ page, context }, testInfo) => {
+  // This scenario simulates a connected cloud TTS service. The separate fixed
+  // cue scenario deliberately stays disconnected to exercise offline assets.
+  await page.route("**/api/providers/status", route => route.fulfill({ json: {
+    activeProvider: "stepfun", instance: "TEST-timed-speech", degradations: [],
+    providers: [{ name: "stepfun", connected: true, defaultModel: "step-3.5-flash", models: ["step-3.5-flash"], capabilities: ["chat", "structured"] }],
+  } }));
+  await page.reload();
+  await expect(page.locator("[data-vivic-ai-badge]")).toContainText("已连接");
+  await openVoice(page, true);
   const audio = readFileSync(path.resolve(process.cwd(), "public/voice-feedback/checking.mp3"));
   let calls = 0;
   await page.route("**/api/speech", route => {
@@ -135,8 +148,8 @@ test("actual decoded PCM and the media clock drive word highlights in both displ
   const one = await context.newPage(), two = await context.newPage();
   const canvasId = await activeCanvasId(page);
   await one.goto(`/display?canvasId=${canvasId}`); await two.goto(`/display?canvasId=${canvasId}`);
-  await page.locator("[data-vivic-tts-toggle]").check();
-  await page.locator("[data-vivic-word-timing]").check();
+  await page.getByRole("switch", { name: "语音回复", exact: true }).check();
+  await page.getByRole("switch", { name: "逐词字幕", exact: true }).check();
   await sendCommand(page, "TEST 合成一条带时间戳的短句");
   await expect.poll(() => page.evaluate(() => window.__voiceTest.audios.length)).toBe(1);
   await expect(one.locator("[data-vivic-speaking]")).toHaveCount(0);

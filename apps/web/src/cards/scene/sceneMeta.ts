@@ -6,6 +6,9 @@ import type { CardType } from "@/contracts";
 
 /** Kicker (small overline) and icon per card type; the visible card "family name". */
 export const SCENE_CARD_KICKERS: Record<CardType, { label: string; icon: LucideIcon }> = {
+  FileCard: { label: "文件", icon: BookOpenText },
+  TravelOffersCard: { label: "旅游结果", icon: Search },
+  ExtensionCard: { label: "扩展卡片", icon: StickyNote },
   CountdownCard: { label: "倒计时", icon: Hourglass },
   TodoCard: { label: "待办", icon: ListChecks },
   WeatherCard: { label: "天气", icon: CloudSun },
