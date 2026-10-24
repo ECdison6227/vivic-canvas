@@ -181,7 +181,9 @@ test("B02: /display exposes portal/view controls without settings or debug chrom
   const controls = B.getByRole("navigation", { name: "展示画布操作", exact: true });
   await expect(controls).toBeVisible();
   await expect(controls.locator("button")).toHaveCount(3);
-  await expect(controls.getByRole("button", { name: "卡片传送门 1", exact: true })).toBeVisible();
+  const portal = controls.getByRole("button", { name: "卡片传送门", exact: true });
+  await expect(portal).toBeVisible();
+  await expect(portal.locator(".vivic-portal-count")).toHaveText("1");
   await expect(controls.getByRole("button", { name: "显示全部", exact: true })).toBeEnabled();
   await expect(controls.getByRole("button", { name: "恢复视图", exact: true })).toBeDisabled();
   const cardActions = B.getByRole("group", { name: "任务甲的操作", exact: true });

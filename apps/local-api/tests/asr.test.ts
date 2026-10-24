@@ -252,11 +252,15 @@ describe("POST /api/transcribe", () => {
     for (const abortRequest of [false, true]) {
       const cancel = vi.fn();
       const controller = new AbortController();
-      const fetchImpl = vi.fn(async () => {
-        if (abortRequest) setTimeout(() => controller.abort(), 10);
-        return new Response(new ReadableStream({ cancel }), { headers: { "content-type": "text/event-stream" } });
-      });
-      await expectFailure(await post(setup(fetchImpl, { timeout: 40 }).app, form(), controller.signal),
+      let reading!: () => void;
+      const started = new Promise<void>(resolve => { reading = resolve; });
+      const fetchImpl = vi.fn(async () => new Response(new ReadableStream({
+        // Signal actual body consumption, independent of CI CPU/timer speed.
+        pull() { reading(); }, cancel,
+      }), { headers: { "content-type": "text/event-stream" } }));
+      const pending = post(setup(fetchImpl, { timeout: abortRequest ? 5000 : 40 }).app, form(), controller.signal);
+      if (abortRequest) { await started; controller.abort(); }
+      await expectFailure(await pending,
         abortRequest ? 503 : 504, abortRequest ? "asr-cancelled" : "asr-timeout");
       expect(cancel).toHaveBeenCalledOnce();
     }
