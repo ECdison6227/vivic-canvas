@@ -67,7 +67,7 @@ tests/helpers.ts(8,23): TS2322: modelApiBaseUrl is string | undefined, but Local
 
 - [x] D1 卡片契约（2026-10-30；接线与发布随 D2 集成）
 - [ ] D2 规划器只填参数
-- [ ] D3 图片
+- [x] D3 图片（2026-10-30；HTTP 接线随 D2 集成，真实视觉验收待补）
 - [x] D4 三通道输出（2026-10-30；统一接线随 D2 集成）
 
 ## D1 执行记录（2026-10-30，Codex + 并行代理）
@@ -83,6 +83,14 @@ tests/helpers.ts(8,23): TS2322: modelApiBaseUrl is string | undefined, but Local
 - 新增 `intent/channels.ts`，say 最长 40 个 UTF-16 单位，拒绝 http、连续六位数字与列表符号；不安全则使用字幕首句，仍不安全就不播报。text 最长 120，截断不拆坏代理对。
 - `applyOutputChannels` 只保留一条字幕，保留卡片动作。闲聊/即时短答走文字，回答与新建类落卡；澄清、错误和宿主操作保留现有独立响应协议，不伪造卡片或混入互斥的 envelope。
 - `vitest run tests/output-channels.test.ts --maxWorkers=4` 原 55 项通过，父代理补一例裸 HTTP 文本拒绝，共 56 项；统一规划器与规则/适配器接线随 D2 提交后回归。
+
+## D3 执行记录（2026-10-30，Codex + 并行代理）
+
+- `hosted/assets.ts` 新增 `persistIntentImage`：只处理本次明确上传的一张图，验证像素、规范化 WebP、去除私有元数据后存入账号/Space 资源，复用去重、100MB 容量限制、事务和撤权检查。保留的是安全规范化的图像，不宣称原始文件字节未变。
+- `cards/imageAnalysis.ts` 仅收 headline/summary/keyPoints；media 引用只能由宿主提供，不读取历史图、外链或模型猜测的 URL。继续使用 NewsCard。
+- `intent-image-retention.test.ts` 23 项通过；连同原图片解码测试 48 项通过。父代理并行验证的完整 HTTP 链 5 项通过：模型图文输入、卡片提案、owner 提交、资源读回、跨账号/Space 拒绝。HTTP 接线与对应测试随 D2 统一提交。
+- 已检查源码 NewsCard 的 MediaImage/useMediaUrl 支持 hosted media 引用；尚未做当前线上页面的视觉验收。若视觉模型未连接或规划失败，已明确上传且保存的图片可能暂时无卡片引用，但仍受配额限制；不自动删除去重资源以免误删其他卡片使用的图。
+- 测试使用程序生成图片与隔离账号、模拟视觉模型，不能作为真实模型识图质量结论。
 
 ## 阶段 E
 

@@ -7,6 +7,8 @@ import { FILE_LIMITS, FileCardSchema, type CardRecord, type SceneImage } from "@
 import type { HostedSpaceStore, SpaceIdentity } from "../space/store.js";
 import { hostedImageSources } from "../space/executor.js";
 import { SpaceError } from "../space/errors.js";
+import { validateImageAttachment, type Attachment } from "../images.js";
+import { decodeImage } from "../imageDecoder.js";
 import { boundedBytes, hostedBody, hostedForm, hostedJson } from "./http.js";
 
 export interface HostedAsset {
@@ -15,6 +17,7 @@ export interface HostedAsset {
   pageCount?: number; width?: number; height?: number;
 }
 type AssetIndex = Record<string, HostedAsset>;
+type IncomingImage = { asset: HostedAsset; bytes: Uint8Array };
 const Deletions = z.record(z.string().regex(/^(?:file|image)_[a-f0-9]{64}$/), z.strictObject({
   id: z.string().regex(/^(?:file|image)_[a-f0-9]{64}$/), sha256: z.string().regex(/^[a-f0-9]{64}$/),
   sizeBytes: z.int().min(0), requestedAt: z.iso.datetime(),
@@ -268,37 +271,53 @@ export function createHostedAssetService(options: { store: HostedSpaceStore; dat
       return hostedJson({ ok: true, snapshot: next, assets: result, addedCardIds: cards.map(card => card.id) });
     });
   }
-  async function photos(request: Request, identity: SpaceIdentity, spaceId: string) {
-    const form = await hostedForm(request, FILE_LIMITS.batchBytes + 100_000), files = form.getAll("files");
-    if (!files.length || files.length > 5 || files.some(file => !(file instanceof File))) fail(400, "photo-count", "每次最多5张图片。");
-    if ((files as File[]).reduce((sum, file) => sum + file.size, 0) > FILE_LIMITS.batchBytes) fail(413, "photo-size", "图片合计不超过10MB。");
-    const incoming: Array<{ asset: HostedAsset; bytes: Uint8Array }> = [];
-    for (const file of files as File[]) {
-      if (!file.size || !["image/jpeg", "image/png", "image/webp"].includes(file.type)) fail(400, "photo-type", "仅支持JPEG、PNG或WebP图片。");
-      try {
-        const image = sharp(Buffer.from(await file.arrayBuffer()), { limitInputPixels: 50_000_000, failOn: "error" });
-        const metadata = await image.metadata();
-        if (!metadata.width || !metadata.height || Math.max(metadata.width, metadata.height) > 16384 || metadata.pages && metadata.pages > 1) fail(400, "photo-dimensions", "图片尺寸或帧数超出支持范围。");
-        const { data, info } = await image.rotate().resize(1920, 1920, { fit: "inside", withoutEnlargement: true }).webp({ quality: 86 }).toBuffer({ resolveWithObject: true });
-        const sha256 = hash(data);
-        incoming.push({ bytes: data, asset: { id: `image_${sha256}`, kind: "image", name: `photo-${sha256.slice(0, 12)}.webp`, mediaType: "image/webp", sha256,
-          sizeBytes: data.byteLength, width: info.width, height: info.height, text: "", parseStatus: "unsupported", createdAt: new Date(now()).toISOString() } });
-      } catch (error) { if (error instanceof SpaceError) throw error; fail(400, "photo-decode", "图片无法解码或尺寸过大。"); }
-    }
-    request.signal.throwIfAborted();
+  async function preparePhoto(bytes: Uint8Array): Promise<IncomingImage> {
+    try {
+      const image = sharp(Buffer.from(bytes), { limitInputPixels: 50_000_000, failOn: "error" });
+      const metadata = await image.metadata();
+      if (!metadata.width || !metadata.height || Math.max(metadata.width, metadata.height) > 16384 || metadata.pages && metadata.pages > 1) fail(400, "photo-dimensions", "图片尺寸或帧数超出支持范围。");
+      const { data, info } = await image.rotate().resize(1920, 1920, { fit: "inside", withoutEnlargement: true }).webp({ quality: 86 }).toBuffer({ resolveWithObject: true });
+      const sha256 = hash(data);
+      return { bytes: data, asset: { id: `image_${sha256}`, kind: "image", name: `photo-${sha256.slice(0, 12)}.webp`, mediaType: "image/webp", sha256,
+        sizeBytes: data.byteLength, width: info.width, height: info.height, text: "", parseStatus: "unsupported", createdAt: new Date(now()).toISOString() } };
+    } catch (error) { if (error instanceof SpaceError) throw error; fail(400, "photo-decode", "图片无法解码或尺寸过大。"); }
+  }
+  function persistPhotos(accountId: string, spaceId: string, incoming: IncomingImage[], deviceId: string, signal?: AbortSignal): SceneImage[] {
+    signal?.throwIfAborted();
     return assetTransaction(() => {
-      store.assertDeviceActive(identity.accountId, identity.device.id);
-      for (const { asset } of incoming) assertShaNotDeleting(identity.accountId, spaceId, asset.sha256);
-      const assets = index(identity.accountId, spaceId); let size = Object.values(assets).reduce((sum, asset) => sum + asset.sizeBytes, 0);
+      store.assertDeviceActive(accountId, deviceId);
+      for (const { asset } of incoming) assertShaNotDeleting(accountId, spaceId, asset.sha256);
+      const assets = index(accountId, spaceId); let size = Object.values(assets).reduce((sum, asset) => sum + asset.sizeBytes, 0);
       const planned = new Set(Object.keys(assets));
       for (const { asset } of incoming) if (!planned.has(asset.id)) { size += asset.sizeBytes; planned.add(asset.id); }
       if (size > FILE_LIMITS.spaceBytes) fail(413, "space-quota", "Space原件容量已达100MB。");
       for (const { asset, bytes } of incoming) if (!assets[asset.id]) {
-        persistBytes(identity.accountId, spaceId, asset, bytes); assets[asset.id] = asset;
-      }
-      store.setAccountValue(identity.accountId, assetKey(spaceId), assets);
-      return hostedJson({ images: incoming.map(({ asset }): SceneImage => ({ src: `media:${asset.id}`, width: asset.width, height: asset.height })) });
+        persistBytes(accountId, spaceId, asset, bytes); assets[asset.id] = asset;
+      } else bytesFor(accountId, spaceId, assets[asset.id]!);
+      signal?.throwIfAborted();
+      store.setAccountValue(accountId, assetKey(spaceId), assets);
+      return incoming.map(({ asset }): SceneImage => ({ src: `media:${asset.id}`, width: asset.width, height: asset.height }));
     });
+  }
+  async function photos(request: Request, identity: SpaceIdentity, spaceId: string) {
+    const form = await hostedForm(request, FILE_LIMITS.batchBytes + 100_000), files = form.getAll("files");
+    if (!files.length || files.length > 5 || files.some(file => !(file instanceof File))) fail(400, "photo-count", "每次最多5张图片。");
+    if ((files as File[]).reduce((sum, file) => sum + file.size, 0) > FILE_LIMITS.batchBytes) fail(413, "photo-size", "图片合计不超过10MB。");
+    const incoming: IncomingImage[] = [];
+    for (const file of files as File[]) {
+      if (!file.size || !["image/jpeg", "image/png", "image/webp"].includes(file.type)) fail(400, "photo-type", "仅支持JPEG、PNG或WebP图片。");
+      incoming.push(await preparePhoto(new Uint8Array(await file.arrayBuffer())));
+    }
+    return hostedJson({ images: persistPhotos(identity.accountId, spaceId, incoming, identity.device.id, request.signal) });
+  }
+  /** Only the current explicit attachment is accepted: never resolve a URL or a previous card's image. */
+  async function persistIntentImage(accountId: string, spaceId: string, attachment: Attachment, deviceId: string, signal?: AbortSignal): Promise<string> {
+    signal?.throwIfAborted();
+    store.assertDeviceActive(accountId, deviceId); index(accountId, spaceId);
+    const validated = await validateImageAttachment(attachment, decodeImage);
+    signal?.throwIfAborted();
+    const incoming = await preparePhoto(validated.bytes);
+    return persistPhotos(accountId, spaceId, [incoming], deviceId, signal)[0]!.src;
   }
   async function handle(request: Request, identity: SpaceIdentity): Promise<Response | null> {
     const url = new URL(request.url), match = /^\/api\/space\/spaces\/([^/]+)\/(assets|photos|uploads)(?:\/([^/]+))?(?:\/(content))?$/.exec(url.pathname);
@@ -384,6 +403,6 @@ export function createHostedAssetService(options: { store: HostedSpaceStore; dat
     try { intents = pending(account.id, space.id); } catch { recoveryFailures++; continue; }
     for (const id of Object.keys(intents)) try { finishDeletion(account.id, space.id, id); } catch { recoveryFailures++; }
   }
-  return { handle, get, bytesFor, stageLegacyAsset, list: (accountId: string, spaceId: string) => Object.values(index(accountId, spaceId)), physical,
+  return { handle, get, bytesFor, stageLegacyAsset, persistIntentImage, list: (accountId: string, spaceId: string) => Object.values(index(accountId, spaceId)), physical,
     deletionRecoveryStatus: () => ({ failures: recoveryFailures }) };
 }
