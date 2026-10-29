@@ -17,6 +17,9 @@ export const countdownContract = defineCardContract({
   cardType: "CountdownCard",
   slots: CountdownSlotsSchema,
   parse(text) {
+    // The legacy reminder extractor can treat these suffixes as reminder text.
+    // Defer the whole request rather than swallowing another action/condition.
+    if (/顺便|同时|接着|另外|随后|要是|除非|假如|否则|并(?:打开|关闭|创建|新建|添加|设|删除|显示|恢复|保存)/.test(text)) return null;
     const reminders = parseExactReminders(text);
     if (reminders) {
       // A single slots object cannot represent multiple reminders without loss.

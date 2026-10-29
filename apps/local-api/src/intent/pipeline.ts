@@ -38,6 +38,7 @@ import { observeDecision, type DecisionTrace, type PlannerRouteHint } from "../d
 import { runSlotPlanner } from "./slotPlanner.js";
 import { applyOutputChannels, normalizeOutputChannels } from "./channels.js";
 import { splitClauses } from "../decision/split.js";
+import { runDecisionOn } from "../decision/on.js";
 
 export interface IntentRequest { text: string; canvasContext: CanvasContext; attachments?: Attachment[]; continuation?: { utterance: string; question: string }; deviceLocation?: DevicePosition; extensionDefinitions?: unknown[]; task?: DecisionTaskRequest; taskContext?: unknown;
   /** Internal task-manager opt-in, never accepted from the HTTP request schema. */
@@ -46,6 +47,9 @@ export interface IntentRequest { text: string; canvasContext: CanvasContext; att
   tracePath?: "browser" | "task";
   /** Set only by the authenticated host, never HTTP JSON. */
   trustedImageRef?: string;
+  /** A selection frozen and resolved by the session task manager, never HTTP JSON. */
+  resolvedTargetId?: string;
+  resolvedTargets?: Record<string, string>;
 }
 export interface IntentResult {
   kind: "envelope" | "host-operation" | "clarify" | "unknown" | "error" | "locale" | "task";
@@ -58,6 +62,9 @@ export interface IntentResult {
   suggestions?: string[];
   usedProvider?: "rules" | "stepfun" | "gpt" | "rules-offline" | "search" | "decision";
   trace?: DecisionTrace;
+  /** Internal clarification handoff; the task manager removes it from the wire. */
+  targetCandidates?: Array<{ id: string; label: string }>;
+  targetClause?: number;
 }
 export interface PipelineDeps {
   travel?: TravelProvider;
@@ -65,6 +72,11 @@ export interface PipelineDeps {
   onStage?: (event: { stage: "rules" | "data" | "search" | "decision" | "planner" | "validation" | "travel" | "total"; status: "started" | "completed" | "failed"; elapsedMs?: number }) => void;
   decision?: Pick<DecisionManager, "score">;
   router?: IntentRouter;
+  /** Preserve the same on-mode router through the task wrapper without observing twice. */
+  executionRouter?: IntentRouter;
+  decisionTelemetry?: { plannerCalls: number; directClauses: number };
+  /** Keep verified data/search/schedule adapters, while on-mode fallback skips old broad fast rules. */
+  skipFastRules?: boolean;
   slotPlanning?: boolean;
   routeHint?: Promise<PlannerRouteHint | null>;
   /** Same trace id may arrive pending then complete; persistence must upsert it. */
@@ -105,10 +117,12 @@ const assembleEnvelope = (actions: Action[], canvasId: string, spokenText?: stri
 /** Exact rules, otherwise one compact planning call and at most one format /
  * validation repair. The 90s turn deadline is never restarted by a retry. */
 export const runIntent = async (req: IntentRequest, deps: PipelineDeps, signal?: AbortSignal, adapterOnly = false, plannerOnly = false): Promise<IntentResult> => {
-  const slotPlanning = deps.slotPlanning ?? (deps.router?.mode === "shadow" || deps.router?.mode === "on");
-  const legacy = async (routeHint = deps.routeHint) => {
-    const result = await runLegacyIntent(req, { ...deps, slotPlanning,
-      routeHint, router: undefined, onDecisionTrace: undefined }, signal, adapterOnly, plannerOnly);
+  const router = deps.executionRouter ?? deps.router;
+  deps = { ...deps, decisionTelemetry: deps.decisionTelemetry ?? { plannerCalls: 0, directClauses: 0 } };
+  const slotPlanning = router?.mode === "on" || (deps.slotPlanning ?? router?.mode === "shadow");
+  const legacy = async (routeHint = deps.routeHint, request = req, onlyPlanner = plannerOnly, requestSignal = signal, skipFastRules = false) => {
+    const result = await runLegacyIntent(request, { ...deps, slotPlanning, executionRouter: router, skipFastRules,
+      routeHint, router: undefined, onDecisionTrace: undefined }, requestSignal, adapterOnly, onlyPlanner);
     if (!slotPlanning || !result.envelope) return result;
     const old = result.envelope;
     const subtitle = old.actions.findLast(action => action.type === "subtitle.show");
@@ -120,7 +134,11 @@ export const runIntent = async (req: IntentRequest, deps: PipelineDeps, signal?:
       ...(next.actions.length > 12 ? { actions: old.actions } : {}) };
     return { ...result, envelope };
   };
-  return adapterOnly || plannerOnly ? legacy() : observeDecision(req, deps, signal, legacy);
+  const execute = (hint = deps.routeHint) => router?.mode === "on" ? runDecisionOn(req, {
+    router, hint, telemetry: deps.decisionTelemetry!, isCurrent: deps.isSessionCurrent,
+    plan: (request, routeHint, planSignal) => legacy(routeHint, { ...request, offlineReferenceCompatibility: false }, false, planSignal, true),
+  }, signal) : legacy(hint);
+  return adapterOnly || plannerOnly ? legacy() : observeDecision(req, deps, signal, execute);
 };
 
 const runLegacyIntent = async (
@@ -141,6 +159,10 @@ const runLegacyIntent = async (
     catch (error) { report(stage, "failed", performance.now() - start); throw error; }
   };
   let usedProvider: IntentResult["usedProvider"];
+  const plannerCall = (attempt: number) => {
+    if (deps.decisionTelemetry) deps.decisionTelemetry.plannerCalls++;
+    deps.onPlannerCall?.(attempt);
+  };
   try {
     budget.signal.throwIfAborted();
     const continuation = req.continuation && !startsNewInstruction(req.text, req.continuation.utterance) ? req.continuation : undefined;
@@ -162,7 +184,7 @@ const runLegacyIntent = async (
       if (envelope) return { kind: "envelope", envelope, usedProvider: "rules" };
       return { kind: "clarify", message: "计划提醒未通过校验，请明确日期、时区或条件。", usedProvider: "rules" };
     }
-    const ruleHit = hasImages || continuation ? null : matchRules(req.text, req.canvasContext);
+    const ruleHit = hasImages || continuation || deps.skipFastRules ? null : matchRules(req.text, req.canvasContext);
     report("rules", "completed", performance.now() - startedAt);
     if (ruleHit) {
       const envelope = assembleEnvelope(ruleHit.actions, req.canvasContext.canvasId, ruleHit.spokenText);
@@ -237,7 +259,7 @@ const runLegacyIntent = async (
         return { kind: "error", message: `联网查询暂不可用：${publicSearchError(error).message}`.slice(0, 400), usedProvider };
       }
     }
-    if (deps.decision && !hasImages && !continuation && !adapterOnly) {
+    if (deps.decision && !hasImages && !continuation && !adapterOnly && !deps.skipFastRules) {
       const result = await measured("decision", () => localDecisionIntent(req.text, req.canvasContext, deps.decision!, budget.signal));
       budget.signal.throwIfAborted();
       if (result && deps.isSessionCurrent && !deps.isSessionCurrent()) return { kind: "error", message: "模型连接已变更，旧决策结果已丢弃。" };
@@ -279,8 +301,9 @@ const runLegacyIntent = async (
     if (deps.slotPlanning) {
       const planned = await budget.run(() => runSlotPlanner(req, {
         hint: deps.routeHint, definitions, page, travel: deps.travel, signal: budget.signal, usedProvider,
+        allowTargetCandidates: deps.executionRouter?.mode === "on",
         generate: async (messages, attempt) => {
-          deps.onPlannerCall?.(attempt);
+          plannerCall(attempt);
           const result = await measured("planner", () => deps.planner ? deps.planner.generate(messages, budget.signal)
             : chatJson(credential!, messages, { ...deps.stepfun, signal: budget.signal }, { maxTokens: 8192 }));
           budget.signal.throwIfAborted();
@@ -310,7 +333,7 @@ const runLegacyIntent = async (
     let sceneAsk: string | undefined, sceneReply: string | undefined;
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       budget.signal.throwIfAborted();
-      deps.onPlannerCall?.(attempt);
+      plannerCall(attempt);
       const messages: ChatMessage[] = [
         { role: "system", content: system }, { role: "user", content: user + feedback, ...(hasImages ? { images: req.attachments } : {}) },
       ];

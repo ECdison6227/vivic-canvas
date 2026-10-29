@@ -11,11 +11,13 @@ export interface RouteResult {
 export interface ChoiceResult { choice: string | null; probability: number; latencyMs: number }
 export interface IntentRouter {
   mode: DecisionMode;
+  directRoutes?: ReadonlySet<IntentRouteId>;
   routeUtterance(text: string, context: CanvasContext, signal?: AbortSignal): Promise<RouteResult | null>;
   chooseTarget(text: string, context: CanvasContext, criteria: Record<string, string>, signal?: AbortSignal): Promise<ChoiceResult | null>;
 }
 export interface RouterOptions {
   mode?: DecisionMode; url?: string; apiKey?: string; model?: string; timeoutMs?: number; fetchImpl?: typeof fetch;
+  directRoutes?: readonly IntentRouteId[];
 }
 type ContextCard = CanvasContext["cards"][number];
 function short(value: unknown): string {
@@ -96,6 +98,8 @@ export function createIntentRouter(options: RouterOptions = {}): IntentRouter {
   }
   return {
     mode: ["off", "shadow", "on"].includes(mode) ? mode : "off",
+    directRoutes: new Set(options.directRoutes ?? (process.env.VIVIC_DECISION_ROUTES ?? "").split(",")
+      .map(value => value.trim()).filter((value): value is IntentRouteId => Object.hasOwn(ROUTES, value))),
     async routeUtterance(text, context, signal) {
       const result = await question("route", text, context, ROUTE_INSTR, ROUTES, signal);
       if (!result) return null;

@@ -68,12 +68,19 @@ describe("shadow observer", () => {
     expect(result.trace).toMatchObject({ status: "failed", failedCount: 1, route: null });
     expect(JSON.stringify(result)).not.toContain("private upstream error");
   });
-  it("off mode is an exact bypass and on mode cannot enable execution in this stage", async () => {
-    for (const mode of ["off", "on"] as const) {
+  it("off mode remains an exact bypass", async () => {
+    for (const mode of ["off"] as const) {
       const model = { ...router(), mode };
       expect(await observeDecision(req, deps(model), undefined, async () => output)).toBe(output);
       expect(model.routeUtterance).not.toHaveBeenCalled();
     }
+  });
+  it("on mode records the same shared observation without itself committing mutations", async () => {
+    const model = { ...router(), mode: "on" as const };
+    const result = await observeDecision(req, deps(model), undefined, async () => output);
+    expect(result).toMatchObject(output);
+    expect(result.trace).toMatchObject({ mode: "on", route: "chat" });
+    expect(model.routeUtterance).toHaveBeenCalledTimes(1);
   });
   it.each([
     { id: "task-one", receipt: { executionId: "execute-one", status: "succeeded" as const } },

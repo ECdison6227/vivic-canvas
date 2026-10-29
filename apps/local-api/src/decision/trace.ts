@@ -11,6 +11,7 @@ import type { RouteResult } from "./router.js";
 export interface PlannerRouteHint {
   result: RouteResult | null;
   target: Promise<TargetResult | undefined>;
+  all?: Promise<DecisionTrace["decisions"]>;
 }
 
 const route = z.enum(Object.keys(ROUTES) as [keyof typeof ROUTES, ...Array<keyof typeof ROUTES>]);
@@ -31,14 +32,17 @@ export const DecisionTraceSchema = z.strictObject({
   failedCount: z.int().min(0).max(3), legacyKind: z.string().max(32),
   legacyUsedProvider: z.string().max(32).optional(), legacyActionTypes: z.array(z.string().max(80)).max(32),
   legacyCardTypes: z.array(z.string().max(80)).max(32),
+  plannerCalls: z.int().min(0).max(100).optional(),
+  directClauses: z.int().min(0).max(3).optional(),
 });
 export type DecisionTrace = z.infer<typeof DecisionTraceSchema>;
 
 /** Advisory only. The old execution path remains authoritative in shadow mode. */
 export async function observeDecision(req: IntentRequest, deps: PipelineDeps, signal: AbortSignal | undefined,
   legacy: (hint?: Promise<PlannerRouteHint | null>) => Promise<IntentResult>): Promise<IntentResult> {
-  if (deps.router?.mode !== "shadow" || req.task?.receipt || req.task?.cancel) return legacy();
+  if (!["shadow", "on"].includes(deps.router?.mode ?? "") || req.task?.receipt || req.task?.cancel) return legacy();
   const router = deps.router, clauses = splitClauses(req.text), id = `decision_${randomUUID()}`;
+  if (!router || !clauses.length) return legacy();
   const start = performance.now(), controller = new AbortController();
   const abort = () => controller.abort();
   signal?.addEventListener("abort", abort, { once: true });
@@ -47,6 +51,8 @@ export async function observeDecision(req: IntentRequest, deps: PipelineDeps, si
   let decisionElapsedMs: number | undefined;
   let publishHint!: (hint: PlannerRouteHint | null) => void;
   const hint = new Promise<PlannerRouteHint | null>(resolve => { publishHint = resolve; });
+  let publishAll!: (rows: DecisionTrace["decisions"]) => void;
+  const all = new Promise<DecisionTrace["decisions"]>(resolve => { publishAll = resolve; });
   const pending = (async () => {
     const output: DecisionTrace["decisions"] = [];
     let shadowContext = req.canvasContext;
@@ -55,7 +61,7 @@ export async function observeDecision(req: IntentRequest, deps: PipelineDeps, si
       try {
         const value = await router.routeUtterance(text, shadowContext, controller.signal);
         const targetPromise = value?.route ? resolveTarget(text, shadowContext, value.route, router, controller.signal) : Promise.resolve(undefined);
-        if (!output.length) publishHint({ result: value, target: targetPromise });
+        if (!output.length) publishHint({ result: value, target: targetPromise, all });
         const selected = await targetPromise;
         output.push(value ? { text, ...value, failed: false, ...(selected ? { target: selected } : {}) }
           : { text, route: null, probability: 0, probabilities: {}, none: true, latencyMs: Math.round(performance.now() - clauseStarted), failed: true });
@@ -68,6 +74,7 @@ export async function observeDecision(req: IntentRequest, deps: PipelineDeps, si
       }
     }
     rows = output;
+    publishAll(output);
     decisionElapsedMs = Math.round(performance.now() - start);
     return output;
   })();
@@ -93,7 +100,7 @@ export async function observeDecision(req: IntentRequest, deps: PipelineDeps, si
   const build = (): DecisionTrace => {
     const first = rows?.[0], failures = rows?.filter(row => row.failed).length ?? 0;
     const actions = result.envelope?.actions ?? [];
-    return { id, mode: "shadow", status: !rows ? "pending" : failures ? "failed" : "complete",
+    return { id, mode: router.mode === "on" ? "on" : "shadow", status: !rows ? "pending" : failures ? "failed" : "complete",
       ...(req.task?.id ? { taskId: req.task.id } : {}),
       clauses, decisions: rows ?? [], route: first?.route ?? null, probability: first?.probability ?? 0,
       ...(first?.target ? { target: first.target } : {}),
@@ -102,6 +109,7 @@ export async function observeDecision(req: IntentRequest, deps: PipelineDeps, si
       ...(result.usedProvider ? { legacyUsedProvider: result.usedProvider } : {}),
       legacyActionTypes: [...actions.map(action => action.type), ...(result.hostOperation ? [result.hostOperation.kind] : [])],
       legacyCardTypes: actions.flatMap(action => action.type === "card.create" ? [action.card.type] : []),
+      ...(deps.decisionTelemetry ? { plannerCalls: deps.decisionTelemetry.plannerCalls, directClauses: deps.decisionTelemetry.directClauses } : {}),
     };
   };
   const returned = build();

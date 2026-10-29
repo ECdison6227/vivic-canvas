@@ -168,6 +168,15 @@ tests/helpers.ts(8,23): TS2322: modelApiBaseUrl is string | undefined, but Local
 - 冲突后保留原请求、补充、候选编号及已完成步骤；超过现有500字限制时明确停止，不截断目标。初始expectedVersion过期时直接使用最新快照；修正hostedCanvasContext从metadata.aliases读取真实别名。
 - 新18项版本竞争/取消/去重/预算测试，连同日志测试27项通过。全量1876通过、3项原有跳过、0失败；线上真实竞争场景待集中部署后补验。
 
+## E1 实施（2026-10-30，Codex + Leibniz）
+
+- 路由器读取显式VIVIC_DECISION_ROUTES名单，缺省为空，不暗中开放新类别。on模式沿用同一次分类与目标查询；每句概率≥0.8且类别在名单才走确定性契约，解析失败只让主模型填该子句参数，其它类别/低置信整句走D规划。
+- 多句仅收集提案、不提前提交；任何一项澄清则整句不执行，合并后最多一次唤醒、一次批量fit和一条字幕，新增卡避开固定卡和其它新卡。保持已有数据/搜索/计划提醒的验证适配器；不借离线目标捷径开放未批准的目标操作。
+- 分类服务失败时，仍允许名单内唯一匹配的完整确定性语法作为原有规则降级；不是伪造分类成功，日志保留分类失败、rules-offline及directClauses=0。没有完整匹配仍交参数规划。
+- 解析器补后续动作、条件、否定边界，引号内逗号不拆坏正文。五个核心说法均完成parse→build；HTTP集成证明无taskId入口、任务回执、候选和宿主字段边界可用。
+- trace增加可选plannerCalls/directClauses，从实际请求内计数，不以响应快或provider名字猜测是否调模型。旧shadow/off保留，native-v2门控未开启；图片总是走本次附件的D3分支。
+- 最终本地：1876通过、3项原有跳过、0失败；tsc仅A1两项基线错误，git diff --check通过。原始结果 `tools/execution-20261030/e-release-tests.json`。代码和E回放工具集中提交后，才按用户批准启用5类。
+
 ## 阶段 F
 
 - [ ] F1 manifest v0.2
