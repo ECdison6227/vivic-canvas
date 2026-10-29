@@ -124,8 +124,8 @@ async function fixture(options: { twoAccounts?: boolean; connect?: boolean } = {
     const response = await request(cookie, `/api/space/owner/canvases/${spaceId}`); expect(response.status).toBe(200);
     return response.json() as Promise<OwnerResponse>;
   };
-  const analyze = async (headers: Record<string, string> = {}) => {
-    const response = await request(first.cookie, "/api/intent", { body: { text: "请分析这张图片并保存结果", canvasContext: canvasContext(first.spaceId), attachments: [attachment()] }, headers });
+  const analyze = async (headers: Record<string, string> = {}, extraBody: Record<string, unknown> = {}) => {
+    const response = await request(first.cookie, "/api/intent", { body: { text: "请分析这张图片并保存结果", canvasContext: canvasContext(first.spaceId), attachments: [attachment()], ...extraBody }, headers });
     expect(response.status).toBe(200);
     const result = IntentResponseSchema.parse(await response.json()); privateResult(result);
     expect(result.kind, result.message).toBe("envelope");
@@ -203,6 +203,26 @@ describe("hosted image intent HTTP integration with a mocked vision model", () =
     const foreignIntent = await f.request(f.second!.cookie, "/api/intent", { body: { text: "分析这张图", canvasContext: canvasContext(f.first.spaceId), attachments: [attachment()] } });
     expect(foreignIntent.status).toBe(404); expect(f.plannerCalls).toHaveLength(planned);
     expect(await f.assets(f.second!.cookie, f.second!.spaceId)).toEqual([]);
+  });
+
+  it("still retains the image and supplies trusted media when the client catalog is malformed or exceeds eight definitions", async () => {
+    const f = await fixture(), marker = "TEST_CLIENT_IMAGE_CATALOG_MUST_BE_IGNORED";
+    const catalogs: unknown[] = [{ invalid: marker }, Array.from({ length: 9 }, () => null)];
+    const refs: string[] = [];
+    for (const extensionDefinitions of catalogs) {
+      const { card, assetId } = await f.analyze({}, { extensionDefinitions });
+      expect(card.displayProps.image).toBe(`media:${assetId}`); refs.push(card.displayProps.image!);
+      const content = await f.request(f.first.cookie, `/api/space/spaces/${f.first.spaceId}/assets/${assetId}/content`);
+      expect(content.status).toBe(200);
+      const bytes = new Uint8Array(await content.arrayBuffer());
+      expect(assetId).toBe(`image_${createHash("sha256").update(bytes).digest("hex")}`);
+    }
+    expect(new Set(refs).size).toBe(1); expect(await f.assets()).toHaveLength(1);
+    expect(f.plannerCalls).toHaveLength(catalogs.length);
+    for (const request of f.plannerCalls) {
+      expect(imageUrls(request)).toEqual([`data:image/png;base64,${attachment().data}`]);
+      expect(JSON.stringify(request.messages)).not.toContain(marker);
+    }
   });
 
   it("ignores a browser supplied internal reference and never reuses historical images for a later text request", async () => {

@@ -5,7 +5,7 @@ import type { IntentRequest, IntentResult, PipelineDeps } from "../intent/pipeli
 import { splitClauses } from "./split.js";
 import { resolveTarget } from "./target.js";
 import type { TargetResult } from "./target.js";
-import type { RouteResult } from "./router.js";
+import { isBuiltinRoute, type RouteResult } from "./router.js";
 
 /** The planner shares the observer's first RPC and target lookup. */
 export interface PlannerRouteHint {
@@ -14,7 +14,8 @@ export interface PlannerRouteHint {
   all?: Promise<DecisionTrace["decisions"]>;
 }
 
-const route = z.enum(Object.keys(ROUTES) as [keyof typeof ROUTES, ...Array<keyof typeof ROUTES>]);
+const route = z.union([z.enum(Object.keys(ROUTES) as [keyof typeof ROUTES, ...Array<keyof typeof ROUTES>]),
+  z.string().max(90).regex(/^ext\.[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)*$/)]);
 const target = z.union([z.strictObject({ targetId: z.string().max(128) }),
   z.strictObject({ missing: z.literal(true) }), z.strictObject({ ambiguous: z.array(z.strictObject({
     id: z.string().max(128), label: z.string().max(500),
@@ -60,7 +61,7 @@ export async function observeDecision(req: IntentRequest, deps: PipelineDeps, si
       const clauseStarted = performance.now();
       try {
         const value = await router.routeUtterance(text, shadowContext, controller.signal);
-        const targetPromise = value?.route ? resolveTarget(text, shadowContext, value.route, router, controller.signal) : Promise.resolve(undefined);
+        const targetPromise = value?.route && isBuiltinRoute(value.route) ? resolveTarget(text, shadowContext, value.route, router, controller.signal) : Promise.resolve(undefined);
         if (!output.length) publishHint({ result: value, target: targetPromise, all });
         const selected = await targetPromise;
         output.push(value ? { text, ...value, failed: false, ...(selected ? { target: selected } : {}) }

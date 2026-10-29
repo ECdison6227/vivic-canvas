@@ -12,7 +12,7 @@ import { scheduledReminderIntent } from "../intent/scheduledReminders.js";
 import { looksLikeDateCountdown } from "../scenes/index.js";
 import { splitClauses } from "./split.js";
 import { resolveTarget } from "./target.js";
-import type { IntentRouter } from "./router.js";
+import { isBuiltinRoute, type IntentRouter } from "./router.js";
 import type { PlannerRouteHint, DecisionTrace } from "./trace.js";
 
 interface OnDeps {
@@ -36,7 +36,7 @@ export async function runDecisionOn(req: IntentRequest, deps: OnDeps, signal?: A
       const text = req.continuation ? `${req.continuation.utterance}\n用户补充：${req.text}` : req.text;
       const value = await budget.run(() => deps.router.routeUtterance(text, req.canvasContext, budget.signal));
       const target = req.resolvedTargetId ? Promise.resolve({ targetId: req.resolvedTargetId })
-        : value?.route ? resolveTarget(text, req.canvasContext, value.route, deps.router, budget.signal) : Promise.resolve(undefined);
+        : value?.route && isBuiltinRoute(value.route) ? resolveTarget(text, req.canvasContext, value.route, deps.router, budget.signal) : Promise.resolve(undefined);
       return await fallback(req, Promise.resolve({ result: value, target }));
     }
     const hint = await budget.run(() => deps.hint ?? Promise.resolve(null));
@@ -64,7 +64,7 @@ export async function runDecisionOn(req: IntentRequest, deps: OnDeps, signal?: A
         targetCandidates: target.ambiguous, targetClause: index };
     }
     if (rows.length !== clauses.length || rows.some(row => row.failed || !row.route || row.probability < .8
-      || row.none || !deps.router.directRoutes?.has(row.route) || !Object.hasOwn(CARD_CONTRACTS, row.route))) return await fallback();
+      || row.none || !isBuiltinRoute(row.route) || !deps.router.directRoutes?.has(row.route) || !Object.hasOwn(CARD_CONTRACTS, row.route))) return await fallback();
     // Never let a classifier turn an explanation, condition or negation into execution.
     if (protectedText) return await fallback();
     let context: CardBuildContext = { ...req.canvasContext, cards: [...req.canvasContext.cards], focusHistory: [...req.canvasContext.focusHistory] };
@@ -87,7 +87,7 @@ export async function runDecisionOn(req: IntentRequest, deps: OnDeps, signal?: A
           if (!Array.isArray(value)) return { kind: "clarify", message: "本次包含需要单独处理的操作，请分开发送。", usedProvider: "decision" };
           built = value; directClauses++;
         } else {
-          const partHint: PlannerRouteHint = { result: row, target: Promise.resolve(row.target) };
+          const partHint: PlannerRouteHint = { result: { ...row, route: row.route as IntentRouteId }, target: Promise.resolve(row.target) };
           const partRequest: IntentRequest = rows.length === 1 ? req : { ...req, text: row.text, canvasContext: context,
             taskContext: { original_goal: req.text, active_clause: row.text, instruction: "只处理当前子句，其他子句由宿主合并，不得重复或遗漏。" } };
           const planned = await fallback(partRequest, Promise.resolve(partHint));

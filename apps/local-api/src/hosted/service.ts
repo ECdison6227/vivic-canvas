@@ -14,6 +14,7 @@ import { decisionOutcome } from "../decision/logging.js";
 import type { PipelineDeps } from "../intent/pipeline.js";
 import { IntentRequestSchema } from "../schemas.js";
 import { imageInputErrorMessage } from "../images.js";
+import { cardPackageRoute, readEnabledCardDefinitions } from "./cardPackages.js";
 
 type SessionApp = ReturnType<typeof createOnlineSessionApp>;
 interface AccountApp { app: SessionApp; token: string; created: number; touched: number }
@@ -56,6 +57,7 @@ export function createHostedService(options: HostedServiceOptions) {
       if (saved.inserted && trace.legacyActionTypes.includes("history.undo")) space.store.markLastDecisionUndone(accountId, request.canvasContext.canvasId);
     };
     return { fetchImpl: options.fetchImpl, router, onDecisionTrace,
+      getEnabledDefinitions: () => readEnabledCardDefinitions(space.store, accountId),
       onDecisionReceipt: (taskId: string, outcome: "succeeded" | "failed") => {
         const key = JSON.stringify([accountId, taskId]);
         recentDecisionReceipts.delete(key); recentDecisionReceipts.set(key, { outcome, at: now() });
@@ -190,6 +192,7 @@ export function createHostedService(options: HostedServiceOptions) {
         if (!/^\d{1,3}$/.test(raw) || Number(raw) < 1 || Number(raw) > 200) throw new SpaceError(400, "invalid-limit", "limit 需要为1–200。");
         return hostedJson({ entries: space.store.listDecisionLogs(accountId, Number(raw)) });
       }
+      const packages = await cardPackageRoute(space.store, request, identity); if (packages) return packages;
       const owner = await ownerRoute(space.store, request, identity); if (owner) { if (request.method !== "GET") reminders.check(); return owner; }
       if (route === "/api/transcribe" && request.method === "POST") {
         const value = appFor(accountId, true), bytes = await boundedBytes(request, 22 * 1024 * 1024);
@@ -227,7 +230,9 @@ export function createHostedService(options: HostedServiceOptions) {
         const body = await hostedBody(request, route.startsWith("/api/intent") || route === "/api/files/read" ? 6 * 1024 * 1024 : 64 * 1024);
         let trustedImageRef: string | undefined;
         if (route.startsWith("/api/intent") && router.mode !== "off") {
-          const parsed = IntentRequestSchema.safeParse(body);
+          const stripped = body && typeof body === "object" && !Array.isArray(body)
+            ? Object.fromEntries(Object.entries(body).filter(([key]) => key !== "extensionDefinitions")) : body;
+          const parsed = IntentRequestSchema.safeParse(stripped);
           if (parsed.success && parsed.data.attachments?.length) {
             try { trustedImageRef = await assets.persistIntentImage(accountId, parsed.data.canvasContext.canvasId, parsed.data.attachments[0]!, identity.device.id, request.signal); }
             catch (error) {

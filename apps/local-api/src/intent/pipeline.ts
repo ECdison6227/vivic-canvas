@@ -34,6 +34,7 @@ import { buildAllSceneActions, extensionScenePrompt, validateRequestDefinitions 
 import { incompleteCanvasIssue } from "./contextSafety.js";
 import type { DecisionManager } from "../decision/manager.js";
 import type { IntentRouter } from "../decision/router.js";
+import type { CardDefinition } from "@vivic/card-runtime";
 import { observeDecision, type DecisionTrace, type PlannerRouteHint } from "../decision/trace.js";
 import { runSlotPlanner } from "./slotPlanner.js";
 import { applyOutputChannels, normalizeOutputChannels } from "./channels.js";
@@ -50,6 +51,8 @@ export interface IntentRequest { text: string; canvasContext: CanvasContext; att
   /** A selection frozen and resolved by the session task manager, never HTTP JSON. */
   resolvedTargetId?: string;
   resolvedTargets?: Record<string, string>;
+  /** Account-owned, server-loaded package definitions. Never accepted from HTTP JSON. */
+  installedDefinitions?: CardDefinition[];
 }
 export interface IntentResult {
   kind: "envelope" | "host-operation" | "clarify" | "unknown" | "error" | "locale" | "task";
@@ -296,7 +299,7 @@ const runLegacyIntent = async (
     }
     const sceneRequest = { text: req.text, continuation, ctx: req.canvasContext, page };
     let definitions: Awaited<ReturnType<typeof validateRequestDefinitions>>;
-    try { definitions = await validateRequestDefinitions(req.extensionDefinitions); }
+    try { definitions = req.installedDefinitions ?? await validateRequestDefinitions(req.extensionDefinitions); }
     catch { return { kind: "error", message: "已安装卡片定义校验失败，请重新导入后重试。", usedProvider }; }
     if (deps.slotPlanning) {
       const planned = await budget.run(() => runSlotPlanner(req, {

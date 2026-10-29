@@ -1,4 +1,4 @@
-vivic-api:19b6fdb2ccd2f9c7df78c0eb4b6ba9499bdb6c26
+vivic-api:4971be43678577e44038c7507f2f5820bd69a5f0
 /opt/vivic-preview-20261025/releases/unified-background-20261029-1/web
 container=vivic-preview-20261027
-synced_at=2026-10-30T02:03:14+0800
+synced_at=2026-10-30T04:54:54+0800

@@ -6,6 +6,8 @@ import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import type { LocalApiConfig } from "./config.js";
 import { CredentialStore } from "./credentials.js";
+import type { CardDefinition } from "@vivic/card-runtime";
+import { currentCardDefinitions } from "./cards/catalog.js";
 import { PlatformCredentialStore } from "./platformCredential.js";
 import { createModelApiClient } from "./modelApi/index.js";
 import { runIntent, type PipelineDeps } from "./intent/pipeline.js";
@@ -69,6 +71,7 @@ export interface AppDeps {
   decisionProvider?: DecisionProvider;
   decisionV2Provider?: NativeV2Provider;
   router?: PipelineDeps["router"];
+  getEnabledDefinitions?: () => Promise<CardDefinition[]>;
   onDecisionTrace?: PipelineDeps["onDecisionTrace"];
   onDecisionReceipt?: (taskId: string, outcome: "succeeded" | "failed") => void;
   onDiagnostic?: DiagnosticSink;
@@ -590,6 +593,10 @@ export const createApp = (deps: AppDeps) => {
     } catch {
       return c.json({ ok: false, error: "请求体不是合法 JSON" }, 400);
     }
+    if (deps.getEnabledDefinitions && raw && typeof raw === "object" && !Array.isArray(raw)) {
+      const { extensionDefinitions: _clientCatalog, ...serverRequest } = raw as Record<string, unknown>;
+      raw = serverRequest;
+    }
     const parsed = IntentRequestSchema.safeParse(raw);
     if (!parsed.success) {
       return c.json(
@@ -614,28 +621,37 @@ export const createApp = (deps: AppDeps) => {
       }
     }
     const requestId = c.get("requestId");
+    let installedDefinitions: CardDefinition[] | undefined;
+    let requestRouter = deps.router;
+    if (deps.getEnabledDefinitions) {
+      try {
+        installedDefinitions = currentCardDefinitions(await deps.getEnabledDefinitions());
+        requestRouter = deps.router?.forDefinitions?.(installedDefinitions) ?? deps.router;
+      } catch { return c.json({ kind: "error", message: "已安装卡片校验失败，请检查或重新导入卡片包。" }); }
+    }
     const observeStage: NonNullable<PipelineDeps["onStage"]> = event => safeDiagnostic(deps.onDiagnostic, {
       event: "intent.stage", requestId, stage: event.stage, state: event.status,
       ...(event.elapsedMs !== undefined ? { elapsedMs: Math.round(event.elapsedMs) } : {}),
     });
     const execute = (signal: AbortSignal, onStage = observeStage) => {
       const pipeline: PipelineDeps = { credentials, stepfun, search, data, decision, onStage, travel: deps.travel,
-      router: deps.router, onDecisionTrace: deps.onDecisionTrace,
+      router: requestRouter, onDecisionTrace: deps.onDecisionTrace,
       decisionTelemetry: { plannerCalls: 0, directClauses: 0 },
-      slotPlanning: deps.router?.mode === "shadow" || deps.router?.mode === "on",
+      slotPlanning: requestRouter?.mode === "shadow" || requestRouter?.mode === "on",
       isSessionCurrent: () => version === providerRevision,
       ...(activeProvider === "gpt" ? { planner: { provider: "gpt" as const, connected: gpt.status().connected,
         generate: (messages, signal) => gpt.generate(messages, signal), isCurrent: () => gpt.isCurrent(gptVersion) } } : {}),
       };
       const intent = { ...parsed.data, tracePath: c.req.header("x-vivic-trace-path") === "task" ? "task" as const : "browser" as const,
+        ...(installedDefinitions ? { installedDefinitions, extensionDefinitions: undefined } : {}),
         ...(online && c.req.header("x-vivic-intent-image-ref") ? { trustedImageRef: c.req.header("x-vivic-intent-image-ref") } : {}) };
-      if (deps.router?.mode !== "on" && !nativeV2 && !parsed.data.task) return runIntent(intent, pipeline, signal);
+      if (requestRouter?.mode !== "on" && !nativeV2 && !parsed.data.task) return runIntent(intent, pipeline, signal);
       return observeDecision(intent, pipeline, signal, routeHint => decisionTasks.run(intent, {
-        safetyMode: deps.router?.mode === "on", routeHint,
+        safetyMode: requestRouter?.mode === "on", routeHint,
         legacy: (request, taskSignal, plannerOnly) => runIntent({ ...request,
           offlineReferenceCompatibility: request.offlineReferenceCompatibility === true
             && (online || !configuredProvider && !deps.decision && !decision.status().enabled),
-        }, { ...pipeline, routeHint, executionRouter: deps.router, router: undefined, onDecisionTrace: undefined }, taskSignal, false, plannerOnly),
+        }, { ...pipeline, routeHint, executionRouter: requestRouter, router: undefined, onDecisionTrace: undefined }, taskSignal, false, plannerOnly),
         isCurrent: () => version === providerRevision,
         tools: {
           weather: (city, canvasContext, taskSignal) => runIntent({ text: `${city}天气`, canvasContext, deviceLocation: parsed.data.deviceLocation }, { ...pipeline, decision: undefined }, taskSignal, true),

@@ -8,7 +8,7 @@ import type { PipelineDeps } from "../intent/pipeline.js";
 /** Each cookie session owns only memory; no loadConfig, preferences or local OAuth. */
 export function createOnlineSessionApp(
   session: { token: string; origin: string },
-  overrides: { fetchImpl?: typeof fetch; router?: PipelineDeps["router"]; onDecisionTrace?: PipelineDeps["onDecisionTrace"]; onDecisionReceipt?: AppDeps["onDecisionReceipt"] } = {},
+  overrides: { fetchImpl?: typeof fetch; router?: PipelineDeps["router"]; onDecisionTrace?: PipelineDeps["onDecisionTrace"]; onDecisionReceipt?: AppDeps["onDecisionReceipt"]; getEnabledDefinitions?: AppDeps["getEnabledDefinitions"] } = {},
 ) {
   const config: LocalApiConfig = {
     host: "127.0.0.1", port: 0, token: session.token,
@@ -27,7 +27,7 @@ export function createOnlineSessionApp(
   };
   const lifetime = new AbortController();
   const app = createApp({ config, mode: "online", fetchImpl: overrides.fetchImpl,
-    router: overrides.router, onDecisionTrace: overrides.onDecisionTrace, onDecisionReceipt: overrides.onDecisionReceipt });
+    router: overrides.router, onDecisionTrace: overrides.onDecisionTrace, onDecisionReceipt: overrides.onDecisionReceipt, getEnabledDefinitions: overrides.getEnabledDefinitions });
   return {
     fetch(request: Request) {
       if (lifetime.signal.aborted) return Response.json({ ok: false, error: "会话已结束。" }, { status: 410 });
