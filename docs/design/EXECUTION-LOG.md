@@ -4,10 +4,12 @@
 
 ## 当前线上状态
 
-- 后端：容器 `vivic-preview-20261027`，镜像 `vivic-preview-20261027:vo-helpmove-1414`（= Git `baseline/online-20261029`）
+- 后端：容器 `vivic-preview-20261027`，镜像 `vivic-api:ff981e1ee401c5d3b4e6554d3f40366d64fc4179`；运行源码来自 Git `ff981e1`，与原线上基线源码一致。
 - 决策模式：off（尚未接入）
 - 已放开的类别：无
 - 前端：`frontend-current` → 同事维护，执行模型不改
+- 当前检查点：A3 / 检查点 1 已完成，等待用户回复“继续”后进入 B1；Mac 决策常驻服务尚未部署。
+- 磁盘：当前可用约 6.58GiB；root 密码按用户要求未改。
 
 ## 基线失败
 
@@ -44,7 +46,7 @@ tests/helpers.ts(8,23): TS2322: modelApiBaseUrl is string | undefined, but Local
 
 - [x] A1 本地开发环境
 - [x] A2 同步同事的前端补丁
-- [ ] A3 后端部署脚本（🛑 检查点 1）
+- [x] A3 后端部署脚本（🛑 检查点 1，等待用户继续）
 
 ## 阶段 B
 
@@ -114,3 +116,47 @@ tests/helpers.ts(8,23): TS2322: modelApiBaseUrl is string | undefined, but Local
 - 第二次、第三次运行均返回 imported=[]；已有存档内容未被覆盖，更新的既有跟踪文件只有 README 与运行指针。
 - 手工夹具验证：新导入成功、拒绝覆盖既有目录、拒绝路径穿越、凭据脱敏，4 项均通过。
 - 当前前端指针仍为 `releases/unified-background-20261029-1/web`，后端镜像仍为 `vo-helpmove-1414`。下一项：A3 部署与回滚脚本。
+
+## A3 执行记录（2026-10-29，Codex）
+
+- 新增 `deploy/backend/Dockerfile`、`deploy.sh`、`rollback.sh`、README，新增本机入口 `scripts/deploy-backend.mjs`；`.gitattributes` 固定 Bash 脚本为 LF。
+- 运行环境文件已在服务器复制到 `backend/env.list`，权限 600；核对与原容器实际运行环境一致，未输出或提交任何环境变量值。
+- 部署前比较 146 个实际源码文件，Git 与运行容器一致；容器另有 136 个 AppleDouble 元数据文件，不属于运行源码。
+- 使用 Git `ff981e1ee401c5d3b4e6554d3f40366d64fc4179` 中的三个 runtime 源码目录进行基线部署；A3 新脚本测试后在本任务提交，运行源码未改动。
+
+验收顺序及输出：
+
+```text
+node scripts/deploy-backend.mjs
+consistent-backup-ok
+dependency-imports-ok
+staging-sqlite-ok
+production-sqlite-ok
+DEPLOY_OK sha=ff981e1ee401c5d3b4e6554d3f40366d64fc4179
+
+node scripts/deploy-backend.mjs --rollback
+ROLLBACK_OK image=vivic-preview-20261027:vo-helpmove-1414
+回滚后主页 HTTP 200，healthz ok:true。
+
+node scripts/deploy-backend.mjs
+consistent-backup-ok
+dependency-imports-ok
+staging-sqlite-ok
+production-sqlite-ok
+DEPLOY_OK sha=ff981e1ee401c5d3b4e6554d3f40366d64fc4179
+```
+
+预检期间曾遇到并修正以下问题，全部发生在停止生产容器之前：
+
+1. BuildKit 把裸 `sha256:...` 当成远端镜像名，出现 `DeadlineExceeded: failed to resolve source metadata`。改为使用当前本机镜像标签并核对其 ID。
+2. 系统 SQLite 过旧，报 `malformed database schema (accounts) - near "STRICT": syntax error`。改为在独立容器中用相同 Node SQLite 运行库对生产只读挂载进行一致备份。
+3. 暂存副本复制了生产进程锁，报 `Space data directory is already owned by a running process.`。只移除暂存副本的 `space.lock`，保留生产锁不动；失败预检容器和副本均自动清理。
+
+最终检查（19:01 北京时间）：
+
+- 15 个保留入口的 HTTP 状态与清理前一致，9 个其他项目服务状态无变化。
+- Vivic 主页、healthz 为 200，数据库 quick_check 成功，持久数据仍挂载原目录。
+- 前端指针保持 `releases/unified-background-20261029-1/web`；未发布前端。
+- 暂存目录已清理，当前可用 7,060,656,128 字节（约 6.58GiB）。
+- 最终验收记录：服务器 `backend/acceptance-A3-20261029.json`。
+- 已完成部署 → 回滚 → 再部署，按手册停在检查点 1；下一项 B1 等待用户“继续”。

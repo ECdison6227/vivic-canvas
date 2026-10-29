@@ -6,3 +6,6 @@ Vivic_Kimi_Handoff_v0.6/contracts/*.schema.json text eol=lf
 *.md text eol=lf
 .editorconfig text eol=lf
 .github/CODEOWNERS text eol=lf
+
+# Server maintenance scripts are executed directly by Bash.
+*.sh text eol=lf
