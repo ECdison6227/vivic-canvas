@@ -15,7 +15,8 @@ available=$(df -B1 --output=avail / | tail -n1 | tr -d ' ')
 (( available >= 2147483648 )) || { echo 'Less than 2 GiB available' >&2; exit 1; }
 [[ $(realpath "$DATA") == "$DATA" && -f "$DATA/space.sqlite" ]]
 if [[ ! -f "$DIR/env.list" ]]; then
-  install -m 600 /root/vivic-vo-helpmove-20261028-1414/env.list "$DIR/env.list"
+  echo "Install the private environment file at $DIR/env.list with mode 600 before deploying" >&2
+  exit 1
 fi
 chmod 600 "$DIR/env.list"
 if docker inspect "$STAGE" >/dev/null 2>&1; then
