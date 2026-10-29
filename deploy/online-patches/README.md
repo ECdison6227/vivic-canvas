@@ -12,3 +12,11 @@
 部署包本来不含的测试、Android、配置文件沿用 `main`。
 
 当前线上前端目录：见 `RUNNING_CONTAINER.txt`。
+
+## 增量归档
+
+运行 `node scripts/sync-online-patches.mjs`。使用外层 `tools/vssh.py` 与本机 Python；可通过 `VIVIC_SSH_RUNNER`、`VIVIC_SSH_PYTHON` 指定工具路径。
+
+只读取服务器新 release 的 `patch/`、顶层 JSON、README、验证说明及前端头配置；不打包 web、assets-before、assets-fixed 等完整副本。已存在的存档目录拒绝覆盖，归档中的链接与路径穿越会被拒绝。
+
+JSON 部署记录中的环境变量、凭据和鉴权字段在导出时脱敏，前端补丁文件保持原样。`SYNC_STATE.json` 记录同步时间与本次新目录，`RUNNING_CONTAINER.txt` 记录当前前端指针及后端镜像。

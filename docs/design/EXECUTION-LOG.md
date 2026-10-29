@@ -43,7 +43,7 @@ tests/helpers.ts(8,23): TS2322: modelApiBaseUrl is string | undefined, but Local
 ## 阶段 A
 
 - [x] A1 本地开发环境
-- [ ] A2 同步同事的前端补丁
+- [x] A2 同步同事的前端补丁
 - [ ] A3 后端部署脚本（🛑 检查点 1）
 
 ## 阶段 B
@@ -104,3 +104,13 @@ tests/helpers.ts(8,23): TS2322: modelApiBaseUrl is string | undefined, but Local
 - `corepack pnpm --filter @vivic/local-api test --maxWorkers=4 --reporter=json ...`：166 套件、1365 项通过、3 项跳过、0 项失败。
 - `corepack pnpm --filter @vivic/local-api typecheck`：退出码 1，上述 2 个既有类型错误已记录。
 - 未修改业务代码、测试断言或前端。下一项：A2，同步同事的前端补丁。
+
+## A2 执行记录（2026-10-29，Codex）
+
+- 新增 `deploy/online-patches/sync.sh`、`import.py`、`scripts/sync-online-patches.mjs`，补充归档 README。
+- 首次同步 7 个此前未收录的目录：auth-ui 两版、cursor-owner、preview-shell、ui-refresh，以及当天的 space-entry、unified-background。
+- 只导出允许的补丁与元信息；未读取完整 web/assets 副本用于发布，未改动服务器前端。
+- JSON 记录在导出时去除环境变量和凭据；本次有一份旧 container-before.json 需要脱敏，未将原始环境字段提交 Git。
+- 第二次、第三次运行均返回 imported=[]；已有存档内容未被覆盖，更新的既有跟踪文件只有 README 与运行指针。
+- 手工夹具验证：新导入成功、拒绝覆盖既有目录、拒绝路径穿越、凭据脱敏，4 项均通过。
+- 当前前端指针仍为 `releases/unified-background-20261029-1/web`，后端镜像仍为 `vo-helpmove-1414`。下一项：A3 部署与回滚脚本。

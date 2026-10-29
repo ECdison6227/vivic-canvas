@@ -1,2 +1,4 @@
-vivic-preview-20261027:vo-helpmove-1414 2026-10-28T06:14:53.209960627Z
-/opt/vivic-preview-20261025/releases/stable-background-20261029-1/web
+vivic-preview-20261027:vo-helpmove-1414
+/opt/vivic-preview-20261025/releases/unified-background-20261029-1/web
+container=vivic-preview-20261027
+synced_at=2026-10-29T18:45:32+0800
