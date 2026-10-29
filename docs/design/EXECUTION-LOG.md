@@ -68,7 +68,7 @@ tests/helpers.ts(8,23): TS2322: modelApiBaseUrl is string | undefined, but Local
 - [x] D1 卡片契约（2026-10-30；接线与发布随 D2 集成）
 - [ ] D2 规划器只填参数
 - [ ] D3 图片
-- [ ] D4 三通道输出
+- [x] D4 三通道输出（2026-10-30；统一接线随 D2 集成）
 
 ## D1 执行记录（2026-10-30，Codex + 并行代理）
 
@@ -77,6 +77,12 @@ tests/helpers.ts(8,23): TS2322: modelApiBaseUrl is string | undefined, but Local
 - answer 复用 NewsCard，不套用新闻原文摘要限制；keyPoints/来源链接可省略。URL 来源由 D2 集成检查。多卡布局只为新卡寻找空位，已有固定卡不动。
 - 验收：`vitest run tests/card-contracts.test.ts tests/card-operations.test.ts --maxWorkers=4`。专项分别 91、65 项；首轮全量 1636 通过、3 项原有跳过、0 失败。新类型模块无诊断；全仓类型检查仍有两处已记录基线错误。
 - 已再次运行 `node scripts/sync-online-patches.mjs`，新补丁 0；线上前端指针未变。D2/D3 集成仍在工作区，未部署。
+
+## D4 执行记录（2026-10-30，Codex + 并行代理）
+
+- 新增 `intent/channels.ts`，say 最长 40 个 UTF-16 单位，拒绝 http、连续六位数字与列表符号；不安全则使用字幕首句，仍不安全就不播报。text 最长 120，截断不拆坏代理对。
+- `applyOutputChannels` 只保留一条字幕，保留卡片动作。闲聊/即时短答走文字，回答与新建类落卡；澄清、错误和宿主操作保留现有独立响应协议，不伪造卡片或混入互斥的 envelope。
+- `vitest run tests/output-channels.test.ts --maxWorkers=4` 原 55 项通过，父代理补一例裸 HTTP 文本拒绝，共 56 项；统一规划器与规则/适配器接线随 D2 提交后回归。
 
 ## 阶段 E
 
