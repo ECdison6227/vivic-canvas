@@ -9,3 +9,7 @@ Vivic_Kimi_Handoff_v0.6/contracts/*.schema.json text eol=lf
 
 # Server maintenance scripts are executed directly by Bash.
 *.sh text eol=lf
+
+# Evaluation descriptions are updated by scripts on both Windows and macOS.
+evals/decision/*.json text eol=lf
+evals/decision/results/*.json text eol=lf

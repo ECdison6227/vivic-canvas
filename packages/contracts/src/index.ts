@@ -14,3 +14,4 @@ export * from "./extensionCard";
 export * from "./files";
 export * from "./hostedSpace";
 export * from "./reminderRuntime";
+export * from "./routes";

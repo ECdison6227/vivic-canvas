@@ -56,7 +56,7 @@ tests/helpers.ts(8,23): TS2322: modelApiBaseUrl is string | undefined, but Local
 
 ## 阶段 C
 
-- [ ] C1 路由类别定义 + 重跑评测
+- [x] C1 路由类别定义 + 重跑评测
 - [ ] C2 决策客户端 / 目标解析 / 切句
 - [ ] C3 接入 runIntent（影子）
 - [ ] C4 决策日志
@@ -213,3 +213,13 @@ DEPLOY_OK sha=ff981e1ee401c5d3b4e6554d3f40366d64fc4179
 - 同一个 key 请求语音合成返回 403；模型列表只包含 4 个分类模型，包含 4B，不包含 TTS 模型。
 - 验收文件：服务器 `backend/acceptance-B3-20261029.json`，不含任何 key 原文。
 - 当前助手应用尚未接入新路由，下一阶段先影子运行，不改变原指令执行结果。
+
+## C1 执行记录（2026-10-29，Codex）
+
+- 新增共享 `packages/contracts/src/routes.ts` 并导出；类别与描述采用手册给定的 16 类。
+- 评测集只更新 routes 描述，161 道题与答案保持不变；cases SHA256 为 `ded486be9db2c40f0a76c0a3cd62f511524ec30529bfd99cd7211a4445a8c33f`。
+- 在 Mac 上使用原 `startlux_eval.py`、同一 4B Q8 和 Metal 重新完整评测；新结果 `evals/decision/results/startlux-4b-q8-metal-routes-v2.json`。
+- 路由准确率 153/161（95.03%）→ 159/161（98.76%）；高置信覆盖 85.71% → 89.44%，高置信准确率 98.55% → 99.31%。
+- 路由耗时中位数 1781.7ms、P95 1857.2ms，目标选择仍为 92.86%。多意图判定仅 70%，仍按手册由确定性切句处理。
+- 剩余误判：取消固定被判 edit（概率 0.432，直接执行门限以下）；复合的聚焦+高亮被判 highlight（概率 0.916，需按动作切句）。
+- 没有触发“准确率下降超过 1 个百分点”的回退条件，保留新描述。下一项 C2 的路由/目标/切句已在工作区开发和验证，待独立提交。
