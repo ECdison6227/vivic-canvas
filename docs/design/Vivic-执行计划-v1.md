@@ -1,5 +1,7 @@
 # Vivic 决策层与卡片体系执行计划 v1
 
+> **执行细则见 [`EXECUTOR-PLAYBOOK.md`](EXECUTOR-PLAYBOOK.md)，进度见 [`EXECUTION-LOG.md`](EXECUTION-LOG.md)。** 两者与本文冲突时以执行手册为准。
+
 > 2026-10-29。依据：Kimi 对话记录、你的微信产品说明、服务器与 Mac mini 实地核查、决策模型实测（本文第 2 节）。
 > 代码基线：GitHub `ECdison6227/vivic-canvas` 分支 `baseline/online-20261029`（= 线上正在运行的版本）。
 
@@ -119,10 +121,11 @@
 
 - [x] 线上代码收回 GitHub `baseline/online-20261029`
 - [x] 10/28 以后的前端补丁原样存档 `deploy/online-patches/`
-- [ ] 在服务器 `/opt/vivic-preview-20261025/` 放一份 `AGENTS.md`，告诉同事的 agent：改 UI 时照旧在 `releases/<名字>/` 里留补丁和说明；**不要改后端和 `/api` 相关代码**；改完在群里说一声
-- [ ] 我每天把服务器上新的 release 同步进 Git
-- [ ] 部署脚本：从 Git 的某个提交构建 → 切换 → 健康检查 → 失败自动回滚；只保留最近 5 个版本，清掉 16 个旧回滚容器（清理前列清单给你确认）
-- [ ] 服务器 root 密码改掉，改用 SSH 密钥（密码出现在 Kimi 记录和 `教学agent/.ssh-cmd.py` 里）
+- [x] （10/29 完成）在服务器 `/opt/vivic-preview-20261025/` 放一份 `AGENTS.md`（同时链接为 `CLAUDE.md`），告诉同事的 agent：改 UI 时照旧在 `releases/<名字>/` 里留补丁和说明；**不要改后端和 `/api` 相关代码**；改完在群里说一声
+- [ ] 每次开工把服务器上新的 release 同步进 Git（执行手册 A2）
+- [ ] 部署脚本：从 Git 的某个提交构建 → 切换 → 健康检查 → 失败自动回滚（执行手册 A3）
+- [x] （10/29 完成）服务器硬盘曾 100% 满：已删除 23 个停止的旧容器、22 个旧镜像（保留运行中、上一版和 10/28 前端快照 3 个），旧前端版本只留最近 5 份完整副本，压缩系统日志。可用空间 54MB → 2.3GB。清理清单在服务器 `evidence/cleanup-20261029.txt`
+- ~~服务器 root 密码改掉~~（用户决定不改）
 
 **验收**：线上运行的后端 = Git 某个提交；回滚一条命令完成。
 
@@ -138,7 +141,7 @@
 ### P2 卡片契约 + 大模型只填参数（4–5 天）
 
 - `packages/contracts` 新增卡片契约格式；为现有卡写契约：CountdownCard、TodoCard、NoteCard、SearchResultCard、WeatherCard、TableCard/ChartCard、TravelCard
-- 新增两张卡：**AnswerCard**（标题 + 要点 + 来源，承载知识型回答）、**ImageAnalysisCard**（原图 + 分析要点；修掉"发图变成无图文本框"）
+- 回答卡、图片分析卡**复用现有的 NewsCard**（标题、摘要、≤5 要点、来源、图片、`summaryBy:"ai"`），前端已能显示，第一版不新增卡型、不改前端；修掉"发图变成无图文本框"
 - planner 输出改为 `{card, slots, say, text}`，宿主负责 id/布局/时间
 - 输出拆成语音、字幕、卡片三通道
 
@@ -159,7 +162,7 @@
 - 网页端改走服务端任务接口，去掉浏览器里的那份执行逻辑
 - 版本冲突服务端自动重试，用户无感
 - 目标解析：决策模型给目标 → 歧义时编号追问 → 用户说"第一个"闭环
-- 卡内局部高亮：Todo 条目、NoteCard 要点、AnswerCard 要点；其他卡用文字锚点
+- 卡内局部高亮：Todo 条目（已有）；NoteCard/NewsCard 要点需要前端配合，列入 FRONTEND-REQUESTS
 - 删除必确认；指代上下文扩到最近 3 轮
 
 **验收**：网页和手机对同一句话结果一致；"聚焦左边的待办，高亮第二条"一句完成。
