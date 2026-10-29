@@ -51,7 +51,7 @@ tests/helpers.ts(8,23): TS2322: modelApiBaseUrl is string | undefined, but Local
 ## 阶段 B
 
 - [x] B1 Mac 常驻 vivic-decision
-- [ ] B2 worker 转发
+- [x] B2 worker 转发
 - [ ] B3 网关放行 + 专用密钥
 
 ## 阶段 C
@@ -193,3 +193,12 @@ DEPLOY_OK sha=ff981e1ee401c5d3b4e6554d3f40366d64fc4179
 - 主动终止独立模型子进程后自动恢复；`launchctl kickstart -k` 后父服务恢复，旧模型进程已退出，没有遗留占用。
 - 验收文件：Mac `decision-service/acceptance-B1.json`，包含延迟、鉴权、队列与恢复结果。
 - 未改变既有 ASR/TTS 调度或文件服务行为。下一项 B2：只给现有 worker 增加原生 4B 转发分支。
+
+## B2 执行记录（2026-10-29，Codex）
+
+- 新增 `deploy/decision/wire_worker.py`；先备份 Mac 的 supervisor.py，再增加原生 `startlux-decision-4b` 转发分支及模型列表条目。
+- 新分支直接转发到 `127.0.0.1:19095/v1/native`，超时 20 秒，沿用 worker 鉴权；其他模型继续使用原调度路径。
+- 等旧 worker 空闲后通过 SIGTERM 优雅重启，利用原 launchd KeepAlive 自动恢复，未强杀正在进行的推理。
+- 通过原 worker 端口请求原生 4B 成功，端到端 1673.3ms；原 ASR 请求成功且有文字，原 laya 分类请求仍成功。
+- ASR、legacy 分类前后独立 4B 模型 PID/generation 保持一致，确认没有进入旧的单模型替换调度。
+- Mac 验收：`decision-service/acceptance-B2.json`。下一项 B3：网关登记模型及最小权限专用 key。
