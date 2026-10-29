@@ -73,6 +73,52 @@ function todoContext() {
 }
 
 describe("runIntent slot planning with the shared shadow route", () => {
+  it("offers the note contract for creative generation even when chat ranks second", async () => {
+    const f = setup("generate", [{ contract: "note", slots: { bullets: ["晨露", "拂晓", "拾光", "暖杯", "慢巷"] } }]);
+    vi.mocked(f.router.routeUtterance).mockResolvedValue({ ...decision("generate"), probabilities: { generate: .96, chat: .03, answer: .01 } });
+    const r = await runIntent({ text: "帮我想五个咖啡店的名字", canvasContext: emptyContext() }, f.deps);
+    expect(r.kind).toBe("envelope");
+    expect(cards(r).map(card => card.type)).toEqual(["NoteCard"]);
+    expect(f.generate).toHaveBeenCalledTimes(1);
+  });
+  it("repairs a text-only draft into a stored card for a generation request", async () => {
+    const f = setup("generate", [{ text: "团队上季度进步显著。" }, { contract: "note", slots: { text: "团队上季度进步显著。" } }]);
+    const r = await runIntent({ text: "把这段话改写得简短一点：我们团队在过去的一个季度中取得了非常显著的进步", canvasContext: emptyContext() }, f.deps);
+    expect(r.kind).toBe("envelope");
+    expect(cards(r).map(card => card.type)).toEqual(["NoteCard"]);
+    expect(f.generate).toHaveBeenCalledTimes(2);
+  });
+  it("lets the model extract explicit numeric data when the narrow adapter grammar cannot", async () => {
+    const f = setup("generate", [{ contract: "generate", slots: { scene_id: "data_visualization", data: { chartKind: "bar", points: [{ x: "一月", y: 10 }, { x: "二月", y: 20 }, { x: "三月", y: 15 }] } } }]);
+    f.deps.data = { handleDataIntent: async () => ({ kind: "clarify", message: "表格需要你提供数据。" }) };
+    const r = await runIntent({ text: "用这些数字画个柱状图：一月10 二月20 三月15", canvasContext: emptyContext() }, f.deps);
+    expect(r.kind).toBe("envelope");
+    expect(cards(r).map(card => card.type)).toEqual(["ChartCard"]);
+    expect(f.generate).toHaveBeenCalledTimes(1);
+  });
+  it("retains a timer candidate when the independent classifier is unavailable", async () => {
+    const f = setup("countdown", [{ contract: "countdown", slots: { seconds: 1500, text: "番茄钟" } }]);
+    vi.mocked(f.router.routeUtterance).mockResolvedValue(null);
+    const r = await runIntent({ text: "帮我计时25分钟番茄钟", canvasContext: emptyContext() }, f.deps);
+    expect(r.kind).toBe("envelope");
+    expect(cards(r).map(card => card.type)).toEqual(["CountdownCard"]);
+    expect(f.generate).toHaveBeenCalledTimes(1);
+    expect(f.generate.mock.calls[0]![0][0]!.content).toContain('"id":"countdown"');
+  });
+  it("accepts an empty optional timer label without asking the user for an event", async () => {
+    const f = setup("countdown", [{ slots: { seconds: 600, text: "" } }]);
+    const r = await runIntent({ text: "到计时十分钟", canvasContext: emptyContext() }, f.deps);
+    expect(r.kind).toBe("envelope");
+    expect(cards(r)[0]?.sourceData).not.toHaveProperty("reminderText");
+    expect(f.generate).toHaveBeenCalledTimes(1);
+  });
+  it("keeps date countdowns in the scene planner rather than requiring duration seconds", async () => {
+    const f = setup("countdown", [{ clarify: "请提供考试的目标日期。" }]);
+    const r = await runIntent({ text: "离高考还有多少天，做个倒数", canvasContext: emptyContext() }, f.deps);
+    noExecution(r);
+    expect(f.generate.mock.calls[0]![0][0]!.content).toContain('"id":"generate"');
+    expect(f.generate.mock.calls[0]![0][0]!.content).not.toContain("本次契约为 countdown");
+  });
   it("builds high-confidence slots and shares one route call with the trace", async () => {
     const f = setup();
     const result = await runIntent({ text: noteText, canvasContext: emptyContext() }, f.deps);

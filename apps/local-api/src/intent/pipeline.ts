@@ -22,7 +22,7 @@ import { continueWeatherInput } from "../data/weatherInput.js";
 import { parseLocaleIntent, type DevicePosition } from "../data/deviceRegion.js";
 import { localeAnswer } from "../data/index.js";
 import { startsNewInstruction } from "@vivic/contracts";
-import { isMixedInstruction, parseNumericIntent } from "../data/numeric.js";
+import { isMixedInstruction, needsNumericSlotExtraction, parseNumericIntent } from "../data/numeric.js";
 import { scheduledReminderIntent } from "./scheduledReminders.js";
 import { articleEnvelope, articleRequest } from "./article.js";
 import { searchFallbackNote, type FetchEvidence } from "../search/client.js";
@@ -197,7 +197,8 @@ const runLegacyIntent = async (
       const dataResult = await measured("data", () => deps.data!.handleDataIntent(weatherFollowup ?? numericFollowup ?? req.text, req.canvasContext, budget.signal, req.deviceLocation));
       budget.signal.throwIfAborted();
       if (deps.isSessionCurrent && !deps.isSessionCurrent()) return { kind: "error", message: "模型连接已变更，旧结果已丢弃。" };
-      if (dataResult) return dataResult;
+      if (dataResult && !(deps.slotPlanning && !adapterOnly && dataResult.kind === "clarify"
+        && needsNumericSlotExtraction(req.text))) return dataResult;
     }
     const query = hasImages || continuation ? null : searchQuery(req.text);
     if (!hasImages && /^(?:请帮我|帮我|请)?\s*(?:读取|阅读|打开|查看)(?:这个网页|网页|链接)?\s*[:：]?\s*http:\/\//.test(req.text.trim())) {

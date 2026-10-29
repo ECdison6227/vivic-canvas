@@ -14,6 +14,9 @@ export function splitClauses(text: string): string[] {
     const left = original.slice(start, i).replace(/[，,；;\s]+$/, "").trim();
     const right = original.slice(i + match[0].length).replace(/^[，,\s]+/, "").trim();
     if (left.length < 2 || right.length < 2) continue;
+    // "I must remember X, add it to todo" names one task, not two actions.
+    if (/^[，,]$/.test(match[0]) && /^(?:我)?(?:要|得|需要|想)?记得/.test(left)
+      && /^(?:请|帮我)?(?:加|添加|加入|记).*(?:待办|清单)/.test(right)) continue;
     if ((/再$/.test(match[0]) || /^[，,]$/.test(match[0])) && !/^(?:(?:请|帮我|给我)\s*)?(?:把|创建|新建|设|倒计时|开始|启动|加|记|写|生成|聚焦|放大|打开|高亮|删除|清空|显示|恢复|撤销|重做|移动|固定|取消|暂停|继续|查|搜|提醒)/.test(right)) continue;
     if (/^[，,]$/.test(match[0]) && (/^提醒/.test(right) && /倒计时|计时器|分钟|小时|秒/.test(left)
       || !/创建|新建|设|倒计时|加|记|写|生成|聚焦|放大|打开|高亮|删除|清空|显示|恢复|撤销|重做|移动|固定|取消|暂停|继续|查|搜|提醒/.test(left))) continue;

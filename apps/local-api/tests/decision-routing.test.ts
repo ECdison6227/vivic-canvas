@@ -68,6 +68,7 @@ describe("independent route classification", () => {
 });
 describe("clause splitting", () => {
   it("splits multiple actions, preserving quoted content and at most three parts", () => {
+    expect(splitClauses("我要记得周五之前缴电费，加到待办里")).toEqual(["我要记得周五之前缴电费，加到待办里"]);
     expect(splitClauses("记下“先打开，然后点运行”，再设个倒计时")).toEqual(["记下“先打开，然后点运行”", "设个倒计时"]);
     expect(splitClauses("新建待办，然后设倒计时，再写便签，然后显示全部")).toEqual(["新建待办", "设倒计时", "写便签，然后显示全部"]);
     expect(splitClauses("帮我记明天交周报，再设个50分钟倒计时")).toEqual(["帮我记明天交周报", "设个50分钟倒计时"]);

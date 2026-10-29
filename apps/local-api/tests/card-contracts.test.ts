@@ -67,7 +67,7 @@ describe("builtin card contract registry and slot boundaries", () => {
 
   it.each([
     ["countdown", { seconds: 0 }], ["countdown", { seconds: 86_401 }], ["countdown", { seconds: 1.5 }],
-    ["countdown", { seconds: 1, text: " " }], ["countdown", { seconds: 1, text: "长".repeat(161) }],
+    ["countdown", { seconds: 1, text: 42 }], ["countdown", { seconds: 1, text: "长".repeat(161) }],
     ["todo", { items: [] }], ["todo", { items: Array(31).fill("TEST item") }],
     ["todo", { items: [" "] }], ["todo", { title: "长".repeat(81), items: ["TEST"] }],
     ["todo", { items: [{ id: "injected", text: "TEST", done: true }] }],

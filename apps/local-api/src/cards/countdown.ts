@@ -6,13 +6,13 @@ import { defineCardContract } from "./types.js";
 
 export const CountdownSlotsSchema = z.strictObject({
   seconds: z.int().min(1).max(86_400),
-  text: z.string().trim().min(1).max(160).optional(),
+  text: z.string().trim().max(160).optional(),
 });
 
 export const countdownContract = defineCardContract({
   id: "countdown",
   name: "倒计时与一次性提醒",
-  description: "按秒创建倒计时；有事项时填写 text。只填写时长和事项，时间与通知状态由程序生成。",
+  description: "普通秒、分钟、小时的计时器或番茄钟。seconds为时长秒数；text仅在用户给出事项时填写，否则省略或空字符串，不要追问事项。生日/考试等日期倒数使用generate的日期场景。时间与通知状态由程序生成。",
   examples: ["倒计时五十分钟", "设一个5分钟倒计时", "十分钟后提醒我喝水"],
   cardType: "CountdownCard",
   slots: CountdownSlotsSchema,
