@@ -61,7 +61,7 @@ try{
   assert.equal(result.kind,'envelope');const created=result.envelope.actions.flatMap(a=>a.type==='card.create'?[a.card]:[]);
   if(expected==='multi'){assert.deepEqual(created.map(c=>c.type),['NoteCard','CountdownCard']);assert.equal(result.envelope.actions.filter(a=>a.type==='canvas.fit').length,1);assert.equal(result.trace.directClauses,2);}
   else {if(expected)assert.deepEqual(created.map(c=>c.type),[expected]);assert.equal(result.trace.directClauses,1);}
-  if(id==='countdown'){assert(elapsedMs<3000,'50-minute timer exceeded 3 seconds');const source=created[0].sourceData;assert.equal(Date.parse(source.targetAt)-Date.parse(source.startedAt),3000000);}
+  if(id==='countdown'){report.timerElapsedMs=elapsedMs;report.timerWithin3s=elapsedMs<3000;const source=created[0].sourceData;assert.equal(Date.parse(source.targetAt)-Date.parse(source.startedAt),3000000);}
   await apply(result,text);assert.deepEqual(entry.record.cardsById.note_meeting,pinned);
   report.direct.push({id,text,elapsedMs,plannerCalls:0,directClauses:result.trace.directClauses,cardTypes:created.map(c=>c.type),committed:true});saveReport();console.log(JSON.stringify(report.direct.at(-1)));
  }
@@ -85,7 +85,8 @@ try{
  assert.equal(finished.task.status,'succeeded',finished.task.message);activeHostedTask=undefined;entry=await api(owner);
  const cards=Object.values(entry.record.cardsById);assert.equal(cards.filter(card=>card.displayProps.text==='并发验证').length,1);assert(cards.some(card=>card.id===concurrent.id));
  const logs=(await api('/api/space/decision-log?limit=30')).entries.filter(x=>x.text===goal);assert(logs.length>=2,'Expected a discarded proposal and a replan');assert(logs.some(x=>x.outcome==='conflict'||x.outcome==='failed'));assert(logs.some(x=>x.outcome==='succeeded'));assert(logs.every(x=>x.trace.plannerCalls===0));
- report.conflict={succeeded:true,createdOnce:true,concurrentWritePreserved:true,traceOutcomes:logs.map(x=>x.outcome)};report.complete=true;
+ report.conflict={succeeded:true,createdOnce:true,concurrentWritePreserved:true,traceOutcomes:logs.map(x=>x.outcome)};report.functionalComplete=true;report.complete=report.timerWithin3s===true;
+ if(!report.complete){report.failure=`50-minute timer exceeded 3 seconds: ${report.timerElapsedMs}ms`;process.exitCode=1;}
 }catch(error){report.failure=String(error.message).slice(0,240);process.exitCode=1;}
 finally{
  if(activeHostedTask)try{await api(activeHostedTask+'/cancel','POST');}catch{report.cancelFailure=true;}

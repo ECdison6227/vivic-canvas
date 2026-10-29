@@ -4,11 +4,11 @@
 
 ## 当前线上状态
 
-- 后端：容器 `vivic-preview-20261027`，镜像 `vivic-api:19b6fdb2ccd2f9c7df78c0eb4b6ba9499bdb6c26`，运行源码来自 Git `19b6fdb`。
-- 决策模式：shadow（只观察并记录，原规则/主模型仍执行，不开放新直接执行）
-- 已放开的类别：无
+- 后端：容器 `vivic-preview-20261027`，镜像 `vivic-api:4971be43678577e44038c7507f2f5820bd69a5f0`，运行源码来自 Git `4971be4`。
+- 决策模式：on（仅显式批准名单，未开启旧native-v2执行门控）
+- 已放开的类别：countdown、todo、note、overview、restore
 - 前端：`frontend-current` → 同事维护，执行模型不改
-- 当前阶段：用户已批准E0，首批限定倒计时、待办、便笺、显示全部、恢复视图。E代码与本地验证完成，准备按该名单部署；当前线上仍shadow。D首轮纠错与复杂创作质量仍按真实报告保留，不误称全部达标。
+- 当前阶段：E功能已部署并做隔离线上验收，继续F卡片包；2026-11-06的一周撤销率复核尚待真实数据。D首轮纠错与复杂创作质量仍按真实报告保留，不误称全部达标。
 - 磁盘：`df -h` 当前可用约 9.9G；root 密码按用户要求未改。
 - 序号定位安全修复 `a6bdcbf` 已随 D 发布；C5 完整集指标仍对应 6c7e3e3，不混充为 D 的真实模型生成指标。
 
@@ -148,10 +148,11 @@ tests/helpers.ts(8,23): TS2322: modelApiBaseUrl is string | undefined, but Local
 ## 阶段 E
 
 - [x] E0 🛑 检查点 3（2026-10-30用户明确“同意”；仅首批5类）
-- [ ] E1 on 模式执行
-- [ ] E2 删除确认
-- [ ] E3 目标歧义追问
-- [ ] E4 版本冲突重试
+- [x] E1 on 模式执行（首批5类已上线）
+- [x] E2 删除确认
+- [x] E3 目标歧义追问
+- [x] E4 版本冲突重试
+- [ ] E一周观察（2026-11-06复核真实使用的撤销比例，当前不伪称已有数据）
 
 ## E2/E3 实施（2026-10-30，Codex + Kuhn）
 
@@ -176,6 +177,15 @@ tests/helpers.ts(8,23): TS2322: modelApiBaseUrl is string | undefined, but Local
 - 解析器补后续动作、条件、否定边界，引号内逗号不拆坏正文。五个核心说法均完成parse→build；HTTP集成证明无taskId入口、任务回执、候选和宿主字段边界可用。
 - trace增加可选plannerCalls/directClauses，从实际请求内计数，不以响应快或provider名字猜测是否调模型。旧shadow/off保留，native-v2门控未开启；图片总是走本次附件的D3分支。
 - 最终本地：1876通过、3项原有跳过、0失败；tsc仅A1两项基线错误，git diff --check通过。原始结果 `tools/execution-20261030/e-release-tests.json`。代码和E回放工具集中提交后，才按用户批准启用5类。
+
+## E 上线验收（2026-10-30，Codex）
+
+- 用户批准范围已写入服务器私有env文件：mode=on，routes仅countdown,todo,note,overview,restore；改前以600权限备份。源码4971be4部署成功，暂存/生产SQLite及依赖检查通过；没有打开其它分类直执或native-v2门控。
+- 隔离账号未连接主模型即完成真实回放：倒计时2049ms、待办1968ms、便笺1981ms、显示全部2012ms、恢复1958ms；plannerCalls全部0、directClauses全部1，真实owner提交与回执成功。便笺＋50分钟计时3918ms，directClauses=2、plannerCalls=0，固定卡未移动。
+- 首次部署后的冷请求，分类3046ms、内部处理3056ms，略超3秒目标；初版工具没有存HTTP总耗时，不能补造数字。原失败记录完整保留为e-first-cold-20261030.json；后续完整轮次不覆盖它，不能宣称所有冷请求都<3秒。
+- 真实删除读书笔记先追问、拒绝不改数据、确认后仅删目标。删除两张便笺中的“第一个”沿冻结编号，选择后还需确认。确认期间画布变化则取消旧删除。
+- 真实并发owner更新与后台任务竞争触发version-conflict：旧提案被丢弃，新快照重规划成功，新建仅一次，并发写入保留；日志分别conflict/succeeded，没有把旧提案记成功。
+- 回放完成后测试Space恢复为空。完整结果evals/decision/live/e-live-20261030.json；一周真实撤销率尚未产生。下一阶段F继续后端与文档，最终在F5请用户亲自验证，不擅改同事前端。
 
 ## 阶段 F
 
