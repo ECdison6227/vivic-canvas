@@ -5,7 +5,15 @@ export * from "./json";
 export * from "./schema";
 
 export const PACKAGE_LIMITS = Object.freeze({ compressedBytes: 1_048_576, fileBytes: 262_144, totalBytes: 1_048_576, files: 32 });
-export interface CardManifest { formatVersion: "0.1"; id: string; version: string; name: string; description: string; renderer: "declarative"; host: "0.6"; capabilities: [] }
+export interface CardManifest {
+  formatVersion: "0.1" | "0.2"; id: string; version: string; name: string; description: string; renderer: "declarative"; host: "0.6"; capabilities: [];
+  /** Routing utterances, distinct from the config/data/state instances in examples/*.json. */
+  examples?: string[];
+  /** Model parameters for instance.data; callers use dataSchema when absent. */
+  slots?: ValueSchema;
+  icon?: string;
+  category?: string;
+}
 export type ComponentName = "Header" | "KeyValue" | "Metric" | "List" | "Image" | "Badge" | "Link" | "Table" | "Progress";
 export interface UiBlock { component: ComponentName; label?: string; text?: string; bind?: string; columns?: { label: string; field: string }[] }
 export interface CardExample { name: string; config: JsonObject; data: JsonObject; state: JsonObject }
@@ -26,13 +34,39 @@ export const definitionRef = (d: CardDefinition) => ({ id: d.manifest.id, versio
 export function parseManifest(raw: unknown): CardManifest {
   const p = "manifest.json";
   if (!isObject(raw)) return fail(p, "需要对象");
-  exact(raw, ["formatVersion", "id", "version", "name", "description", "renderer", "host", "capabilities"], p);
-  if (raw.formatVersion !== "0.1" || raw.renderer !== "declarative" || raw.host !== "0.6") fail(p, "仅支持 formatVersion 0.1 / declarative / host 0.6");
+  exact(raw, ["formatVersion", "id", "version", "name", "description", "renderer", "host", "capabilities", "examples", "slots", "icon", "category"], p);
+  if (raw.formatVersion !== "0.1" && raw.formatVersion !== "0.2" || raw.renderer !== "declarative" || raw.host !== "0.6") fail(p, "仅支持 formatVersion 0.1 或 0.2 / declarative / host 0.6");
   const id = textField(raw.id, `${p}/id`, 80), version = textField(raw.version, `${p}/version`, 32);
   if (!/^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)*$/.test(id)) fail(`${p}/id`, "使用小写域式 ID，如 example.goal");
   if (!/^\d+\.\d+\.\d+$/.test(version)) fail(`${p}/version`, "需要 x.y.z 版本");
-  if (!Array.isArray(raw.capabilities) || raw.capabilities.length) fail(`${p}/capabilities`, "v0.1 不支持外部服务、代码或动作能力；capabilities 必须为空");
-  return { formatVersion: "0.1", id, version, name: textField(raw.name, `${p}/name`, 80), description: textField(raw.description, `${p}/description`, 400), renderer: "declarative", host: "0.6", capabilities: [] };
+  if (!Array.isArray(raw.capabilities) || raw.capabilities.length) fail(`${p}/capabilities`, "不支持外部服务、代码或动作能力；capabilities 必须为空");
+  let examples: string[] | undefined, slots: ValueSchema | undefined;
+  if (raw.examples !== undefined) {
+    if (!Array.isArray(raw.examples) || raw.examples.length < 3 || raw.examples.length > 10) fail(`${p}/examples`, "需要 3–10 条触发例句");
+    examples = Array.from(raw.examples as unknown[]).map((value, index) => {
+      const path = `${p}/examples/${index}`;
+      if (typeof value !== "string") return fail(path, "需要 4–40 字符例句");
+      const text = value.trim(), length = Array.from(text).length;
+      if (length < 4 || length > 40) return fail(path, "需要 4–40 字符例句");
+      if (/(?:[a-z][a-z0-9+.-]*:\/\/|(?:https?|ftp|file|data|javascript|mailto):|www\.|\/\/[^\s]+|\b(?:[a-z0-9-]+\.)+(?:com|org|net|cn|io|ai|dev|app|edu|gov|co|me|info|xyz|test)\b)/iu.test(text)) return fail(path, "触发例句不能包含 URL");
+      return text;
+    });
+  }
+  if (raw.slots !== undefined) {
+    checkJsonBudget(raw.slots, `${p}/slots`);
+    slots = parseValueSchema(raw.slots, `${p}/slots`);
+    if (slots.type !== "object") fail(`${p}/slots`, "参数表根必须是 object，对应实例 data 字段");
+  }
+  const optionalLabel = (key: "icon" | "category", max: number): string | undefined => {
+    if (raw[key] === undefined) return undefined;
+    if (typeof raw[key] !== "string" || Array.from(raw[key]).length > max) return fail(`${p}/${key}`, `需要至多 ${max} 字符文本`);
+    return raw[key];
+  };
+  const icon = optionalLabel("icon", 8), category = optionalLabel("category", 20);
+  return { formatVersion: raw.formatVersion as CardManifest["formatVersion"], id, version,
+    name: textField(raw.name, `${p}/name`, 80), description: textField(raw.description, `${p}/description`, 400),
+    renderer: "declarative", host: "0.6", capabilities: [], ...(examples === undefined ? {} : { examples }),
+    ...(slots === undefined ? {} : { slots }), ...(icon === undefined ? {} : { icon }), ...(category === undefined ? {} : { category }) };
 }
 const validPointer = (v: unknown): v is string => typeof v === "string" && v.length <= 256 && /^\/(?:config|data|state)(?:\/(?:[^~\/]|~[01])*)*$/.test(v)
   && v.split("/").every(k => !["__proto__", "constructor", "prototype"].includes(k));

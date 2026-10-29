@@ -195,6 +195,12 @@ tests/helpers.ts(8,23): TS2322: modelApiBaseUrl is string | undefined, but Local
 - [ ] F4 扩展卡参数
 - [ ] F5 做卡指南（🛑 检查点 4）
 
+## F1 实施（2026-10-30，Codex + Kuhn）
+
+- card-runtime支持manifest formatVersion 0.1/0.2；可选examples、slots、icon、category均有长度/数量/Schema校验，capabilities仍必须[]，不增加JS、服务或动作能力。slots约束实例data字段，触发例句不同于examples目录的渲染实例。
+- 新字段参与canonical文件hash，持久化重验继续检查原包文件，不信缓存validated标记。原ZIP路径、CRC、解压预算、未知文件和Schema限制保留。
+- 73项定向通过；本轮完整API回归2016通过、3项原有跳过、0失败。共享运行时的前端源码14项回归通过，不等同于已经更新线上静态包。类型检查仅两项原基线问题。
+
 ## 阶段 G
 
 - [ ] G 演示准备与交接
