@@ -1,0 +1,48 @@
+import { z } from "zod";
+import { CardRecordSchema } from "@vivic/contracts";
+import { buildReminderActions, parseDuration, parseExactReminders } from "../intent/reminders.js";
+import { newCardLayout } from "./build.js";
+import { defineCardContract } from "./types.js";
+
+export const CountdownSlotsSchema = z.strictObject({
+  seconds: z.int().min(1).max(86_400),
+  text: z.string().trim().min(1).max(160).optional(),
+});
+
+export const countdownContract = defineCardContract({
+  id: "countdown",
+  name: "倒计时与一次性提醒",
+  description: "按秒创建倒计时；有事项时填写 text。只填写时长和事项，时间与通知状态由程序生成。",
+  examples: ["倒计时五十分钟", "设一个5分钟倒计时", "十分钟后提醒我喝水"],
+  cardType: "CountdownCard",
+  slots: CountdownSlotsSchema,
+  parse(text) {
+    const reminders = parseExactReminders(text);
+    if (reminders) {
+      // A single slots object cannot represent multiple reminders without loss.
+      if (reminders.length !== 1) return null;
+      return { seconds: reminders[0]!.afterSeconds, text: reminders[0]!.text };
+    }
+    const input = text.trim();
+    const match = input.match(/^(?:创建|新建|设|定|来)?\s*(?:一个|个)?\s*(.+?)\s*倒计时$/)
+      ?? input.match(/^倒计时\s*(.+)$/);
+    const seconds = match ? parseDuration(match[1]!) : null;
+    return seconds === null ? null : { seconds };
+  },
+  build(slots, context, now) {
+    const stamp = now.toISOString();
+    return buildReminderActions([{ afterSeconds: slots.seconds, text: slots.text ?? "" }], context).map(action => {
+      if (action.type !== "card.create" || action.card.type !== "CountdownCard") return action;
+      return { ...action, card: CardRecordSchema.parse({
+        ...action.card,
+        sourceData: {
+          targetAt: new Date(now.getTime() + slots.seconds * 1000).toISOString(),
+          startedAt: stamp,
+          ...(slots.text ? { reminderText: slots.text } : {}),
+        },
+        layout: newCardLayout(action.card.layout.width, action.card.layout.height, context),
+        metadata: { createdAt: stamp, updatedAt: stamp },
+      }) };
+    });
+  },
+});

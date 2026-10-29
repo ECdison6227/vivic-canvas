@@ -65,10 +65,18 @@ tests/helpers.ts(8,23): TS2322: modelApiBaseUrl is string | undefined, but Local
 
 ## 阶段 D
 
-- [ ] D1 卡片契约
+- [x] D1 卡片契约（2026-10-30；接线与发布随 D2 集成）
 - [ ] D2 规划器只填参数
 - [ ] D3 图片
 - [ ] D4 三通道输出
+
+## D1 执行记录（2026-10-30，Codex + 并行代理）
+
+- 用户已明确批准继续检查点 2，按 Claude 手册进入 D；三个代理共享工作区按文件边界并行，父代理负责集成、提交与部署。
+- 新增共享 `CardContract` 及 `cards/` 的 countdown/todo/note/answer/视图、edit/arrange/delete 契约。模型只填业务参数，编号、布局和系统时间由宿主生成；目标编号来自宿主，待办追加条目编号也由宿主生成。
+- answer 复用 NewsCard，不套用新闻原文摘要限制；keyPoints/来源链接可省略。URL 来源由 D2 集成检查。多卡布局只为新卡寻找空位，已有固定卡不动。
+- 验收：`vitest run tests/card-contracts.test.ts tests/card-operations.test.ts --maxWorkers=4`。专项分别 91、65 项；首轮全量 1636 通过、3 项原有跳过、0 失败。新类型模块无诊断；全仓类型检查仍有两处已记录基线错误。
+- 已再次运行 `node scripts/sync-online-patches.mjs`，新补丁 0；线上前端指针未变。D2/D3 集成仍在工作区，未部署。
 
 ## 阶段 E
 

@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "synced_at": "2026-10-29T23:31:51+0800",
-  "sync_epoch": 1793287911.1274538,
+  "synced_at": "2026-10-30T00:02:20+0800",
+  "sync_epoch": 1793289740.1139507,
   "releases": [],
   "frontend": "/opt/vivic-preview-20261025/releases/unified-background-20261029-1/web",
   "container": "vivic-preview-20261027",

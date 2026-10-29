@@ -15,3 +15,4 @@ export * from "./files";
 export * from "./hostedSpace";
 export * from "./reminderRuntime";
 export * from "./routes";
+export * from "./cardContract";
