@@ -4,13 +4,13 @@
 
 ## 当前线上状态
 
-- 后端：容器 `vivic-preview-20261027`，镜像 `vivic-api:6c7e3e34ef79837b126d373f71cf1488d1967e70`，运行源码来自 Git `6c7e3e3`。
+- 后端：容器 `vivic-preview-20261027`，镜像 `vivic-api:ddadb2627ce0f973612ae5cc3fa7b31478a0277c`，运行源码来自 Git `ddadb26`。
 - 决策模式：shadow（只观察并记录，原规则/主模型仍执行，不开放新直接执行）
 - 已放开的类别：无
 - 前端：`frontend-current` → 同事维护，执行模型不改
-- 当前阶段：用户已批准检查点 2，D 代码与本地集成验证已完成，准备集中发布。D 的真实主模型回放及当前线上图片视觉验收尚未完成；E0 检查点 3 未获批准，不能切换 on。
+- 当前阶段：用户已批准检查点 2，D 代码、本地集成、后端发布及合成图片显示核对已完成。D 的真实主模型回放尚未完成；E0 检查点 3 未获批准，不能切换 on。
 - 磁盘：`df -h` 当前可用约 9.9G；root 密码按用户要求未改。
-- Git 中另有序号定位安全修复 `a6bdcbf`，已测但未部署，随下一批批准更新合并；线上回放指标仍对应 6c7e3e3。
+- 序号定位安全修复 `a6bdcbf` 已随 D 发布；C5 完整集指标仍对应 6c7e3e3，不混充为 D 的真实模型生成指标。
 
 ## 基线失败
 
@@ -104,6 +104,19 @@ tests/helpers.ts(8,23): TS2322: modelApiBaseUrl is string | undefined, but Local
 - 最终本地回归：`vitest run --maxWorkers=4 --reporter=json --outputFile=.../d-final-tests.json` 为 **1682 通过、3 项原有外网诊断跳过、0 失败**。`tsc -b --pretty false` 仅剩 A1 两处基线错误，没有新增诊断；`git diff --check` 通过。
 - 手册中的“回退完整 planner”与“模型永不填写系统记录”有交集冲突，实施采用原场景 builder/数据格式的兼容回退，不恢复整卡输出；未增加新的执行权限或编程能力。
 - 真实主模型验收仍需测试账号通过正常网页连接模型，不读取真实用户凭据，不把模拟结果称为 <3% 达标。部署前磁盘可用 **10,529,255,424 bytes**，前端指针未变，healthz 正常。
+
+## D 集中发布与线上核对（2026-10-30，Codex）
+
+- 已按任务提交并推送 `143b472`（D1）、`482ee7a`（D4）、`44335ec`（D3）、`ddadb26`（D2 集成）。通过 mirasim 正常 Git 接口推送，无强推、无 main 合并。
+- `node scripts/deploy-backend.mjs ddadb26` 成功。暂存一致性备份、源码依赖导入、暂存/生产 SQLite 检查均通过；服务运行新镜像，持久数据仍挂载原目录，前端仍为 `unified-background-20261029-1/web`。
+- 新版本线上隔离账号 smoke：20秒倒计时、两条待办、显示全部均返回合法 envelope，语音长度与字幕去重符合要求，耗时 276/270/275ms，均为原有 rules 路径，不代表新增分类器直执延迟。测试只读取提案，前后 Space 内容及版本一致。
+- 现场核实测试账号 `mainModelConnected=false`。没有执行真实主模型质量回放，没有声称达到拒绝率 <3%。验收文件：服务器 `backend/acceptance-D-20261030.json`。
+- ego-browser 未安装，使用项目已有 Playwright 的独立、静音、无麦克风权限 context。通过正常 photos/owner API 临时放置合成图片 NewsCard；线上 `/display` 显示页成功加载 96×48 的受控图片，page error=0。主聊天页不展示该图片，未将其当作显示页失败。
+- 已关闭测试浏览器，恢复隔离 Space 原始空内容并删除本次新建图片；不操作真实用户 Space。服务器和本地临时浏览器认证文件均已移除。测试截图保存在本机外层 `tools/execution-20261030/`，无模型密钥。
+- 显示页截图中卡片文字对比度偏低，已列入前端协作清单；本轮不覆盖同事前端。图片能加载，因此不启用 PhotoCoverCard 回退。
+- 发布后磁盘可用 **10,526,650,368 bytes**（约9.8GiB）。healthz 正常；root 密码未改，飞书消息和后训练继续暂缓。
+- 收尾复核：首页 HTTP 200、healthz 正常；Mac `19095/health` 返回 ok=true、loaded=true、pending=0。公开合成结果已存入 `evals/decision/live/d-smoke-20261030.json`、`d-browser-compatibility-20261030.json`；不含账号凭据。
+- 后续从 D 的真实模型验收继续；需在隔离测试账号正常连接主对话模型。取得真实数据后再向用户报告 E0，未经批准不将模式改为 on；F/G 不越过手册阶段检查点。
 
 ## 阶段 E
 
