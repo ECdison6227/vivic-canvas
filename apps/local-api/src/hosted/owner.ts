@@ -2,6 +2,7 @@ import { z } from "zod";
 import { CardRecordSchema, ViewportSchema } from "@vivic/contracts";
 import { type HostedSpaceStore, type SpaceIdentity, SpaceError } from "../space/index.js";
 import { hostedBody, hostedJson } from "./http.js";
+import { assertCardPackageOrigin, deleteHostedDefinition, saveHostedDefinition } from "./cardPackages.js";
 
 const id = z.string().min(1).max(128).regex(/^[A-Za-z0-9_-]+$/);
 export const OwnerCanvasSchema = z.strictObject({
@@ -41,18 +42,17 @@ export async function ownerRoute(store: HostedSpaceStore, request: Request, iden
   if (!route.startsWith(base + "/")) return null;
   const { accountId, device } = identity;
   if (route === base + "/definitions" && (request.method === "PUT" || request.method === "DELETE")) {
-    const definitions = store.getAccountValue<Array<{ key: string; definition: unknown; enabled: boolean }>>(accountId, "hostedDefinitions") ?? [];
+    assertCardPackageOrigin(request); store.assertDeviceActive(accountId, device.id);
     const { revalidateDefinition, definitionKey, definitionRef } = await import("@vivic/card-runtime");
     if (request.method === "PUT") {
       const input = z.strictObject({ record: z.strictObject({ key: z.string().max(512), definition: z.unknown(), enabled: z.boolean() }) }).parse(await hostedBody(request, 2 * 1024 * 1024));
       const definition = await revalidateDefinition(input.record.definition), key = definitionKey(definitionRef(definition));
-      if (key !== input.record.key || definitions.length >= 256 && !definitions.some(item => item.key === key)) throw new SpaceError(400, "invalid-definition", "卡片包未通过校验。");
-      store.assertDeviceActive(accountId, device.id);
-      store.setAccountValue(accountId, "hostedDefinitions", [...definitions.filter(item => item.key !== key), { ...input.record, definition }]);
+      if (key !== input.record.key) throw new SpaceError(400, "invalid-definition", "卡片包未通过校验。");
+      request.signal.throwIfAborted();
+      saveHostedDefinition(store, identity, { ...input.record, definition });
     } else {
       const input = z.strictObject({ key: z.string().max(512) }).parse(await hostedBody(request));
-      store.assertDeviceActive(accountId, device.id);
-      store.setAccountValue(accountId, "hostedDefinitions", definitions.filter(item => item.key !== input.key));
+      request.signal.throwIfAborted(); deleteHostedDefinition(store, identity, input.key);
     }
     return hostedJson({ ok: true });
   }

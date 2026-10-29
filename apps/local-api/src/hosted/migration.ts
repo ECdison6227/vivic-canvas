@@ -7,6 +7,7 @@ import { SpaceError } from "../space/errors.js";
 import { arrangeHostedCards, hostedImageSources } from "../space/executor.js";
 import type { HostedAsset } from "./assets.js";
 import { hostedBody, hostedForm, hostedJson } from "./http.js";
+import { mergeHostedDefinitions } from "./cardPackages.js";
 
 const MAX_IMPORT_BYTES = 8 * 1024 * 1024;
 const id = z.string().regex(/^[A-Za-z0-9_-]{1,128}$/);
@@ -194,13 +195,12 @@ export function createHostedMigrationService(options: { store: HostedSpaceStore;
       const source = manifest.record.cardOrder.map(cardId => remapCard(manifest.record.cardsById[cardId]!, manifest.requirements));
       const document = store.getSpaceDocument(identity.accountId, spaceId), existingDefinitions = Array.isArray(document.definitions) ? document.definitions as InstalledDefinition[] : [];
       const definitions = [...existingDefinitions];
-      const installed = accountDefinitions(identity.accountId);
+      const installed = mergeHostedDefinitions(accountDefinitions(identity.accountId), manifest.definitions);
       for (const incoming of manifest.definitions) {
         const conflict = [...definitions, ...installed].find(item => item.definition.manifest.id === incoming.definition.manifest.id
           && item.definition.manifest.version === incoming.definition.manifest.version && item.definition.hash !== incoming.definition.hash);
         if (conflict) fail(409, "migration-definition-conflict", "目标Space已有相同ID和版本但内容不同的卡片包。");
         if (!definitions.some(item => item.key === incoming.key)) definitions.push(incoming);
-        if (!installed.some(item => item.key === incoming.key)) installed.push(incoming);
       }
       for (const card of source) {
         if (card.type === "ExtensionCard") {
