@@ -26,6 +26,7 @@ export interface MobileClient {
   query(requestId: string): void;
   refresh(): void;
   readFile?(cardId: string, onProgress?: (received: number, total: number) => void, signal?: AbortSignal): Promise<DownloadedFile>;
+  readImage?(cardId: string, imageId: string, signal?: AbortSignal): Promise<DownloadedFile>;
 }
 export interface MobileClientOptions {
   id?: string; name?: string; transportFactory?: (url: string) => Transport;
@@ -135,7 +136,10 @@ export function createMobileClient(options: MobileClientOptions = {}): MobileCli
       else { const s = scope(); if (s) send({ ...s, type: "snapshot.request" }); }
       return;
     }
-    if (frame.type === "snapshot" && frame.deviceId === welcome?.computerId && frame.sequence > sequence) {
+    if (frame.type === "snapshot" && frame.deviceId === welcome?.computerId && (frame.sequence > sequence || frame.state.ownerEpoch !== state.snapshot?.ownerEpoch)) {
+      // A refreshed owner has a new attachment lease and a fresh sequence. An
+      // outstanding command remains uncertain and is never resubmitted.
+      if (state.snapshot && frame.state.ownerEpoch !== state.snapshot.ownerEpoch) { fileClient.cancel("电脑控制页已恢复，请重新打开文件"); uncertain(); }
       sequence = frame.sequence; patch({ snapshot: frame.state, error: frame.state.ownerAvailable ? null : "电脑 owner 当前不可用" }); fileClient.reconcile();
     } else if (frame.type === "accepted" && frame.deviceId === deviceId) {
       modifyRequest(frame.requestId, { status: "accepted", message: "中继已送达，等待电脑执行确认。" }); requestTimer(frame.requestId);
@@ -202,6 +206,7 @@ export function createMobileClient(options: MobileClientOptions = {}): MobileCli
     query(id) { const r = state.requests.find(r => r.requestId === id); const s = scope(); if (r && s && connected()) send({ ...s, type: "query", requestId: id, canvasId: r.canvasId }); },
     refresh() { const s = scope(); if (s && connected()) send({ ...s, type: "snapshot.request" }); },
     readFile: fileClient.read,
+    readImage: (cardId, imageId, signal) => fileClient.read(cardId, undefined, signal, imageId),
   };
   return client;
 }

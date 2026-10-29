@@ -3,7 +3,7 @@ export type SttProvider = "stepfun" | "local" | "none";
 export type TtsProvider = "stepfun" | "browser" | "local" | "none";
 interface VoiceConfiguration { stt: SttProvider; tts: TtsProvider; browserVoice: string; wakeEnabled: boolean; }
 const key = "vivic.voice.providers.v1";
-const defaults: VoiceConfiguration = { stt: "stepfun", tts: "stepfun", browserVoice: "", wakeEnabled: false };
+const defaults: VoiceConfiguration = { stt: "stepfun", tts: "stepfun", browserVoice: "", wakeEnabled: true };
 let state: VoiceConfiguration = { ...defaults };
 try {
   const value: unknown = JSON.parse(localStorage.getItem(key) ?? "null");
@@ -15,6 +15,7 @@ try {
   }
 } catch { /* Preferences remain available for this tab. */ }
 if (ONLINE_BUILD) { if (state.stt === "local") state.stt = "stepfun"; if (state.tts === "browser" || state.tts === "local") state.tts = "stepfun"; }
+state.wakeEnabled = true;
 const listeners = new Set<() => void>();
 export const getVoiceConfiguration = () => state;
 export const subscribeVoiceConfiguration = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };

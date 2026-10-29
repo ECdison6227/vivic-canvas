@@ -1,6 +1,5 @@
 import { AlertDialog } from "radix-ui";
-import { useContext, useRef, useState, type ReactNode } from "react";
-import { ControlOverlayContext } from "./ControlOverlayContext";
+import { useRef, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { HarkSurface } from "@/components/hark/HarkPrimitives";
 
@@ -23,19 +22,22 @@ export const ConfirmDialog = ({
   onConfirm,
 }: ConfirmDialogProps) => {
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const container = useContext(ControlOverlayContext);
+  const [portalContainer, setPortalContainer] = useState<HTMLElement | undefined>();
   const [appearance, setAppearance] = useState<"light" | "dark">("light");
   return <AlertDialog.Root onOpenChange={open => {
-    if (!open) return;
+    if (!open) { setPortalContainer(undefined); return; }
+    // Fixed dialogs must escape animated page containers. Keep them inside a
+    // native dialog when one exists so they remain in the browser top layer.
+    setPortalContainer(triggerRef.current?.closest<HTMLDialogElement>("dialog[open]") ?? undefined);
     const root = triggerRef.current?.closest("[data-appearance],[data-mobile-theme]");
     setAppearance((root?.getAttribute("data-appearance") ?? root?.getAttribute("data-mobile-theme")) === "dark" ? "dark" : "light");
   }}>
     <AlertDialog.Trigger ref={triggerRef} asChild disabled={disabled}>
       {trigger}
     </AlertDialog.Trigger>
-    <AlertDialog.Portal container={container ?? undefined}>
-      <AlertDialog.Overlay className="hark-dialog-overlay fixed inset-0 z-50" />
-      <AlertDialog.Content asChild><HarkSurface as="section" data-appearance={appearance} className="vh-hark hark-confirm fixed left-1/2 top-1/2 z-50 w-[min(92vw,380px)] -translate-x-1/2 -translate-y-1/2 p-6">
+    <AlertDialog.Portal container={portalContainer}>
+      <AlertDialog.Overlay className="hark-dialog-overlay fixed inset-0 z-[100]" />
+      <AlertDialog.Content asChild><HarkSurface as="section" data-appearance={appearance} className="vh-hark hark-confirm fixed left-1/2 top-1/2 z-[101] w-[min(92vw,380px)] -translate-x-1/2 -translate-y-1/2 p-6">
         <AlertDialog.Title className="hark-confirm-title">
           {title}
         </AlertDialog.Title>

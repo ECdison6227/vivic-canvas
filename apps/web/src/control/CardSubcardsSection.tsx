@@ -23,6 +23,7 @@ export const CardSubcardsSection = ({ host }: { host: ControlHost }) => {
     return () => clearTimeout(timer);
   }, [highlight]);
   const [error, setError] = useState<string | null>(null);
+  const [closed, setClosed] = useState<string[]>([]);
   const editable = snapshot.ready && snapshot.ownerMode === "owner";
   const context = useMemo(() => ({ editable, dispatch: (action: Action) => {
     const current = host.getSnapshot();
@@ -33,11 +34,12 @@ export const CardSubcardsSection = ({ host }: { host: ControlHost }) => {
     return host.dispatch({ schemaVersion: "0.6", requestId: newId("subcard"), canvasId: current.activeCanvasId, actions: [action] }).ok;
   } }), [host, editable, snapshot.activeCanvasId]);
   const visible = cards.filter(c => !c.exitingRequestId && !completedCountdown(c));
+  const openIds = visible.map(({ record }) => record.id).filter(id => !closed.includes(id));
   return <CardDetailsReader><section className="rounded-xl border border-neutral-200 bg-white p-4" data-vivic-card-subcards>
     <h2 className="text-sm font-semibold">卡片与子卡片</h2>
     <p className="mt-2 text-xs text-neutral-500">打开卡片，在对应行旁添加扩充；展示端可沿箭头阅读。</p>
     <SubcardEditorContext.Provider value={context} key={`${snapshot.activeCanvasId}:${snapshot.ownerMode}`}>
-      <Accordion.Root type="single" collapsible className="mt-3">
+      <Accordion.Root type="multiple" value={openIds} onValueChange={next => setClosed(visible.map(({ record }) => record.id).filter(id => !next.includes(id)))} className="mt-3">
         {visible.map(({ record }) => <Accordion.Item key={record.id} value={record.id} className="border-b border-neutral-100 last:border-0" data-vivic-inspect-card={record.id}>
           <div className="flex items-center gap-2"><Accordion.Header className="min-w-0 flex-1"><Accordion.Trigger data-vivic-inspect-toggle className="flex w-full items-center gap-2 py-3 text-left text-sm focus-visible:outline-2">
             <span className="vivic-inspect-number"><TargetBadge cardId={record.id} /></span><span className="min-w-0 flex-1 break-words line-clamp-2">{cardTitle(record)}</span>

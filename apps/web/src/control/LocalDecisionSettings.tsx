@@ -7,6 +7,8 @@ interface Status {
   lastMs: number | null; error: string | null; mode?: "provider" | "managed"; configurationError?: string;
   downloadedBytes?: number; totalBytes?: number;
   profileId?:string;
+  resources?: { allowed: boolean; freeMemoryBytes: number | null; requiredFreeBytes: number };
+  v2?: { configured: boolean; executionEnabled: boolean; available?: boolean };
   lastState?: "accepted" | "deferred" | "error" | "timeout" | "cancelled" | "disabled";
 }
 function providerPhaseLabel(status: Status): string {
@@ -48,10 +50,12 @@ export function LocalDecisionSettings({ disabled }: { disabled: boolean }) {
     <p className="mt-2 text-xs text-neutral-600" role="status" data-vivic-decision-status>{status
       ? `${status.configurationError ? "受控决策服务" : status.model} · ${phaseLabel}${status.lastMs !== null ? ` · 最近 ${Math.round(status.lastMs)}ms` : ""}`
       : "本地决策服务未连接，现有文字指令仍可使用。"}</p>
+    {status?.v2?.configured && <p className="mt-2 text-xs text-neutral-500" data-vivic-native-status>Jev v2 原生接口{status.v2.available ? "已就绪" : "已接线"}。{!status.v2.executionEnabled && "质量尚未确认，执行保持关闭。"}</p>}
+    {!providerMode && status?.resources && !status.enabled && !status.resources.allowed && <p className="mt-2 text-xs text-amber-700" role="status">可用内存{status.resources.freeMemoryBytes === null ? "无法确认" : `约 ${(status.resources.freeMemoryBytes / 2 ** 30).toFixed(1)} GiB`}，此规格需 {(status.resources.requiredFreeBytes / 2 ** 30).toFixed(0)} GiB。请释放内存或选择较小规格。</p>}
     {pending && ["downloading", "installing"].includes(status?.phase ?? "") && status?.totalBytes && <p className="mt-2 text-xs" role="status">已准备 {Math.round((status.downloadedBytes ?? 0) / 1e6)} / {Math.round(status.totalBytes / 1e6)} MB</p>}
     <div className="mt-3 flex flex-wrap gap-2">
       {!providerMode && <Button variant="secondary" size="sm" disabled={disabled || busy || !status || Boolean(pending) || status.enabled} onClick={() => void action("prepare")} data-vivic-decision-prepare>准备模型</Button>}
-      <Button variant="secondary" size="sm" disabled={disabled || busy || !status || Boolean(pending) || Boolean(status?.configurationError) || status.enabled || !providerMode && status.phase === "absent"} onClick={() => void action("enable")} data-vivic-decision-enable>{providerMode ? "启用决策服务" : "启用本地决策"}</Button>
+      <Button variant="secondary" size="sm" disabled={disabled || busy || !status || Boolean(pending) || Boolean(status?.configurationError) || status.enabled || !providerMode && (status.phase === "absent" || status.mode === "managed" && status.resources?.allowed !== true)} onClick={() => void action("enable")} data-vivic-decision-enable>{providerMode ? "启用决策服务" : "启用本地决策"}</Button>
       <Button variant="outline" size="sm" disabled={disabled || busy || !status || status.phase === "stopping" || !status.enabled && !pending} onClick={() => void action("stop")} data-vivic-decision-stop>{providerMode ? "停用决策服务" : "停止并释放内存"}</Button>
       {!providerMode && <ConfirmDialog title="清理本地决策模型缓存？" description="停止本地决策并删除其模型文件，之后需要重新准备；画布和账号连接保留。"
         disabled={disabled || busy || Boolean(pending)} onConfirm={() => void action("clear")} confirmLabel="清理模型"

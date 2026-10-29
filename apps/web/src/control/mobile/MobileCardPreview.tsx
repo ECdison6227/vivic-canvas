@@ -4,16 +4,20 @@ import type { CardSnapshot } from "@vivic/mobile-console-prototype/protocol";
 import { useEffect, useState, type ReactNode } from "react";
 import { countdownPreviewValue, readCountdownPreview } from "./countdownPreview";
 import "./mobile-card-preview.css";
-import { isReadableFile } from "@vivic/contracts";
+import type { MobileClient } from "@vivic/mobile-console-prototype/client";
+import { MobileImages } from "./MobileImages";
+import { fileFormatLabel } from "@/files/filePresentation";
 
 const glyphs: Record<string, string> = {
   text: "file", checklist: "list", metric: "point", table: "apps", timeline: "calendar", chart: "research", collection: "card",
 };
 
 /** Read-only portable view data from the paired owner, never a canvas or extension host. */
-export function MobileCardPreview({ card, action }: { card: CardSnapshot; action?: ReactNode }) {
-  const downloadOnly = card.type === "FileCard" && !isReadableFile(card.file?.mediaType ?? "");
-  const preview = downloadOnly ? undefined : card.preview;
+export function MobileCardPreview({ card, action, client, online = false }: { card: CardSnapshot; action?: ReactNode; client?: MobileClient; online?: boolean }) {
+  if (card.type === "FileCard") return <div className="mobile-card-preview mobile-file-card-preview" data-mobile-card-preview={card.id}>
+    <header className="mobile-card-preview-header"><span className="mobile-card-preview-mark mobile-file-preview-mark" aria-hidden="true"><HarkIcon name="file" size={18} /><small>{fileFormatLabel(card.file?.mediaType ?? "")}</small></span><h2>{card.file?.name ?? (card.title || "文件")}</h2>{action}</header>
+  </div>;
+  const preview = card.preview;
   const countdown = readCountdownPreview(card);
   if (countdown) return <MobileCountdown key={`${countdown.targetAt}:${countdown.paused}:${countdown.waiting}`} card={card} timer={countdown} action={action} />;
   const empty = preview && !preview.stat && (
@@ -24,7 +28,8 @@ export function MobileCardPreview({ card, action }: { card: CardSnapshot; action
     ? card.type === "NoteCard" ? "便笺" : "金句" : card.title || "未命名卡片";
   return <div className="mobile-card-preview" data-mobile-card-preview={card.id}>
     <header className="mobile-card-preview-header"><span className="mobile-card-preview-mark"><HarkIcon name={glyphs[preview?.kind ?? ""] ?? "card"} size={20} /></span><h2>{title}</h2>{action}</header>
-    {!preview ? <p className="mobile-card-preview-muted">{downloadOnly ? "此格式仅保留原文件下载" : "这张卡片的内容请在电脑端查看。"}</p> : <>
+    {client && (card.images?.length || card.imageNotice) ? <MobileImages card={card} client={client} online={online} /> : null}
+    {!preview ? <p className="mobile-card-preview-muted">这张卡片的内容请在电脑端查看。</p> : <>
       {empty && <p className="mobile-card-preview-muted" data-mobile-card-empty>{preview.kind === "checklist" ? "暂无待办事项" : preview.kind === "timeline" ? "暂无安排或记录" : preview.kind === "chart" || preview.kind === "table" ? "暂无数据" : "暂无内容"}</p>}
       {preview.stat && <p className="mobile-card-preview-stat"><strong>{preview.stat.value}</strong>{preview.stat.unit && <span>{preview.stat.unit}</span>}</p>}
       {preview.body && <p className="mobile-card-preview-body">{preview.body}</p>}

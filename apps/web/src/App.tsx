@@ -1,10 +1,9 @@
 import { lazy, Suspense } from "react";
 import { ONLINE_BUILD } from "@/online/mode";
-import { OnlineBoundary } from "@/online/OnlineBoundary";
-import { OnlineWorkspace } from "@/online/OnlineWorkspace";
-const ControlApp = lazy(() => import("@/control/ControlApp").then(module => ({ default: module.ControlApp })));
-const DisplayApp = lazy(() => import("@/display/DisplayApp").then(module => ({ default: module.DisplayApp })));
-const MobileConsole = lazy(() => import("@/control/mobile/MobileConsole").then(module => ({ default: module.MobileConsole })));
+const HostedWorkspace = ONLINE_BUILD ? lazy(() => import("@/hosted/HostedWorkspace").then(module => ({ default: module.HostedWorkspace }))) : null;
+const ControlApp = ONLINE_BUILD ? null : lazy(() => import("@/control/ControlApp").then(module => ({ default: module.ControlApp })));
+const DisplayApp = ONLINE_BUILD ? null : lazy(() => import("@/display/DisplayApp").then(module => ({ default: module.DisplayApp })));
+const MobileConsole = ONLINE_BUILD ? null : lazy(() => import("@/control/mobile/MobileConsole").then(module => ({ default: module.MobileConsole })));
 const LauncherApp = import.meta.env.MODE === "online" ? null : lazy(() => import("@/launcher/LauncherApp"));
 
 /**
@@ -18,6 +17,7 @@ const LauncherApp = import.meta.env.MODE === "online" ? null : lazy(() => import
  */
 const rawPath = window.location.pathname.replace(/\/+$/, "") || "/";
 const isDisplay = rawPath === "/display";
+if (isDisplay) document.documentElement.dataset.vivicDisplayWindow = "true";
 const isOnlineRemote = ONLINE_BUILD && (rawPath === "/remote" || rawPath === "/remote/index.html");
 const isPlayground = import.meta.env.DEV && rawPath === "/playground";
 // Production builds drop the playground chunk entirely.
@@ -32,15 +32,12 @@ if (/^\/landing(?:\/|$)/.test(window.location.pathname) && window.location.pathn
 }
 
 function App() {
-  // The paired phone is a remote controller, never another browser owner session.
-  if (isOnlineRemote) return <Suspense fallback={<div role="status" aria-label="正在载入手机控制" />}><MobileConsole /></Suspense>;
-  if (ONLINE_BUILD) return <OnlineBoundary><Suspense fallback={<div role="status" aria-label="正在载入 Vivic" />}>
-    {isDisplay ? <DisplayApp /> : <OnlineWorkspace><ControlApp /></OnlineWorkspace>}
-  </Suspense></OnlineBoundary>;
+  // Every online device uses the same server Space; a desktop owner is unnecessary.
+  if (ONLINE_BUILD && HostedWorkspace) return <Suspense fallback={<div role="status" aria-label="正在载入 Vivic" />}><HostedWorkspace /></Suspense>;
   if (rawPath === "/launcher" && LauncherApp) return <Suspense fallback={<div role="status" aria-label="正在载入启动器" />}><LauncherApp /></Suspense>;
   if (rawPath === "/mobile" && MobileConsole) return <Suspense fallback={null}><MobileConsole /></Suspense>;
   if (isPlayground && CardPlayground) return <Suspense fallback={null}><CardPlayground /></Suspense>;
-  return <Suspense fallback={<div role="status" aria-label="正在载入画布" />}>{isDisplay ? <DisplayApp /> : <ControlApp />}</Suspense>;
+  return <Suspense fallback={<div role="status" aria-label="正在载入画布" />}>{isDisplay && DisplayApp ? <DisplayApp /> : ControlApp ? <ControlApp /> : null}</Suspense>;
 }
 
 export default App;

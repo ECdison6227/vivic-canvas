@@ -13,5 +13,7 @@ delivery
 .verification
 apps/android
 **/*.apk
+!apps/web/public/downloads/Vivic-Remote.apk
+!apps/web/dist-online/downloads/Vivic-Remote.apk
 **/*.keystore
 **/*.jks

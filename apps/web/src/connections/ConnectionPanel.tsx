@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { HarkIcon } from "@/components/hark/HarkPrimitives";
 import { connectionRequest, connectionsChanged, type ConnectionProvider, type ConnectionStatus } from "./api";
 import "./connections.css";
 
@@ -48,9 +47,7 @@ export function ConnectionPanel({ active = true }: { active?: boolean }) {
       void connectionRequest("status").then(data => setStatuses(data.connections ?? [])).catch(() => {}); connectionsChanged();
     } finally { setBusy(false); }
   };
-  return <details className="se-details vc-connections" data-settings-extra="services">
-    <summary>应用与生活服务<HarkIcon name="chevron-down" /></summary>
-    <div className="vc-service-list">
+  return <div className="vc-service-list" data-vivic-services>
       {SERVICES.map(service => {
         const status = statuses.find(item => item.provider === service.provider);
         return <div className="vc-service" key={service.provider}>
@@ -69,6 +66,5 @@ export function ConnectionPanel({ active = true }: { active?: boolean }) {
           </div>}
         </div>;
       })}
-    </div>
-  </details>;
+  </div>;
 }

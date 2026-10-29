@@ -1,6 +1,5 @@
 import { presentCards, groupedReminder, completedCountdown, reminderGroupKey, reminderVisible } from "@/canvas/reminderPresentation";
-import { CARD_METRICS, CARD_INNER_HEIGHT } from "@/cards/metrics";
-import { TODO_VISIBLE_ITEMS, usesFixedHeight } from "@/cards/sizing";
+import { hostedCardHeight } from "@vivic/contracts";
 import { useSyncExternalStore } from "react";
 import {
   ActionEnvelopeSchema,
@@ -100,37 +99,7 @@ const initialState = (): VivicState => ({
   processedRequestIds: [],
 });
 
-export const cardHeight = ({ record }: CardState): number => {
-  const width = Math.max(80, record.layout.width);
-  // Scene cards render at exactly their layout height and clamp/scroll inside.
-  if (usesFixedHeight(record)) return Math.max(record.layout.height, 56 + CARD_INNER_HEIGHT);
-  if (record.type === "CountdownCard") {
-    const text = record.sourceData.reminderText;
-    const chars = Math.max(1, Math.floor((width - 168) / 18));
-    return Math.max(record.layout.height, text
-      ? CARD_INNER_HEIGHT + Math.max(56, Math.ceil(text.length / chars) * 27 + 20)
-      : CARD_INNER_HEIGHT + Math.ceil(44 * 1.15) + 8);
-  }
-  // Reserve room for the existing row expansion affordance, even before a
-  // subcard is added. CSS body size/line-height/padding use these same values.
-  const chars = Math.max(1, Math.floor((width - 84) / CARD_METRICS.bodySize));
-  if (record.type === "TodoCard") {
-    const todoChars = Math.max(1, Math.floor((width - 112) / CARD_METRICS.bodySize));
-    const items = record.displayProps.items.slice(0, TODO_VISIBLE_ITEMS);
-    // A titled list adds its title, progress bar and, past five rows, a "还有 N 项" line.
-    const header = record.displayProps.title ? Math.max(1, Math.ceil(record.displayProps.title.length / Math.max(1, Math.floor((width - 120) / 17)))) * 23 + 20 : 0;
-    const more = record.displayProps.items.length > items.length ? 20 + CARD_METRICS.rowGap : 0;
-    return Math.max(record.layout.height, CARD_INNER_HEIGHT + header + more + Math.max(0, items.length - 1) * CARD_METRICS.rowGap + items.reduce((sum, item) =>
-      sum + Math.max(1, Math.ceil(item.text.length / todoChars)) * CARD_METRICS.lineHeight, 0));
-  }
-  if (record.type === "NoteCard" && record.variant === "expanded") {
-    const lines = [record.displayProps.text ?? "", ...(record.displayProps.bullets ?? [])]
-      .reduce((sum, text) => sum + text.split("\n").reduce((count, line) => count + Math.max(1, Math.ceil(line.length / chars)), 0), 0);
-    return Math.max(record.layout.height, CARD_INNER_HEIGHT + lines * CARD_METRICS.lineHeight + (record.displayProps.bullets?.length ?? 0) * CARD_METRICS.rowGap);
-  }
-  return Math.max(record.layout.height, record.type === "ChartCard" ? 144 + CARD_INNER_HEIGHT + (record.displayProps.title ? 34 : 0)
-    : record.type === "SearchResultCard" ? 80 + CARD_INNER_HEIGHT : 56 + CARD_INNER_HEIGHT);
-};
+export const cardHeight = ({ record }: CardState): number => hostedCardHeight(record);
 /** Persisted layout bounds, using the same conservative content heights as placement. */
 export const hasUnpinnedOverlap = (cards: CardState[]): boolean => presentCards(cards).some(({ entry: left }, index, visible) => !left.exitingRequestId && visible.slice(index + 1).some(({ entry: right }) => {
   if (right.exitingRequestId || (left.record.layout.pinned && right.record.layout.pinned)) return false;
@@ -201,6 +170,10 @@ const applyAction = (
     case "stage.awaken": {
       if (state.stage !== "STANDBY") return state;
       return { ...state, stage: "AWAKENING", awakenedAt: Date.now() };
+    }
+    case "stage.sleep": {
+      if (state.stage === "STANDBY") return state;
+      return { ...state, stage: "STANDBY", focus: null, awakenedAt: null };
     }
     case "card.create": {
       // A visible new card must not remain hidden behind standby just because a
@@ -564,7 +537,9 @@ export const createCanvasStore = (): CanvasStore => {
     const transferred = { ...state, cards, ...(leavingFocus ? { focus: null } : {}) };
     // A deliberate transfer must be visible even when a newly created canvas
     // has never received a text command. Reuse the normal reveal transition.
-    state = withProcessed(action.surface === "display" ? applyAction(transferred, { type: "stage.awaken" }, requestId) : transferred, requestId);
+    state = withProcessed(action.surface === "display"
+      ? applyAction(applyAction(transferred, { type: "stage.awaken" }, requestId), { type: "card.focus", targetId: entry.record.id }, requestId)
+      : transferred, requestId);
     emit();
     return { ok: true, deduplicated: false };
   };

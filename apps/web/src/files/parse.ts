@@ -44,7 +44,7 @@ export async function readOriginalText(blob: Blob, mediaType: string, signal?: A
 
 /** PDF.js performs parsing in its own worker. No annotation, script or external link is executed. */
 async function parsePdf(bytes: ArrayBuffer, signal?: AbortSignal): Promise<ParsedText> {
-  const [{ getDocument, GlobalWorkerOptions }, { default: workerUrl }] = await Promise.all([import("pdfjs-dist"), import("pdfjs-dist/build/pdf.worker.min.mjs?url")]);
+  const [{ getDocument, GlobalWorkerOptions }, { default: workerUrl }] = await Promise.all([import("pdfjs-dist/legacy/build/pdf.mjs"), import("pdfjs-dist/legacy/build/pdf.worker.min.mjs?url")]);
   GlobalWorkerOptions.workerSrc = workerUrl;
   const task = getDocument({ data: new Uint8Array(bytes), disableFontFace: true, useSystemFonts: false, useWorkerFetch: false, useWasm: false, verbosity: 0 });
   const cancel = () => { void task.destroy().catch(() => {}); };

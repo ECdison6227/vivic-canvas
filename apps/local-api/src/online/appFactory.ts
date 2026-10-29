@@ -13,6 +13,7 @@ export function createOnlineSessionApp(
     host: "127.0.0.1", port: 0, token: session.token,
     tokenPath: "", tokenGenerated: false, allowedOrigins: [session.origin],
     stepfunBaseUrl: STEPFUN_PLAN_BASE_URL,
+    modelApiBaseUrl: (process.env.VIVIC_MODEL_API_BASE_URL ?? "https://edsionc.top/api/v1").replace(/\/+$/, ""),
     requestTimeoutMs: INFERENCE_TIMEOUT_MS, connectionTimeoutMs: CONNECTION_TIMEOUT_MS,
     speechTimeoutMs: SPEECH_TIMEOUT_MS, asrTimeoutMs: 30_000,
     bodyLimitBytes: 64 * 1024, searchEnabled: true, publicDnsFallback: false,
@@ -20,7 +21,8 @@ export function createOnlineSessionApp(
     // Deployment-owned remote service only; no launcher/runtime or local config file.
     decisionV2Url: process.env.VIVIC_DECISION_V2_URL?.trim() || undefined,
     decisionV2Token: process.env.VIVIC_DECISION_V2_TOKEN || undefined,
-    decisionV2ExecutionEnabled: process.env.VIVIC_DECISION_V2_EXECUTION_ENABLED === "true",
+    // Hosted classification wiring never opts the frozen native-v2 executor into production.
+    decisionV2ExecutionEnabled: false,
   };
   const lifetime = new AbortController();
   const app = createApp({ config, mode: "online", fetchImpl: overrides.fetchImpl });

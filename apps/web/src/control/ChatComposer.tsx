@@ -37,6 +37,8 @@ interface ChatComposerProps {
   onCancelClarify: () => void;
   busy: boolean;
   onCancel: () => void;
+  /** Opens settings → 连接, for service / model status pills. */
+  onOpenConnectionSettings?: () => void;
 }
 
 /**
@@ -56,6 +58,7 @@ export const ChatComposer = ({
   onCancel,
   ownerKey = "control",
   menuActions,
+  onOpenConnectionSettings,
 }: ChatComposerProps) => {
   const templateDraft = useMemo(readTemplateDraft, []);
   const [text, setText] = useState(templateDraft);
@@ -77,6 +80,7 @@ export const ChatComposer = ({
   }, []);
   const draftAtVoiceStart = useRef("");
   const [unappliedVoice, setUnappliedVoice] = useState<string | null>(null);
+  const [rawVoice, setRawVoice] = useState<string | null>(null);
   const [autoVoice, setAutoVoice] = useState(true);
   const autoAtVoiceStart = useRef(false);
   const [attachment, setAttachment] = useState<Attachment | null>(null);
@@ -116,24 +120,25 @@ export const ChatComposer = ({
     const images = attachment ? [attachment] : undefined;
     setWakeCancelKey(value => value + 1);
     setAttachment(null); setImageReset(value => value + 1);
-    cancelVoiceInput(); setUnappliedVoice(null);
+    cancelVoiceInput(); setUnappliedVoice(null); setRawVoice(null);
     setText("");
     onSubmit(value, images);
   };
   const beginVoiceDraft = () => {
-    onCancel(); draftAtVoiceStart.current = latestDraft.current; autoAtVoiceStart.current = autoVoice; setUnappliedVoice(null);
+    onCancel(); draftAtVoiceStart.current = latestDraft.current; autoAtVoiceStart.current = autoVoice && voiceConfig.stt !== "local"; setUnappliedVoice(null); setRawVoice(null);
   };
   const receiveTranscript = (value: string) => {
-    if (!attachment && !imageProcessing && latestDraft.current === draftAtVoiceStart.current && autoAtVoiceStart.current && autoVoice) {
+    setRawVoice(value);
+    if (voiceConfig.stt !== "local" && !draftAtVoiceStart.current.trim() && !attachment && !imageProcessing && latestDraft.current === draftAtVoiceStart.current && autoAtVoiceStart.current && autoVoice) {
       cancelVoiceInput(); setText(""); onSubmit(value);
-    } else if (latestDraft.current === draftAtVoiceStart.current) setText(value);
+    } else if (!latestDraft.current.trim() && latestDraft.current === draftAtVoiceStart.current) setText(value);
     else setUnappliedVoice(value);
   };
 
   const modePill = backendOnline === false
-    ? { text: "服务暂不可用 · 可用内置指令", tone: "warning" }
+    ? { text: "服务暂不可用 · 可用内置指令", tone: "warning", action: "打开连接设置" as const }
     : backendOnline && modelConnection?.connected === false
-      ? { text: "模型未连接 · 请在设置中连接", tone: "warning" }
+      ? { text: "模型未连接 · 请在设置中连接", tone: "warning", action: "打开连接设置" as const }
       : null;
   const sendDisabled = disabled || !text.trim() || imageProcessing || Boolean(attachment && !visionAvailable);
 
@@ -141,6 +146,10 @@ export const ChatComposer = ({
     <ImageAttachment disabled={disabled} ownerKey={ownerKey} resetKey={imageReset} visionAvailable={visionAvailable} menuTrigger
       onChange={setAttachment} onProcessingChange={setImageProcessing}>{parts => <div className="vivic-composer" data-vivic-composer>
       <div className="vivic-composer-stack">
+        {rawVoice && voiceConfig.stt === "local" && <HarkSurface className="vivic-composer-card" data-vivic-voice-review>
+          <p className="vivic-composer-card-hint">本地转写可能有同音词错误。请核对并编辑输入框，再点击发送。</p>
+          <details><summary>原始转写</summary><p data-vivic-raw-transcript>{rawVoice}</p></details>
+        </HarkSurface>}
         {templateNotice && <p className="vivic-composer-card-hint" role="status">{templateNotice}</p>}
         {clarify && <div className="vivic-chip-row" data-vivic-clarify>
           {clarify.candidates.map((c, index) => (
@@ -172,7 +181,7 @@ export const ChatComposer = ({
             取消
           </button>}
         </div>}
-        <VoiceNote autoExecute={autoVoice} />
+        <VoiceNote autoExecute={autoVoice && voiceConfig.stt !== "local"} />
         <div hidden={!parts.active}>
           {(parts.preview || parts.remove) && <div className="vivic-attachment-row">{parts.preview}{parts.remove}</div>}
           {parts.status}
@@ -210,12 +219,12 @@ export const ChatComposer = ({
           {parts.trigger}
           {menuActions?.(close)}
           {voiceConfig.stt !== "none" && <label className="vivic-composer-menu-toggle">
-            <span>语音自动发送</span><input type="checkbox" checked={autoVoice} disabled={disabled}
+            <span>{voiceConfig.stt === "local" ? "本地转写核对后发送" : "语音自动发送"}</span><input type="checkbox" checked={autoVoice && voiceConfig.stt !== "local"} disabled={disabled || voiceConfig.stt === "local"}
               onChange={event => setAutoVoice(event.target.checked)} data-vivic-voice-auto />
           </label>}
         </>}</ComposerMenu>
         <div hidden={Boolean(text.trim()) && voiceConfig.stt === "none"}>
-          <VoiceInput disabled={disabled || (backendOnline === false && voiceConfig.stt === "stepfun")} autoExecute={autoVoice}
+          <VoiceInput disabled={disabled || (backendOnline === false && voiceConfig.stt === "stepfun")} autoExecute={autoVoice && voiceConfig.stt !== "local"}
             onBegin={() => { setWakeCancelKey(value => value + 1); beginVoiceDraft(); }} onTranscript={receiveTranscript} />
         </div>
         <button type="submit" className="vivic-composer-send" disabled={sendDisabled}
@@ -226,8 +235,11 @@ export const ChatComposer = ({
       </form>
       </HarkSurface>
       <div className="vivic-composer-meta">
-        {modePill && <span className="vivic-mode-pill" role="status" data-tone={modePill.tone} data-vivic-intent-mode>{modePill.text}</span>}
-        {voiceConfig.wakeEnabled && voiceConfig.stt !== "none" && <LocalWakeInput compact ownerKey={ownerKey} cancelKey={wakeCancelKey}
+        {modePill && (onOpenConnectionSettings
+          ? <button type="button" className="vivic-mode-pill vivic-mode-pill-action" data-tone={modePill.tone} data-vivic-intent-mode
+              aria-label={modePill.action} title={modePill.action} onClick={onOpenConnectionSettings}>{modePill.text}</button>
+          : <span className="vivic-mode-pill" role="status" data-tone={modePill.tone} data-vivic-intent-mode>{modePill.text}</span>)}
+        {voiceConfig.stt !== "none" && <LocalWakeInput compact ownerKey={ownerKey} cancelKey={wakeCancelKey}
           disabled={disabled || busy || (backendOnline === false && voiceConfig.stt === "stepfun")}
           speaking={speech.loading || speech.playing} recognition={voiceConfig.stt === "local" ? "local" : "segment"}
           onBegin={beginVoiceDraft} onTranscript={receiveTranscript}

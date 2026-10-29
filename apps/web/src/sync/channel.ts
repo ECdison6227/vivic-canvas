@@ -1,4 +1,6 @@
 import { parseSyncMessage, SYNC_CHANNEL_NAME, type SyncMessage } from "./protocol";
+import { OWNER_ONLINE_BUILD } from "@/online/mode";
+import { ownerScope } from "@/hosted/ownerScope";
 
 /** Minimal transport the sync layer talks to; BroadcastChannel in the app,
  * in-memory stubs in unit tests. */
@@ -11,7 +13,7 @@ export interface SyncChannel {
 export const createBroadcastSyncChannel = (
   name: string = SYNC_CHANNEL_NAME,
 ): SyncChannel => {
-  const bc = new BroadcastChannel(name);
+  const bc = new BroadcastChannel(name + (OWNER_ONLINE_BUILD ? ownerScope() : ""));
   return {
     post: (message) => bc.postMessage(message),
     subscribe: (listener) => {

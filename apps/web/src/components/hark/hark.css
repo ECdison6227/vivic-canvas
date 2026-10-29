@@ -33,9 +33,11 @@
 .hark-surface>.hark-surface-stroke{background:var(--surface-stroke)}
 .hark-icon-button{width:44px;height:44px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;border:0;border-radius:50%;background:transparent;color:inherit}
 .hark-icon-button:hover:not(:disabled){background:var(--hark-wash)}
-.hark-tabs{display:flex;padding:4px;height:48px;gap:0;border-radius:32px;background:var(--hark-composer);backdrop-filter:blur(50px);-webkit-backdrop-filter:blur(50px)}
-.hark-tabs button{height:40px;min-width:70px;padding:0 16px;color:var(--hark-secondary);background:transparent;border:0;border-radius:24px;font-weight:500;font-size:15px;line-height:19px;cursor:pointer}
-.hark-tabs button[aria-current=page]{background:var(--hark-primary);color:var(--hark-on-fill)}
+.hark-tabs{position:relative;display:flex;padding:4px;height:48px;gap:0;border-radius:32px;background:var(--hark-composer);backdrop-filter:blur(50px);-webkit-backdrop-filter:blur(50px)}
+.hark-tabs-thumb{position:absolute;left:0;top:0;z-index:0;border-radius:24px;background:var(--hark-primary);pointer-events:none}
+.hark-tabs[data-ready] .hark-tabs-thumb{transition:transform var(--hark-mode-duration) var(--hark-mode-ease),width var(--hark-mode-duration) var(--hark-mode-ease),height var(--hark-mode-duration) var(--hark-mode-ease)}
+.hark-tabs button{position:relative;z-index:1;height:40px;min-width:70px;padding:0 16px;color:var(--hark-secondary);background:transparent;border:0;border-radius:24px;font-weight:500;font-size:15px;line-height:19px;cursor:pointer;transition:color var(--hark-mode-duration) var(--hark-mode-ease),scale 120ms ease-out}
+.hark-tabs button[aria-current=page]{background:transparent;color:var(--hark-on-fill)}
 .hark-task-card{display:flex;align-items:center;gap:12px;min-height:88px;padding:16px;--surface-stroke:transparent;--surface-blur:blur(50px);text-align:left}
 .hark-task-mark{display:flex;align-items:center;justify-content:center;width:36px;height:36px;flex-shrink:0;border-radius:12px;background:var(--hark-wash);align-self:flex-start}
 .hark-task-copy{flex:1;min-width:0}

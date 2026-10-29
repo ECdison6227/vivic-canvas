@@ -35,6 +35,8 @@ export interface ProvidersStatusResponse {
   /** Set while a remembered GPT login is being restored after a restart. */
   restoring?: "gpt";
   providers: ProviderStatus[];
+  /** The user's own model platform. The key itself never comes back. */
+  platform?: { connected: boolean; lastError?: string };
   degradations: Array<{ code: string; message: string }>;
 }
 
@@ -206,6 +208,14 @@ export const validateStepfunKey = (
 
 export const disconnectStepfun = (): Promise<{ ok: boolean; connected: boolean }> =>
   post("/api/credentials/stepfun/disconnect", {});
+
+export const validatePlatformKey = (
+  apiKey: string,
+): Promise<{ ok: boolean; connected: boolean; error?: string }> =>
+  post("/api/credentials/platform/validate", { apiKey });
+
+export const disconnectPlatform = (): Promise<{ ok: boolean; connected: boolean }> =>
+  post("/api/credentials/platform/disconnect", {});
 
 export const postIntent = async (
   text: string,

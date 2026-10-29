@@ -2,12 +2,16 @@ import { FILE_CHUNK_BYTES, type CanvasSnapshot, type Frame, type Welcome } from 
 
 export interface DownloadedFile { bytes: Uint8Array<ArrayBuffer>; name: string; mediaType: string }
 interface Transfer {
-  requestId: string; cardId: string; canvasId: string; ownerEpoch: string; version: number; sessionId: string; epoch: string; offset: number; bytes: Uint8Array<ArrayBuffer>;
+  requestId: string; cardId: string; imageId?: string; canvasId: string; ownerEpoch: string; version: number; sessionId: string; epoch: string; offset: number; bytes: Uint8Array<ArrayBuffer>;
   sha256: string; name: string; mediaType: string; timer: ReturnType<typeof setTimeout> | null; started: number; lastSent: number;
   resolve(value: DownloadedFile): void; reject(error: Error): void; cleanup(): void; progress?(received: number, total: number): void;
 }
 /** One bounded in-memory original at a time; reads never enter the write ledger or canvas DB. */
 export function createFileClient(options: { context(): { welcome: Welcome; snapshot: CanvasSnapshot; deviceId: string } | null; send(frame: Frame): boolean; now(): number; minimumChunkDelayMs?: number }) {
+  const descriptor = (snapshot: CanvasSnapshot | undefined, cardId: string, imageId?: string) => {
+    const card = snapshot?.cards.find(card => card.id === cardId);
+    return imageId ? card?.images?.find(image => image.id === imageId) : card?.file;
+  };
   let transfer: Transfer | null = null;
   const cancel = (message: string) => {
     const current = transfer; transfer = null;
@@ -16,8 +20,8 @@ export function createFileClient(options: { context(): { welcome: Welcome; snaps
     current.cleanup(); current.reject(new Error(message));
   };
   const currentScope = (current: Transfer) => {
-    const context = options.context(), snapshot = context?.snapshot, file = snapshot?.cards.find(card => card.id === current.cardId)?.file;
-    return Boolean(context && context.welcome.sessionId === current.sessionId && context.welcome.epoch === current.epoch && context.welcome.permissions.includes("file.read")
+    const context = options.context(), snapshot = context?.snapshot, file = descriptor(snapshot, current.cardId, current.imageId);
+    return Boolean(context && context.welcome.sessionId === current.sessionId && context.welcome.epoch === current.epoch && context.welcome.permissions.includes(current.imageId ? "image.read" : "file.read")
       && snapshot?.ownerAvailable && snapshot.activeCanvasId === current.canvasId && snapshot.ownerEpoch === current.ownerEpoch && snapshot.version === current.version
       && file && file.sha256 === current.sha256 && file.sizeBytes === current.bytes.length && file.name === current.name && file.mediaType === current.mediaType);
   };
@@ -31,19 +35,19 @@ export function createFileClient(options: { context(): { welcome: Welcome; snaps
     current.lastSent = options.now();
     current.timer = setTimeout(() => cancel("读取文件超时，请重试"), 15_000);
     if (!options.send({ v: 1, type: "file.request", sessionId: context.welcome.sessionId, epoch: context.welcome.epoch, deviceId: context.deviceId,
-      requestId: current.requestId, cardId: current.cardId, canvasId: current.canvasId, ownerEpoch: current.ownerEpoch, expectedVersion: current.version, offset: current.offset })) cancel("文件请求发送失败");
+      requestId: current.requestId, cardId: current.cardId, ...(current.imageId ? { imageId: current.imageId } : {}), canvasId: current.canvasId, ownerEpoch: current.ownerEpoch, expectedVersion: current.version, offset: current.offset })) cancel("文件请求发送失败");
   };
   return {
     cancel,
     reconcile() { if (transfer && !currentScope(transfer)) cancel("文件或控制会话已变化，下载已取消"); },
-    read(cardId: string, progress?: Transfer["progress"], signal?: AbortSignal): Promise<DownloadedFile> {
-      const context = options.context(), snapshot = context?.snapshot, card = snapshot?.cards.find(card => card.id === cardId);
-      if (transfer || !snapshot?.ownerAvailable || !snapshot.activeCanvasId || !context?.welcome.permissions.includes("file.read") || !card?.file || signal?.aborted) return Promise.reject(new Error("文件尚不可下载，请检查电脑连接"));
+    read(cardId: string, progress?: Transfer["progress"], signal?: AbortSignal, imageId?: string): Promise<DownloadedFile> {
+      const context = options.context(), snapshot = context?.snapshot, file = descriptor(snapshot, cardId, imageId);
+      if (transfer || !snapshot?.ownerAvailable || !snapshot.activeCanvasId || !context?.welcome.permissions.includes(imageId ? "image.read" : "file.read") || !file || signal?.aborted) return Promise.reject(new Error(imageId ? "图片尚不可读取，请检查电脑连接或等待上一项完成" : "文件尚不可下载，请检查电脑连接"));
       return new Promise((resolve, reject) => {
         const abort = () => cancel("下载已取消"); signal?.addEventListener("abort", abort, { once: true });
-        transfer = { requestId: crypto.randomUUID(), cardId, canvasId: snapshot.activeCanvasId!, ownerEpoch: snapshot.ownerEpoch, version: snapshot.version,
+        transfer = { requestId: crypto.randomUUID(), cardId, ...(imageId ? { imageId } : {}), canvasId: snapshot.activeCanvasId!, ownerEpoch: snapshot.ownerEpoch, version: snapshot.version,
           sessionId: context.welcome.sessionId, epoch: context.welcome.epoch,
-          offset: 0, bytes: new Uint8Array(card.file!.sizeBytes), sha256: card.file!.sha256, name: card.file!.name, mediaType: card.file!.mediaType,
+          offset: 0, bytes: new Uint8Array(file.sizeBytes), sha256: file.sha256, name: file.name, mediaType: file.mediaType,
           timer: null, started: options.now(), lastSent: 0, resolve, reject, progress, cleanup: () => signal?.removeEventListener("abort", abort) };
         next();
       });

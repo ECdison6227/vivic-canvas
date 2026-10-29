@@ -4,7 +4,7 @@ import { ATMOSPHERE_PALETTES, DARK_PALETTE_IDS, LIGHT_PALETTE_IDS, paletteFor, t
 import type { ControlHost } from "@/sync/controlHost";
 import type { DisplayPreferences } from "@/sync/protocol";
 import { ORB_PALETTE_IDS, ORB_PALETTES, orbPalette } from "@/stage/orbPalette";
-import { ambientMode, ambientStrength, type AmbientMotion } from "@/motion/spaceMotion";
+import { ambientMode, type AmbientMotion } from "@/motion/spaceMotion";
 
 /**
  * Control-only sky/light preferences. Composited Hark sky avoids a GPU context;
@@ -17,19 +17,16 @@ export const BackgroundSettings = ({ host, disabled = false, resolvedTheme, comp
   const readonly = disabled || !snapshot.ready || snapshot.ownerMode !== "owner";
   const preferences = snapshot.preferences;
   const motionMode = ambientMode(preferences.ambientMotion);
-  const strength = ambientStrength(preferences.ambientIntensity);
   const light = <details className="se-details" data-vivic-light-settings>
     <summary><span>空间光效</span><span className="se-background-current">{motionMode === "off" ? "已暂停" : motionMode === "vivid" ? "灵动" : "柔和"}<HarkIcon name="chevron-down" /></span></summary>
     <div className="se-detail-body">
       <div className="flex flex-wrap gap-2" role="group" aria-label="空间动效">
         {([['off', '暂停'], ['subtle', '柔和'], ['vivid', '灵动']] as const).map(([value, label]) => <button key={value} type="button" disabled={readonly}
-          className="vivic-chip" aria-pressed={motionMode === value} data-vivic-motion-mode={value}
+          className="vivic-chip se-motion-choice" aria-pressed={motionMode === value} data-vivic-motion-mode={value}
           onClick={() => { const result = host.setPreferences({ ambientMotion: value as AmbientMotion }); setError(result.ok ? null : "动效尚未保存，请重试。"); }}>
-          {label}{motionMode === value && <HarkIcon name="check" size={14} />}
+          <span className="se-motion-preview" aria-hidden="true"><i /></span>{label}{motionMode === value && <HarkIcon name="check" size={14} />}
         </button>)}
       </div>
-      <label className="hark-light-slider"><span>光效强度</span><input type="range" aria-label="光效强度" min={0} max={100} step={5} disabled={readonly || motionMode === "off"}
-        value={Math.round(strength * 100)} onChange={event => { const result = host.setPreferences({ ambientIntensity: Number(event.target.value) / 100 }); setError(result.ok ? null : "光效强度尚未保存，请重试。"); }} /><output>{Math.round(strength * 100)}%</output></label>
       {preferences.reducedMotion && <p className="text-xs opacity-60">已启用减少动效，背景保持静止。</p>}
     </div>
   </details>;
@@ -56,17 +53,15 @@ export const BackgroundSettings = ({ host, disabled = false, resolvedTheme, comp
     const chosen = paletteFor(family, preferences);
     return <div role="group" aria-label={`${label}配色`}>
       <p className="text-xs font-medium text-neutral-600">{label}</p>
-      <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+      <div className="se-palette-row">
         {ids.map(id => {
           const palette = ATMOSPHERE_PALETTES[id];
           const selected = chosen === id;
           return <button key={id} type="button" disabled={readonly} aria-pressed={selected}
             onClick={() => choose(family, id)} data-vivic-palette={id} data-vivic-palette-shown={shown === id ? "true" : undefined}
-            className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 text-left text-xs transition-colors disabled:opacity-50 ${selected ? "border-neutral-900 bg-neutral-50 text-neutral-900" : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-400"}`}>
-            <span aria-hidden="true" className="h-7 w-7 shrink-0 rounded-full border-2 border-white shadow-[0_0_0_1px_#e5e7f0]"
+            className="se-palette-option" aria-label={`${label} · ${palette.name}`} title={palette.name}>
+            <span aria-hidden="true" className="se-palette-circle"
               style={{ background: `conic-gradient(${palette.swatch[0]} 0 30%, ${palette.swatch[1]} 30% 65%, ${palette.swatch[2]} 65% 100%)` }} />
-            <span className="min-w-0 flex-1">{palette.name}</span>
-            {selected && <HarkIcon name="check" className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
           </button>;
         })}
       </div>

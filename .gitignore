@@ -1,23 +1,8 @@
 node_modules/
+node_modules
+dist-owner/
 dist/
 dist-online/
-dist-online-android-full/
-dist-ui/
-.vite/
-*.log
 .DS_Store
-test-results/
-playwright-report/
-coverage/
-evidence/
-.env
-.env.*
-# Downloaded models, isolated environments and local PoC output
-.cache/
-/apps/web/public/downloads/
-__pycache__/
-*.py[cod]
-.venv/
-*.tsbuildinfo
-dist-landing/
-dist-landing-single/
+*.log
+.vite/

@@ -8,6 +8,7 @@ import { UserCardLayer, useUserPageDrop } from "./UserCardLayer";
 import { UserCanvasControls } from "./UserCanvasControls";
 import { ConnectedSources } from "@/connections/ConnectedSources";
 import { FileUploadButton } from "@/files/FileUploadButton";
+import { ReminderCenter } from "./ReminderCenter";
 
 interface ChatPageProps {
   hidden: boolean;
@@ -27,17 +28,19 @@ interface ChatPageProps {
   onCancelClarify: () => void;
   onCancel: () => void;
   onOpenSettings: () => void;
-  onOpenDisplay: () => void;
+  onOpenServices: () => void;
+  onOpenDisplay: (canvasId?: string) => void;
 }
 
 const STATUS_VISIBLE_MS = 6000;
+const QUIET_SUCCESS_FEEDBACK = new Set(["已保存", "已完成。", "已完成并保存。"]);
 
 /**
  * 用户使用页: the shared background, settings and Space controls
  * and one text/voice input. No conversation is kept — results appear on the
  * Display. Cards the user drags in from the Display float where they land.
  */
-export const ChatPage = ({ hidden, host, theme, feedback, notice, onOpenSettings, onOpenDisplay, ...composer }: ChatPageProps) => {
+export const ChatPage = ({ hidden, host, theme, feedback, notice, onOpenSettings, onOpenServices, onOpenDisplay, ...composer }: ChatPageProps) => {
   const drop = useUserPageDrop(host);
   const [fileMessage, setFileMessage] = useState("");
   useEffect(() => {
@@ -46,36 +49,47 @@ export const ChatPage = ({ hidden, host, theme, feedback, notice, onOpenSettings
     return () => clearTimeout(timer);
   }, [fileMessage]);
   // One transient status line (progress, a question, an error), never a log.
+  const displayFeedback = feedback && !QUIET_SUCCESS_FEEDBACK.has(feedback.trim()) ? feedback : null;
   const [fresh, setFresh] = useState(false);
   const sticky = composer.busy || Boolean(composer.clarify);
   useEffect(() => {
     // Reveal each new status, then let it fade; the text stays for assistive tech.
     // oxlint-disable-next-line react/set-state-in-effect
-    setFresh(Boolean(feedback));
-    if (!feedback) return;
+    setFresh(Boolean(displayFeedback));
+    if (!displayFeedback) return;
     const timer = setTimeout(() => setFresh(false), STATUS_VISIBLE_MS);
     return () => clearTimeout(timer);
-  }, [feedback]);
+  }, [displayFeedback]);
 
   return (
     <div className="vivic-chat" hidden={hidden} data-vivic-chat {...drop.handlers}>
       <UserCardLayer host={host} theme={theme} layerRef={drop.layerRef} receiving={drop.receiving} notice={drop.notice} onNotice={drop.setNotice} />
       <header className="vivic-chat-header">
-        <button type="button" className="vivic-round-button" onClick={onOpenSettings}
-          aria-label="设置" title="设置" data-vivic-open-settings>
-          <HarkIcon name="gear" size={20} aria-hidden="true" />
-        </button>
-        <UserCanvasControls host={host} theme={theme} onOpenDisplay={onOpenDisplay} onBeforeClear={composer.onCancel} />
+        <div className="vivic-header-start">
+          <button type="button" className="vivic-round-button" onClick={onOpenSettings}
+            aria-label="设置" title="设置" data-vivic-open-settings>
+            <HarkIcon name="gear" size={20} aria-hidden="true" />
+          </button>
+          <button type="button" className="vivic-round-button" onClick={onOpenServices}
+            aria-label="应用与生活服务" title="应用与生活服务" data-vivic-open-services>
+            <HarkIcon name="apps" size={20} aria-hidden="true" />
+          </button>
+          <ReminderCenter host={host} disabled={composer.disabled} theme={theme} />
+        </div>
+        <UserCanvasControls host={host} theme={theme} onOpenDisplay={onOpenDisplay} />
         {notice}
       </header>
       <div className="vivic-chat-space" />
       <div className="vivic-chat-footer">
         {fileMessage && <p className="vivic-file-message vivic-upload-status" role="status">{fileMessage}</p>}
-        <p className="vivic-chat-status" role="status" aria-live="polite" aria-busy={composer.busy}
-          hidden={!feedback} data-visible={(fresh || sticky) || undefined} data-vivic-command-feedback>{feedback}</p>
-        <ChatComposer {...composer} menuActions={close => <>
+        {displayFeedback && <p className="vivic-chat-status" role="status" aria-live="polite" aria-busy={composer.busy}
+          data-visible={(fresh || sticky) || undefined} data-vivic-command-feedback>{displayFeedback}</p>}
+        <ChatComposer {...composer} onOpenConnectionSettings={() => {
+          if (window.location.hash !== "#settings-connections") window.location.hash = "settings-connections";
+          onOpenSettings();
+        }} menuActions={close => <>
           <FileUploadButton host={host} disabled={composer.disabled || composer.busy} compact onPick={close} onStatus={setFileMessage} />
-          <ConnectedSources host={host} disabled={composer.disabled} onConfigure={onOpenSettings} />
+          <ConnectedSources host={host} disabled={composer.disabled} onConfigure={onOpenServices} />
         </>} />
       </div>
     </div>

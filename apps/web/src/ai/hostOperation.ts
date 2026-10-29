@@ -2,7 +2,6 @@ import { HostOperationSchema, type HostOperation } from "@vivic/contracts";
 import type { ControlHost } from "@/sync/controlHost";
 import type { DispatchResult, VivicState } from "@/state/canvasStore";
 import { resumeReminderSource } from "@/reminders/reminders";
-import { requestOrganizationPreview } from "@/control/organizationDraft";
 
 /** Resolve geometry and clock math against the current owner, never model coordinates. */
 export function executeHostOperation(host: ControlHost, state: VivicState, raw: HostOperation, executionId: string, now = Date.now()): DispatchResult {
@@ -14,10 +13,7 @@ export function executeHostOperation(host: ControlHost, state: VivicState, raw: 
     : operation.mode === "vivid" ? { ambientMotion: "vivid", ambientIntensity: 0.85 } : operation.mode === "off" ? { ambientMotion: "off" }
       : operation.mode === "warm" ? { lightPalette: "peach", darkPalette: "ember" }
         : operation.mode === "cool" ? { lightPalette: "milk", darkPalette: "midnight" } : { ambientMotion: "subtle", ambientIntensity: 0.55 });
-  if (operation.kind === "canvas.organize.preview") {
-    requestOrganizationPreview(snapshot.activeCanvasId, { sort: operation.sort, direction: operation.direction, group: operation.group });
-    return { ok: true, deduplicated: false };
-  }
+  if (operation.kind === "canvas.organize.preview") return { ok: false, error: "整理与分区已暂时关闭。" };
   if (operation.kind === "canvas.arrange") return host.arrangeCanvas();
   const card = state.cards.find(entry => entry.record.id === operation.targetId && !entry.exitingRequestId)?.record;
   if (!card) return { ok: false, error: "目标卡片已不存在" };

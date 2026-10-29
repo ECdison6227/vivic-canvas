@@ -5,8 +5,17 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/control/ConfirmDialog";
 import { FileUploadButton } from "./FileUploadButton";
 import { fileSizeLabel, listFileAssets, removeFileAssets, subscribeFileAssets, type FileAsset } from "./assetStore";
+import { OWNER_ONLINE_BUILD } from "@/online/mode";
+import { useHostedAssets } from "@/hostedAssets/HostedAssets";
 
 export function FileManager({ host, disabled = false }: { host: ControlHost; disabled?: boolean }) {
+  return OWNER_ONLINE_BUILD ? <CloudFiles host={host} disabled={disabled} /> : <BrowserFiles host={host} disabled={disabled} />;
+}
+function CloudFiles({ host, disabled }: { host: ControlHost; disabled: boolean }) {
+  const assets = useHostedAssets();
+  return <section className="vivic-file-manager" aria-label="空间文件容量"><FileUploadButton host={host} disabled={disabled} /><Button variant="ghost" size="sm" onClick={assets.manageAssets}>管理云端原件与容量</Button></section>;
+}
+function BrowserFiles({ host, disabled = false }: { host: ControlHost; disabled?: boolean }) {
   const snapshot = useSyncExternalStore(host.subscribe, host.getSnapshot);
   const cards = useVivicState(state => state.cards);
   const [assets, setAssets] = useState<FileAsset[]>([]), [message, setMessage] = useState(""), [refresh, setRefresh] = useState(0);

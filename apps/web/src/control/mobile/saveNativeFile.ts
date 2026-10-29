@@ -1,6 +1,11 @@
 import { NATIVE_ORIGIN } from "./pairing";
-interface NativeFiles { saveFile(id: string, name: string, mime: string, base64: string, sha256: string): void; cancelSave(id: string): void }
-export const nativeFiles = () => window.location.origin === NATIVE_ORIGIN ? (window as Window & { VivicAndroid?: NativeFiles }).VivicAndroid : undefined;
+interface NativeFiles { saveFile(id: string, name: string, mime: string, base64: string, sha256: string): void; cancelSave(id: string): void; isTrustedOrigin?(origin: string): boolean }
+export const nativeFiles = () => {
+  const bridge = (window as Window & { VivicAndroid?: NativeFiles }).VivicAndroid;
+  if (window.location.origin === NATIVE_ORIGIN) return bridge;
+  try { return bridge?.isTrustedOrigin?.(window.location.origin) === true ? bridge : undefined; }
+  catch { return undefined; }
+};
 
 /** Original has already passed owner-scope + full SHA-256 verification in the client. */
 export async function saveNativeFile(bytes: Uint8Array<ArrayBuffer>, name: string, mime: string, sha256: string, signal: AbortSignal): Promise<void> {

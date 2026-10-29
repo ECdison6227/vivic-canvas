@@ -43,6 +43,7 @@ const GET_ROUTES = new Set([
 ]);
 const POST_ROUTES = new Set([
   "/api/credentials/stepfun/validate", "/api/credentials/stepfun/disconnect",
+  "/api/credentials/platform/validate", "/api/credentials/platform/disconnect",
   "/api/providers/select", "/api/providers/model", "/api/intent", "/api/intent/stream",
   "/api/speech", "/api/transcribe", "/api/search", "/api/weather/here", "/api/locale", "/api/travel/refresh",
   "/api/connections/configure", "/api/connections/test", "/api/connections/disconnect", "/api/connections/query",

@@ -1,65 +1,80 @@
-# Vivic Online 部署预览版
+# Vivic 独立 Space 服务
 
-本版本供服务器部署，使用者直接打开浏览器，不需要安装本地启动器。当前支持用户自己的 StepFun Coding Plan Key；没有共享开发者 Key、套餐、计费或云端账号。决策专用 API 暂未配置，不影响已有规则与 StepFun 规划。本轮未发布到服务器。
+2026-10-25：本分支把账号、Space、卡片、受控文件、命令回执和提醒保存到服务器。大屏是主要工作界面，手机使用同一账号的纵向 Space；电脑浏览器关闭不再终止手机执行。网页和 Android App 都不安装或加载本地模型。继续使用 library Hark `26ac2724` 的原字体、SVG、材质、连续圆角和天空；业务流程是 Vivic 的适配。
 
-## 产品流程
+这是可审阅部署工件的说明，不代表已部署或完成生产验收。历史在线版 Linux/TLS 测试不代替本轮结果。具体通过、失败和未测项以本轮交付报告为准。
 
-首次进入是“认识 Vivic → 连接在线服务 → 进入 Space”。示例明确标为演示；连接会实际验证推理，进入时可带一条草稿，由用户确认发送。没有 Key 可先体验基础文字功能。设置中的“新手引导”可重新打开；已有画布、owner 和配置草稿保留。
+## 数据与授权
 
-线上设置隐藏启动器、本地模型与Pi登录。连接组折叠项「手机连接」可生成当前会话的一次性二维码，手机入口 `/remote/` 只有聊天与纵向Space，不创建新的owner，也不获取模型Key。电脑页需保持打开；失效会话和撤权会终止手机权限。外观与声音稍后设置；麦克风只在使用语音或点击授权时请求。UI 复用 library Hark `26ac2724` 的原字体、glyph、连续圆角、透明表面与冻结天空；三步引导是 Vivic 的产品流程，不声称来自 Hark 原版。
+- 首次账号需要运营者配置的单次邀请码。用户名 3–40 位小写 ASCII 名称，密码 12–256 字符，服务端用 scrypt 保存密码哈希。
+- 设备采用 HttpOnly、Secure、SameSite=Strict Cookie，服务端只保存 token 摘要。设备码单次、有时限，撤权后旧码或旧设备不能恢复。模型管理台密码不等于模型 Bearer Key。
+- SQLite、资产索引和文件放在专用持久目录。单进程锁、WAL/FULL 事务、版本检查及 requestId 回执共同约束执行；丢回执须查询原 requestId，不自动换 ID 重发。
+- LLM 和模型平台连接按账号隔离，秘密只在服务端内存，空闲 30 分钟或最长 8 小时到期。断开、服务重启需重新连接；Space 数据保留。不自动继承本机 `.env`、Pi 登录或旧配置。
+- 正式原生 Jev v2 执行门控始终关闭。StartLux/GLiNER 分类供诊断/对照，不能冒充完整 state/questions/typed answers 协议或质量达标。
+- 普通 PDF/MD 阅读不调用模型；“问 Vivic”主动展开。新文件限 PDF/MD，5 个/次、10,000,000 B/批、100,000,000 B/Space；历史其他格式仅下载。图片使用受控资产 ID，不开放任意路径。
+- 客户端关闭后仍调度服务器提醒记录；重连可查看收件箱。这不表示关闭的手机已收到系统推送。本轮没有新增 Web Push、短信或外部消息。
 
-画布、外观及引导完成标记在当前浏览器保存。**尚无账户与跨浏览器云同步**；换浏览器不会自动得到原画布。模型 Key 不写入浏览器存储或服务器磁盘，只存在隔离会话的服务端内存；默认闲置30分钟或最长8小时到期，服务重启也需重新连接。断开即清除。退出在线会话接口为 `DELETE /api/online/session`。
+## 开发与生产预览
 
-## 本机验证运行
-
-需要 Node 24.21.0、pnpm 12.11.2。先安装锁定依赖并构建在线专用产物：
+使用 Node 24.21.0、pnpm 12.11.2。低内存机器串行检查，无须加载模型。
 
 ```sh
 pnpm install --frozen-lockfile
-pnpm --filter @vivic/web build:online
+pnpm dev
 ```
 
-Windows PowerShell：
+首次 `pnpm dev` 前由运营者在进程环境设置 12–256 字符的 `VIVIC_SPACE_INVITE`，值不打印。默认端口 127.0.0.1:5180 / 8790，数据在 `.cache/hosted-development`；端口被占用即拒绝启动，不停止已有服务。`pnpm dev:web` / `pnpm dev:api` 只启动一侧，`pnpm dev:legacy` 显式进入保留的旧本地 owner 模式。
+
+生产预览先构建专用入口：
+
+```sh
+pnpm --filter @vivic/web build:online
+pnpm --filter @vivic/web build:mobile
+```
+
+Windows PowerShell 示例（邀请码从受控进程环境提供，示例不含秘密）：
 
 ```powershell
-$env:PORT='18794'
-$env:VIVIC_ONLINE_ORIGIN='http://localhost:18794'
-cd apps/local-api
+$env:PORT = '19441'
+$env:VIVIC_ONLINE_ORIGIN = 'http://localhost:19441'
+$env:VIVIC_SPACE_DATA_DIR = 'C:\VivicData\isolated-preview'
+Set-Location apps/local-api
 node --import tsx src/online/index.ts
 ```
 
-macOS / Linux：
+macOS/Linux 示例：
 
 ```sh
 cd apps/local-api
-PORT=18794 VIVIC_ONLINE_ORIGIN=http://localhost:18794 node --import tsx src/online/index.ts
+PORT=19441 VIVIC_ONLINE_ORIGIN=http://localhost:19441 \
+VIVIC_SPACE_DATA_DIR=/absolute/isolated-vivic-data \
+node --import tsx src/online/index.ts
 ```
 
-访问 `http://localhost:18794`。这里演练的是在线服务器入口；没有运行本地模型。非 loopback 的生产 Origin 必须是 HTTPS。后端默认只监听127.0.0.1；线上入口不加载本地 `.env`、Pi授权、偏好或手机中继文件。不得将本地 `src/index.ts` 当作多人线上服务器。
+数据目录必须为绝对路径。生产接受精确 HTTPS Origin，HTTP 仅允许 loopback。默认监听 127.0.0.1。生产核对 `dist-online/.vivic-online-build.json`；开发的 `VIVIC_SPACE_API_ONLY=1` 只跳过静态工件，不跳过认证。同源反代的转发约束见下方。旧 `src/index.ts` 不用于在线部署。
 
-## Linux 容器部署
+## Android
 
-镜像默认安装已固定版本的 **Lark CLI 1.0.97 与 WeCom CLI 1.3.4**（Linux amd64/arm64）。安装器使用官方发行档案，核对仓库内固定 SHA256/SHA512，只提取审阅的原生二进制，并在干净环境执行 `--version`；缺库、错误架构、摘要或版本不符会让构建失败。无需 npm 全局包布局或宿主登录。飞书/McDonald/钉钉远程 MCP 不需要额外 CLI。
+`apps/android/build.ps1` 把 `build:mobile` 的不可变 Hark 服务地址引导页打包。用户选择 HTTPS 地址并原生确认后加载对应网页，仅保存 Origin，不保存配对秘密/模型 Key；远程页面不能自行修改受信地址。原件保存由系统文件选择器确认并校验哈希。
 
-固定运行路径为 `/opt/vivic/connectors/lark/1.0.97/lark-cli` 与 `/opt/vivic/connectors/wecom/1.3.4/wecom-cli`，通过 `VIVIC_LARK_CLI_PATH` / `VIVIC_WECOM_CLI_PATH` 指定。运行时每次查询仍使用临时独立配置目录和用户会话授权；容器只读根文件系统、`/tmp` tmpfs 与非 root 用户兼容。
+生产 APK 不含私有 CA，不启用 WebView 调试。隔离测试可显式指定 `-DebugWebView -DebugCaCertificate <public-ca-cert.pem>`，单列为 debug/TestCA；不与生产 TLS 结论混用。构建回执列实际版本及 APK/网页资产哈希。脚本使用本地开发签名，不能当正式商店签名。
 
-若部署者只需要远程 MCP，可设置 `VIVIC_CONNECTOR_CLIS=0` 再构建；此时企微 CLI 和飞书 CLI 模式会明确显示主机未安装，不视为已启用。普通 Linux 主机也可运行 `node deploy/online/install-connector-clis.mjs --dest /opt/vivic/connectors`，然后设置上述两个绝对路径。安装器需要 Node 24、tar、系统 CA；两种架构的已锁定原生档案均检查为静态 ELF，无动态加载器依赖，变成动态二进制时会拒绝安装等待复核。Docker 基础镜像为 Debian bookworm-slim，安装步骤只增加 CA 与 tar。非 Linux 本地安装包使用服务主机已安装的官方原生 CLI，或同名两个环境变量指定审核后的原生路径；不附带或读取个人登录。二进制 MIT 版权声明随部署目录及镜像保留。
-
-此轮已核对平台档案摘要/ELF 架构以及现有 Windows 两个官方 CLI 的隔离版本运行。新增 Docker 安装层需要下一次目标 Linux 构建验收，不能沿用旧镜像验收报告宣称已通过。
-
-部署包包含源码、锁文件和已构建的网页。没有携带 Windows 的 node_modules；Linux 镜像会在本机架构安装 sharp/esbuild 等依赖。[官方 Node 镜像](https://hub.docker.com/_/node)固定到24.21.0 bookworm-slim及manifest SHA256。本轮已使用目标Linux现有Docker实际构建和启动，并通过隔离TLS反代、会话隔离、流式响应、手机长轮询及非root原生sharp检查。具体archive SHA与证据见 [服务器验收](verification/online-server-20261023.md)；测试只绑定回环端口，没有替换原公开站点。临时私有测试CA的TLS验证不等同正式域名已发布。
-
-在包根目录执行，替换为自己的专用域名：
+## Linux 单实例容器
 
 ```sh
 export VIVIC_ONLINE_ORIGIN=https://vivic.example.com
-docker compose -f deploy/online/compose.yaml config
+# 另在受控环境设置 VIVIC_SPACE_INVITE，不提交到源码/报告。
+docker compose -f deploy/online/compose.yaml config --quiet
 docker compose -f deploy/online/compose.yaml up --build -d
 ```
 
-使用[Compose环境变量插值](https://docs.docker.com/compose/how-tos/environment-variables/variable-interpolation/)要求显式Origin。容器内部监听0.0.0.0，但宿主只映射127.0.0.1:8790；由现有反向代理终止TLS。当前使用域名根路径 `/`，不支持直接挂在 `/vivic/` 子路径；不要挤占已有网站根路由。
+Compose 使用独立 named volume `vivic-space-data:/data/vivic`，只映射宿主 loopback 8790，非 root、只读根文件系统，临时目录 tmpfs。普通 `down` 保留卷，不执行 `down -v`。数据库和资产必须一起备份，不复制运行中的单个 SQLite 文件冒充一致性备份。步骤见 [离线备份和恢复](hosted-data-backup.md)。恢复只写全新目录，清除设备和配对授权，避免旧备份复活已撤权设备。
 
-Nginx 的已配置HTTPS虚拟主机可使用以下 location，不包含证书、域名或任何模型Key：
+默认不安装外部连接器 CLI。确需时指定构建参数 `VIVIC_CONNECTOR_CLIS=1`，使用锁定哈希的 Lark/WeCom 工具；独立授权和外部操作许可仍必需。不读取宿主个人授权。目标 Linux 必须实际重建并验证 sharp 等原生依赖；Windows 构建成功不等于 Linux 运行通过。
+
+## HTTPS 反向代理
+
+使用独立域名及根路径 `/`，不支持直接挂在 `/vivic/`。不要覆盖已有站点或公开 relay。已配置 HTTPS 的 Nginx 虚拟主机可使用：
 
 ```nginx
 location / {
@@ -68,17 +83,35 @@ location / {
     proxy_set_header X-Forwarded-Proto $scheme;
     proxy_http_version 1.1;
     proxy_buffering off;
-    proxy_read_timeout 150s;
-    client_max_body_size 9m;
+    proxy_read_timeout 200s;
+    client_max_body_size 24m;
 }
 ```
 
-代理应保留Cookie、Origin、Sec-Fetch-*和流式响应，不记录请求体、Authorization、Cookie或完整查询数据。接口严格同源；浏览器直接发Bearer会拒绝，无法绕过会话。健康检查 `/healthz` 返回 `vivic-online-api`；前端启动前还会核对专用 `.vivic-online-build.json`，避免误用本地版网页。
+24m 给 ASR/分段 WAV 和 multipart 留出封装空间；服务内仍执行各接口更小限制，不提高文件配额。保留 Cookie、Origin、Sec-Fetch-*，不记录请求正文、Authorization、Cookie 或完整查询内容。服务的 URL Origin 固定于配置，不能由客户端任意指定转发 Origin。
 
-每会话独立应用、凭据及provider状态；限流、会话数量、并发、请求体、响应体和超时有界。单进程内存会话暂不支持多副本随机转发；扩大部署前应增加共享会话基础设施。上游网络/IP定位不会把服务器位置当用户所在地，缺少真实设备坐标时询问城市或定位。
+`/healthz` 返回 `vivic-space-api`。所有写操作严格同源，浏览器 Bearer 被拒绝。当前单进程服务不能直接多副本随机分流；扩容前须重新设计共享事务、连接及任务协调。
 
-## 交付与停止
+## 模型与交付边界
 
-`pnpm package:online` 生成 `.cache/vivic-online-<时间>.tar.gz`、SHA256及源包目录。该包不含个人数据、模型权重或服务器凭据；正式运行后的目录不可直接重新分发。Linux与隔离TLS的实际验收见上述记录；正式公网域名发布以及真实Key的LLM/ASR/TTS权限和延迟仍需单独验收。ASR/TTS验证与LLM连接成功分开计算，不因Plan模型响应就保证语音权限。
+模型平台默认 `https://edsionc.top/api/v1`，运营者可通过 `VIVIC_MODEL_API_BASE_URL` 固定。用户在设置密码框分别连接 LLM 和模型平台。可选部署级 token 只能经秘密管理注入，不进入包、日志、Compose 源码或浏览器存储。
 
-本机预览用 Ctrl+C 停止；容器用 `docker compose -f deploy/online/compose.yaml down`。停止会丢弃服务端会话凭据，保留浏览器画布。
+ASR/TTS/分类元数据在线、协议通过和真实质量通过分别报告。HTTP 取消不等于 Mac 推理已停止。断网保留草稿并提示连接，不宣称离线模型能力。
+
+`pnpm package:online` 生成源码/网页部署包和 SHA256，不附带个人数据、DB、权重、Key、私钥、签名 keystore 或 node_modules。运行后目录不得直接分发；私人备份单独受控保存。
+
+本轮只交独立分支、补丁和隔离复测证据，不自动推送、建 PR、合并、公开部署或升级公共服务。生产域名、真实推理质量、实体手机/麦克风和 Linux 运行结果按实际执行状态单列。
+## Cursor 旧版界面（2026-10-26）
+
+默认的 `build:online` 也构建此旧版界面，避免常规重新部署恢复为旧的托管界面。
+`build:hosted` 单独保留托管界面的构建入口。
+
+`pnpm --filter @vivic/web build:owner` 输出 `apps/web/dist-owner`。该入口保留 Cursor 会话
+`22995caf-caa5-47ce-a78d-a26afd50962a` 的 `43d8e3a` 旧版界面；发布时将此目录作为
+`VIVIC_ONLINE_WEB_DIST`（或容器内的 `dist-online`）。它仍使用 `/api/space` 账号 Cookie，
+画布通过受版本约束的 `/api/space/owner` 适配器保存在原来的服务器 Space 中，原件复用已有资产服务。
+`/remote/` 保留账号手机版入口。语音通过 API 识别，不下载本地模型。
+
+发布前运行 `node --import tsx ../../scripts/verify-cursor-owner.mjs`（目录 `apps/local-api`），
+并验证旧界面的设置、Space 弹窗、拖动保存、文件上传/阅读和展示窗口。服务器使用原运行镜像的依赖，
+替换当前源码与构建产物；切换前停服复制整个数据目录，保留上一容器。回滚仅切换容器，数据恢复须单独确认。

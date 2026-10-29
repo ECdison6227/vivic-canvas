@@ -8,7 +8,6 @@ import { startLiveWeather } from "@/location/liveWeather";
 import { LocationSettings } from "./LocationSettings";
 import { cancelSpeech, speakText, subscribeSpeech, getSpeechSnapshot, speakShortFeedback, cancelShortFeedback } from "@/ai/speech";
 import { speechDisplayFrame, type SpeechRange } from "@/ai/speechTelemetry";
-import { LocalDecisionSettings } from "./LocalDecisionSettings";
 import { MobileControlSettings } from "./mobile/MobileControlSettings";
 import { OnlineMobileControlSettings } from "./mobile/OnlineMobileControlSettings";
 import { clarifiedCardAction, parseCommand, type CommandResult } from "@/commands/parse";
@@ -28,7 +27,6 @@ import { DataActions } from "./DataActions";
 import type { ReminderNotice } from "@/reminders/reminders";
 import { deliveredNoticeCurrent } from "@/reminders/reminders";
 import { cancelVoiceInput, getVoiceInputSnapshot, isVoiceInputBusy, subscribeVoiceInput } from "@/ai/voiceInput";
-import { LocalSpeechSettings } from "./LocalSpeechSettings";
 import { CanvasSettings } from "./CanvasSettings";
 import { NotificationSettings } from "./NotificationSettings";
 import { SettingsExperience } from "./SettingsExperience";
@@ -43,12 +41,17 @@ import { useResolvedTheme } from "@/stage/useResolvedTheme";
 import { pathForView, viewForPath, type ControlView } from "./controlView";
 import "@/components/hark/hark.css";
 import "./hark-control.css";
-import { ONLINE_BUILD } from "@/online/mode";
+import { ONLINE_BUILD, OWNER_ONLINE_BUILD } from "@/online/mode";
+import { hostedClient } from "@/hosted/client";
+import { OwnerDevices } from "@/hosted/OwnerDevices";
+import { ConnectionPanel } from "@/connections/ConnectionPanel";
 
 export const INTENT_TIMEOUT_MS = 100_000;
 
-/** A non-action result must still reach Display after the thinking lease ends, and is spoken. */
+const QUIET_SUCCESS_FEEDBACK = new Set(["已保存", "已完成。", "已完成并保存。"]);
+/** A non-success result must still reach Display after the thinking lease ends, and is spoken. */
 const publishFeedback = (host: ControlHost, text: string) => {
+  if (QUIET_SUCCESS_FEEDBACK.has(text.trim())) return;
   const { activeCanvasId, ownerMode } = host.getSnapshot();
   if (!activeCanvasId || ownerMode !== "owner") return;
   host.dispatch({ schemaVersion: "0.6", requestId: newId("feedback"), canvasId: activeCanvasId,
@@ -596,7 +599,7 @@ export const ControlApp = () => {
   if (!host) {
     return (
       <div className="vh-hark vivic-control-loading" role="status">
-        正在载入本地画布…
+        正在载入画布…
       </div>
     );
   }
@@ -657,8 +660,9 @@ const ControlShell = (props: ShellProps) => {
     return () => document.removeEventListener("visibilitychange", requestStartupPermissions);
   }, [readonly, snap.ready]);
 
-  const openDisplay = () => {
-    const id = snap.activeCanvasId ?? "";
+  const openDisplay = (canvasId?: string) => {
+    const id = canvasId ?? snap.activeCanvasId ?? "";
+    if (!id) return;
     const width = window.screen.availWidth || window.innerWidth;
     const height = window.screen.availHeight || window.innerHeight;
     window.open(`/display?canvasId=${encodeURIComponent(id)}`, "_blank", `popup,noopener,width=${width},height=${height}`);
@@ -697,6 +701,10 @@ const ControlShell = (props: ShellProps) => {
         feedback={props.feedback}
         notice={props.view === "chat" ? readonlyNotice : null}
         onOpenSettings={() => props.onNavigate("settings")}
+        onOpenServices={() => {
+          props.onNavigate("settings");
+          if (window.location.hash !== "#settings-services") window.location.hash = "settings-services";
+        }}
         onOpenDisplay={openDisplay}
         ownerKey={`${snap.activeCanvasId}:${snap.ownerMode}`}
         disabled={readonly || !snap.ready}
@@ -721,22 +729,19 @@ const ControlShell = (props: ShellProps) => {
         hidden={props.view !== "settings"}
         onBack={() => props.onNavigate("chat")}
         notice={props.view === "settings" ? readonlyNotice : null}
-        local={<>
-          {!ONLINE_BUILD && <><LocalDecisionSettings disabled={readonly || !snap.ready} />
-          <LocalSpeechSettings disabled={readonly || !snap.ready} onBeforeClear={props.onCancel} /></>}
-        </>}
         connections={connection}
+        services={<ConnectionPanel active={props.view === "settings"} />}
         voice={voice}
         appearance={<>
           <CanvasSettings host={props.host} disabled={readonly || !snap.ready} compact />
           <BackgroundSettings host={props.host} disabled={readonly || !snap.ready} resolvedTheme={theme} compact />
         </>}
         notifications={<NotificationSettings disabled={readonly || !snap.ready} compact />}
-        mobile={ONLINE_BUILD
+        mobile={OWNER_ONLINE_BUILD ? <OwnerDevices /> : ONLINE_BUILD
           ? <OnlineMobileControlSettings host={props.host} disabled={readonly || !snap.ready} desktopBusy={props.desktopBusy} />
           : <MobileControlSettings host={props.host} disabled={readonly || !snap.ready} desktopBusy={props.desktopBusy} />}
         permissions={<LocationSettings disabled={readonly} compact />}
-        data={<DataActions host={props.host} readonly={readonly || !snap.ready} onBeforeClear={props.onCancel} compact />}
+        data={<>{OWNER_ONLINE_BUILD && <section className="se-data"><h3>账号</h3><button type="button" className="se-button" onClick={() => { props.onCancel(); void hostedClient.logout().then(() => window.location.assign("/")); }}>退出登录</button></section>}<DataActions host={props.host} readonly={readonly || !snap.ready} onBeforeClear={props.onCancel} compact /></>}
       />} />
     </div>
   );

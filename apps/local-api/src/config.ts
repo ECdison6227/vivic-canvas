@@ -30,6 +30,8 @@ export interface LocalApiConfig {
   tokenGenerated: boolean;
   allowedOrigins: string[];
   stepfunBaseUrl: string;
+  /** User's own model platform. Key is supplied later and kept only in memory. */
+  modelApiBaseUrl: string;
   requestTimeoutMs: number;
   connectionTimeoutMs?: number;
   speechTimeoutMs?: number;
@@ -102,6 +104,7 @@ export const loadConfig = (
       .map((s) => s.trim())
       .filter(Boolean),
     stepfunBaseUrl: (env.STEPFUN_BASE_URL ?? STEPFUN_PLAN_BASE_URL).replace(/\/+$/, ""),
+    modelApiBaseUrl: (env.VIVIC_MODEL_API_BASE_URL ?? "https://edsionc.top/api/v1").replace(/\/+$/, ""),
     requestTimeoutMs: boundedTimeout(env.VIVIC_REQUEST_TIMEOUT_MS, INFERENCE_TIMEOUT_MS),
     connectionTimeoutMs: boundedTimeout(env.VIVIC_CONNECTION_TIMEOUT_MS, CONNECTION_TIMEOUT_MS),
     speechTimeoutMs: boundedTimeout(env.VIVIC_SPEECH_TIMEOUT_MS, SPEECH_TIMEOUT_MS),

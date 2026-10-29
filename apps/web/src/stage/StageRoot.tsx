@@ -10,7 +10,7 @@ import { useSystemReducedMotion } from "@/motion/useMotionVisibility";
 
 /**
  * Display layering (bottom → top):
- * z-0  Hark sky with composited light (independent of canvas transforms)
+ * z-0  React Bits Liquid Ether background (independent of canvas transforms)
  * z-10 React Flow canvas + cards
  * (no veil: standby shows the same background as the user page)
  * z-30 SmoothUI Siri Orb

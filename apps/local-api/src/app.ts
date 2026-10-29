@@ -6,6 +6,8 @@ import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import type { LocalApiConfig } from "./config.js";
 import { CredentialStore } from "./credentials.js";
+import { PlatformCredentialStore } from "./platformCredential.js";
+import { createModelApiClient } from "./modelApi/index.js";
 import { runIntent, type PipelineDeps } from "./intent/pipeline.js";
 import { safeDiagnostic, type DiagnosticSink } from "./diagnostics.js";
 import {
@@ -69,7 +71,7 @@ export interface AppDeps {
   travel?: TravelProvider;
   /** Remembers the chosen connection across restarts; absent in tests. */
   preferences?: PreferenceStore;
-  mobileBroker?: Pick<MobileSessionBroker, "status" | "create" | "dispose">;
+  mobileBroker?: Pick<MobileSessionBroker, "status" | "create" | "dispose"> & Partial<Pick<MobileSessionBroker, "resume" | "end">>;
   localTts?: Pick<ManagedLocalTts, "status" | "prepare" | "enable" | "stop" | "clear" | "synthesize">;
 }
 
@@ -93,10 +95,13 @@ export const createApp = (deps: AppDeps) => {
   const connections = new ConnectionManager({ fetchImpl: deps.fetchImpl });
   let localTts = online ? undefined : deps.localTts;
   const localTtsRuntime = () => online ? undefined : localTts ??= new ManagedLocalTts(path.join(homedir(), ".vivic", "runtime", "local-tts"));
-  const mobileBroker = online ? { status: async () => ({ configured: false, mobileUrl: null }),
+  const mobileBroker: NonNullable<AppDeps["mobileBroker"]> = online ? { status: async () => ({ configured: false, mobileUrl: null }),
     create: async (): Promise<never> => { throw new Error("unavailable_online"); }, dispose: () => undefined }
     : deps.mobileBroker ?? new MobileSessionBroker(path.join(homedir(), ".vivic", "mobile-relay.json"));
   const credentials = deps.credentials ?? new CredentialStore();
+  const platform = new PlatformCredentialStore();
+  let platformRevision = 0;
+  let platformAttempt: AbortController | undefined;
   const gpt = deps.gpt ?? new GptProvider({ fetchImpl: deps.fetchImpl });
   const data = deps.data ?? createDataClient({ fetchImpl: deps.fetchImpl,
     ...(online ? { config: { deviceLocation: true, networkRegionFallback: false } } : {}) });
@@ -137,6 +142,10 @@ export const createApp = (deps: AppDeps) => {
       timeoutMs: config.decisionV2TimeoutMs, getToken: () => config.decisionV2Token }); }
     catch { safeDiagnostic(deps.onDiagnostic, { event: "decision.configuration_invalid" }); }
   }
+  // The managed runtime has a separate native state/questions readout. Never
+  // route v2 through DecisionProvider.decide(), which is the legacy seven labels.
+  const managedNativeV2 = !nativeV2 && !config.decisionV2Url && managed;
+  if (managedNativeV2) nativeV2 = { decide: (state, questions, signal) => managedNativeV2.decideNative(state, questions, signal) };
   const decisionTasks = new DecisionTaskManager({ provider: nativeV2, gate: { executionEnabled: config.decisionV2ExecutionEnabled === true } });
   const preferences = online ? undefined : deps.preferences;
   const saved = preferences?.read() ?? {};
@@ -307,6 +316,43 @@ export const createApp = (deps: AppDeps) => {
     return c.json({ ok: true, connected: false });
   });
 
+  app.post("/api/credentials/platform/validate", async (c) => {
+    let raw: unknown;
+    try { raw = await c.req.json(); }
+    catch { return c.json({ ok: false, error: "请求体不是合法 JSON" }, 400); }
+    const parsed = z.strictObject({
+      apiKey: z.string().min(8).max(512).regex(/^\S+$/, "API Key 不应包含空白字符"),
+    }).safeParse(raw);
+    if (!parsed.success) return c.json({ ok: false, error: "请输入有效的本地 API 平台 Key。" }, 400);
+    const revision = ++platformRevision;
+    platformAttempt?.abort();
+    const controller = new AbortController();
+    platformAttempt = controller;
+    const client = createModelApiClient({
+      baseUrl: config.modelApiBaseUrl, token: parsed.data.apiKey,
+      fetchImpl: deps.fetchImpl, timeoutMs: 12_000,
+    });
+    const result = await client.status({ signal: AbortSignal.any([c.req.raw.signal, controller.signal]) })
+      .finally(() => { if (platformAttempt === controller) platformAttempt = undefined; });
+    if (disposed || revision !== platformRevision || c.req.raw.signal.aborted) {
+      return c.json({ ok: false, connected: false, error: "连接请求已取消或被新的连接替代。" }, 409);
+    }
+    if (!result.ok) {
+      platform.clear();
+      platform.recordError(result.error.message);
+      return c.json({ ok: false, connected: false, error: result.error.message });
+    }
+    platform.set(parsed.data.apiKey);
+    return c.json({ ok: true, connected: true });
+  });
+
+  app.post("/api/credentials/platform/disconnect", (c) => {
+    platformRevision++;
+    platformAttempt?.abort(); platformAttempt = undefined;
+    platform.clear();
+    return c.json({ ok: true, connected: false });
+  });
+
   app.get("/api/providers/status", (c) => {
     c.header("Cache-Control", "no-store");
     const status = credentials.status();
@@ -316,6 +362,7 @@ export const createApp = (deps: AppDeps) => {
       activeProvider, instance,
       ...(restoringGpt ? { restoring: "gpt" } : {}),
       providers: online ? [status] : [status, gpt.status()],
+      platform: platform.status(),
       degradations: (activeProvider === "stepfun" ? status.connected : gpt.status().connected)
         ? []
         : [
@@ -430,10 +477,14 @@ export const createApp = (deps: AppDeps) => {
     return c.body(result.audio, 200);
   });
 
-  const decisionStatus = (status = decision.status()) => decisionConfigurationError
-    ? { ...status, configurationError: decisionConfigurationError, error: status.error ?? decisionConfigurationError }
-    : status;
-  app.get("/api/decision/status", c => c.json({ ...decisionStatus(), v2: decisionTasks.status() }));
+  const nativeStatus = () => ({ ...decisionTasks.status(),
+    source: managedNativeV2 ? "managed-startlux" : deps.decisionV2Provider ? "injected-native" : nativeV2 ? "configured-native-service" : "unconfigured",
+    ...(managedNativeV2 ? { available: managedNativeV2.status().phase === "ready", runtimePhase: managedNativeV2.status().phase,
+      profileId: managedNativeV2.status().profileId } : {}),
+  });
+  const decisionStatus = (status = decision.status()) => ({ ...status, v2: nativeStatus(), ...(decisionConfigurationError
+    ? { configurationError: decisionConfigurationError, error: status.error ?? decisionConfigurationError } : {}) });
+  app.get("/api/decision/status", async c => { c.header("Cache-Control", "no-store"); if (managed) await managed.refreshResources(); return c.json(decisionStatus()); });
   app.get("/api/decision/models", c => c.json({
     defaultProfileId: STARTLUX_DEFAULT_PROFILE_ID,
     recommendation: recommendStartluxProfile({ totalMemoryBytes: totalmem(), freeMemoryBytes: freemem() }),
@@ -472,9 +523,21 @@ export const createApp = (deps: AppDeps) => {
   app.post("/api/decision/clear", c => c.json(decisionStatus(decision.clear())));
   app.post("/api/decision/enable", c => c.json(decisionStatus(decision.enable())));
   app.get("/api/mobile/status", async c => { c.header("Cache-Control", "no-store"); return c.json(await mobileBroker.status()); });
+  const mobileSlot = (c: AppContext, id: string) => `${c.req.header("origin") ?? new URL(c.req.url).origin}:${id}`;
+  for (const action of ["resume", "end"] as const) app.post(`/api/mobile/session/${action}`, async c => {
+    c.header("Cache-Control", "no-store");
+    const body = z.strictObject({ ownerSlot: z.uuid() }).safeParse(await readJson(c));
+    if (!body.success || online) return c.json({ error: "手机会话请求无效。" }, 400);
+    const slot = mobileSlot(c, body.data.ownerSlot);
+    if (action === "resume") return c.json({ session: mobileBroker.resume?.(slot) ?? null });
+    try { await mobileBroker.end?.(slot); return c.json({ ok: true }); }
+    catch { return c.json({ ok: false, error: "会话已在本机停用；中继撤权尚未确认，请检查连接。" }, 503); }
+  });
   app.post("/api/mobile/session", async c => {
     c.header("Cache-Control", "no-store");
-    try { return c.json(await mobileBroker.create()); }
+    const body = z.strictObject({ ownerSlot: z.uuid().optional() }).safeParse(await readJson(c) ?? {});
+    if (!body.success) return c.json({ error: "手机会话请求无效。" }, 400);
+    try { return c.json(await mobileBroker.create(body.data.ownerSlot ? mobileSlot(c, body.data.ownerSlot) : undefined)); }
     catch { return c.json({ error: "手机中继暂不可用，请稍后重试或检查本机中继配置。" }, 503); }
   });
 
@@ -616,9 +679,10 @@ export const createApp = (deps: AppDeps) => {
   else app.post("/api/search", c => c.json({ ok: false, error: "联网查询未启用。" }, 503));
   return Object.assign(app, { dispose: () => {
     if (disposed) return;
-    disposed = true; connectionRevision++; providerRevision++;
+    disposed = true; connectionRevision++; providerRevision++; platformRevision++;
     connectionAttempt?.abort(); connectionAttempt = undefined;
+    platformAttempt?.abort(); platformAttempt = undefined;
     connections.dispose();
-    credentials.clear(); gpt.dispose(); mobileBroker.dispose(); decision.stop(); decisionTasks.dispose(); localTts?.stop();
+    credentials.clear(); platform.clear(); gpt.dispose(); mobileBroker.dispose(); decision.stop(); decisionTasks.dispose(); localTts?.stop();
   } });
 };

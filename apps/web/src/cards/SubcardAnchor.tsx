@@ -5,7 +5,7 @@ import { HarkIcon } from "@/components/hark/HarkPrimitives";
 import { cardTargets, sameCardTarget, type Action, type CardRecord, type CardTarget, type Subcard } from "@/contracts";
 import { Button } from "@/components/ui/button";
 import { newId } from "@/lib/id";
-import { getDisplayStatus } from "@/sync/browserRuntime";
+import { getDisplayStatus } from "@/sync/displayStatus";
 import { renderVivicSpec } from "./vivicGUILibrary";
 import { SubcardEditorContext, SubcardThemeContext, type SubcardEditor } from "./SubcardEditorContext";
 import { ControlOverlayContext } from "@/control/ControlOverlayContext";

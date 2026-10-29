@@ -1,7 +1,6 @@
 import { ONLINE_BUILD } from "@/online/mode";
 import { AudioOutputSettings } from "./AudioOutputSettings";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
-import { HarkIcon } from "@/components/hark/HarkPrimitives";
 import { CompactVoiceSettings } from "./CompactVoiceSettings";
 import { Select } from "radix-ui";
 import { Check, ChevronDown } from "lucide-react";
@@ -10,8 +9,10 @@ import {
   SPEECH_VOICES, SPEECH_VOICES_SOURCE, subscribeSpeech, type SpeechVoiceId,
 } from "@/ai/speech";
 import {
+  disconnectPlatform,
   disconnectStepfun,
   getProvidersStatus,
+  validatePlatformKey,
   validateStepfunKey,
   type ProvidersStatusResponse,
 } from "@/ai/api";
@@ -24,6 +25,18 @@ import { getVoiceConfiguration, setVoiceConfiguration, subscribeVoiceConfigurati
 import { createBrowserTtsAdapter } from "@/ai/localSpeech/browserTts";
 import { getMicrophonePermission, requestMicrophonePermission, subscribeMicrophonePermission } from "@/permissions/devicePermissions";
 import { AvailableCards } from "./AvailableCards";
+import stepfunIcon from "./assets/stepfun-icon.svg";
+
+const STEPFUN_SITE = "https://www.stepfun.com/";
+const StepFunBrand = ({ label = "StepFun" }: { label?: string }) => (
+  <span className="se-stepfun-brand">
+    <a className="se-stepfun-link" href={STEPFUN_SITE} target="_blank" rel="noopener noreferrer"
+      aria-label="打开 StepFun 官网" title="打开 StepFun 官网" data-vivic-stepfun-site>
+      <img src={stepfunIcon} alt="" width={18} height={18} />
+    </a>
+    <span>{label}</span>
+  </span>
+);
 
 type BackendState =
   | { status: "checking" }
@@ -40,8 +53,10 @@ interface AiSectionProps {
 export const AiSection = ({ onBackendChange, disabled = false, renderPanels }: AiSectionProps) => {
   const [backend, setBackend] = useState<BackendState>({ status: "checking" });
   const [keyInput, setKeyInput] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [platformInput, setPlatformInput] = useState("");
+  const [busy, setBusy] = useState<"stepfun" | "platform" | null>(null);
   const [lastError, setLastError] = useState<string | null>(null);
+  const [platformError, setPlatformError] = useState<string | null>(null);
   const [restartNote, setRestartNote] = useState<string | null>(null);
   const seen = useRef<{ instance?: string; stepfunConnected: boolean }>({ stepfunConnected: false });
   const speech = useSyncExternalStore(subscribeSpeech, getSpeechSnapshot);
@@ -106,23 +121,27 @@ export const AiSection = ({ onBackendChange, disabled = false, renderPanels }: A
 
   const stepfun =
     backend.status === "online" ? backend.data.providers.find(provider => provider.name === "stepfun") : undefined;
+  const platform = backend.status === "online" ? backend.data.platform : undefined;
+  const pending = busy !== null;
+  const linkState = (connected: boolean | undefined) =>
+    backend.status === "checking" ? "检查中…" : backend.status === "offline" ? "服务不可用" : connected ? "已连接" : "未连接";
   const activeProvider = backend.status === "online" ? backend.data.activeProvider ?? "stepfun" : "stepfun";
   const active = backend.status === "online" ? backend.data.providers.find(provider => provider.name === activeProvider) : undefined;
   const gpt = backend.status === "online" ? backend.data.providers.find(provider => provider.name === "gpt") : undefined;
   const modelOptions = (active?.models ?? []).filter(model => activeProvider === "gpt" || model === active?.defaultModel || ["step-3.5-flash", "step-3.5-flash-2603", "step-3.7-flash", "step-5-preview", "step-router-v1"].includes(model));
   const ttsReady = voiceConfig.tts === "browser" ? browserVoices.length > 0 : voiceConfig.tts === "local" ? false : voiceConfig.tts === "stepfun" && Boolean(stepfun?.connected);
   const configureModel = async (work: () => Promise<{ ok: boolean; error?: string }>) => {
-    setBusy(true); setLastError(null);
+    setBusy("stepfun"); setLastError(null);
     try { const result = await work(); if (!result.ok) setLastError(result.error ?? "模型选择或推理验证失败。"); }
     catch (error) { setLastError(error instanceof Error ? error.message : "连接服务暂不可达。"); }
-    finally { setBusy(false); await refresh(); }
+    finally { setBusy(null); await refresh(); }
   };
 
   const connect = async () => {
     const apiKey = keyInput.trim();
-    if (!apiKey) return;
+    if (!apiKey || busy) return;
     if (getVoiceConfiguration().tts === "stepfun") setSpeechEnabled(false);
-    setBusy(true);
+    setBusy("stepfun");
     setLastError(null);
     try {
       const result = await validateStepfunKey(apiKey);
@@ -133,22 +152,49 @@ export const AiSection = ({ onBackendChange, disabled = false, renderPanels }: A
       setLastError("连接服务暂时不可达");
     } finally {
       setKeyInput(""); // clear after every attempt, including rejected keys
-      setBusy(false);
+      setBusy(null);
       await refresh();
     }
   };
 
   const disconnect = async () => {
+    if (busy) return;
     if (getVoiceConfiguration().tts === "stepfun") setSpeechEnabled(false);
-    setBusy(true);
+    setBusy("stepfun");
     try {
       await disconnectStepfun();
     } catch {
       // offline anyway; the badge refresh below reflects reality
     } finally {
-      setBusy(false);
+      setBusy(null);
       await refresh();
     }
+  };
+
+  const connectPlatform = async () => {
+    const apiKey = platformInput.trim();
+    if (!apiKey || busy) return;
+    setBusy("platform");
+    setPlatformError(null);
+    try {
+      const result = await validatePlatformKey(apiKey);
+      if (!result.ok) setPlatformError(result.error ?? "平台连接未确认，请检查 Key 后重试。");
+    } catch {
+      setPlatformError("连接服务暂时不可达");
+    } finally {
+      setPlatformInput("");
+      setBusy(null);
+      await refresh();
+    }
+  };
+
+  const disconnectPlatformKey = async () => {
+    if (busy) return;
+    setBusy("platform");
+    setPlatformError(null);
+    try { await disconnectPlatform(); }
+    catch { setPlatformError("连接服务暂时不可达"); }
+    finally { setBusy(null); await refresh(); }
   };
 
   const badge = (() => {
@@ -175,33 +221,32 @@ export const AiSection = ({ onBackendChange, disabled = false, renderPanels }: A
 
   if (renderPanels) return renderPanels(
     <section className="se-connection" data-vivic-ai-section>
-      <div className="se-row se-connection-heading"><span>{activeProvider === "gpt" ? "GPT" : "StepFun Coding Plan"}</span>
-        <span className="se-connection-state" data-vivic-ai-badge data-connected={Boolean(active?.connected)}>
-          {backend.status === "checking" ? "检查中…" : backend.status === "offline" ? "服务不可用" : active?.connected ? "已连接" : "未连接"}
-        </span>
-      </div>
-      {!stepfun?.connected && activeProvider === "stepfun" && <form className="se-provider-key" onSubmit={event => { event.preventDefault(); void connect(); }}>
-        <Input type="password" autoComplete="off" placeholder="输入 Coding Plan Key" value={keyInput} aria-label="StepFun API Key" data-vivic-ai-key-input
-          onChange={event => setKeyInput(event.target.value)} disabled={disabled || busy || backend.status !== "online"} />
-        <Button type="submit" disabled={disabled || busy || backend.status !== "online" || !keyInput.trim()} data-vivic-ai-connect>{busy ? "验证中…" : "连接"}</Button>
-      </form>}
-      {lastError || stepfun?.lastError || restartNote || backend.status === "offline"
-        ? <p className="se-error" role="status" data-vivic-ai-note>{lastError || stepfun?.lastError || restartNote || "服务暂不可用，内置文字指令仍可使用。"}</p>
-        : <p className="se-caption" data-vivic-ai-note>{ONLINE_BUILD ? "Key 仅在当前会话中保留。" : "Key 仅保留在本机服务内存中。"}</p>}
-      {(active?.connected || !ONLINE_BUILD) && <details className="se-details" data-vivic-connection-options>
-        <summary>管理连接<HarkIcon name="chevron-down" /></summary>
-        <div className="se-detail-body">
-          {!ONLINE_BUILD && <div className="se-row"><span>服务</span><Choice label="LLM 连接方式" value={activeProvider} disabled={disabled || busy || backend.status !== "online"}
-            options={[{ value: "stepfun", label: "StepFun" }, { value: "gpt", label: "GPT · Pi 登录" }]}
-            onChange={provider => void configureModel(() => selectLlmProvider(provider as LlmProvider))} /></div>}
-          {active?.connected && modelOptions.length > 0 && <div className="se-row"><span>模型</span><Choice label="当前推理模型" value={active.defaultModel ?? modelOptions[0]} disabled={disabled || busy}
-            options={modelOptions.map(model => ({ value: model, label: model }))} onChange={model => void configureModel(() => selectLlmModel(activeProvider, model))} /></div>}
-          {!ONLINE_BUILD && activeProvider === "gpt" && <GptConnection disabled={disabled || busy || backend.status !== "online"} connected={Boolean(gpt?.connected)} onChange={refresh} />}
-          {stepfun?.connected && <Button variant="ghost" className="se-disconnect" disabled={disabled || busy} onClick={() => void disconnect()} data-vivic-ai-disconnect>断开 StepFun 连接</Button>}
+      <form className="se-key-block" onSubmit={event => { event.preventDefault(); void connect(); }}>
+        <div className="se-row se-connection-heading"><StepFunBrand />
+          <span className="se-connection-state" data-vivic-ai-badge data-connected={Boolean(stepfun?.connected)}>{linkState(stepfun?.connected)}</span>
         </div>
-      </details>}
+        <div className="se-provider-key">
+          <Input type="password" autoComplete="off" placeholder="输入 StepFun API Key" value={keyInput} aria-label="StepFun API Key" data-vivic-ai-key-input
+            onChange={event => setKeyInput(event.target.value)} disabled={disabled || pending} />
+          <Button type="submit" disabled={disabled || pending || !keyInput.trim()} data-vivic-ai-connect>{busy === "stepfun" ? "验证中…" : "连接"}</Button>
+        </div>
+        {(lastError || stepfun?.lastError || restartNote) && <p className="se-error" role="status" data-vivic-ai-note>{lastError || stepfun?.lastError || restartNote}</p>}
+        {stepfun?.connected && <Button type="button" variant="ghost" className="se-disconnect" disabled={disabled || pending} onClick={() => void disconnect()} data-vivic-ai-disconnect>断开</Button>}
+      </form>
+      <form className="se-key-block" onSubmit={event => { event.preventDefault(); void connectPlatform(); }}>
+        <div className="se-row se-connection-heading"><span>本地 API 平台</span>
+          <span className="se-connection-state" data-vivic-platform-badge data-connected={Boolean(platform?.connected)}>{linkState(platform?.connected)}</span>
+        </div>
+        <div className="se-provider-key">
+          <Input type="password" autoComplete="off" placeholder="输入本地 API 平台 Key" value={platformInput} aria-label="本地 API 平台 Key" data-vivic-platform-key-input
+            onChange={event => setPlatformInput(event.target.value)} disabled={disabled || pending} />
+          <Button type="submit" disabled={disabled || pending || !platformInput.trim()} data-vivic-platform-connect>{busy === "platform" ? "验证中…" : "连接"}</Button>
+        </div>
+        {(platformError || platform?.lastError) && <p className="se-error" role="status" data-vivic-platform-note>{platformError || platform?.lastError}</p>}
+        {platform?.connected && <Button type="button" variant="ghost" className="se-disconnect" disabled={disabled || pending} onClick={() => void disconnectPlatformKey()} data-vivic-platform-disconnect>断开</Button>}
+      </form>
     </section>,
-    <CompactVoiceSettings connected={Boolean(stepfun?.connected)} disabled={disabled} busy={busy} onPreview={preview} browserVoices={browserVoices} />,
+    <CompactVoiceSettings connected={Boolean(stepfun?.connected)} disabled={disabled} busy={pending} onPreview={preview} browserVoices={browserVoices} />,
   );
 
   return (
@@ -218,14 +263,14 @@ export const AiSection = ({ onBackendChange, disabled = false, renderPanels }: A
       </div>
 
       <div className="mt-3 flex flex-wrap gap-2">
-        {!ONLINE_BUILD && <Choice label="LLM 连接方式" testId="llm-provider" value={activeProvider} disabled={disabled || busy || backend.status !== "online"}
+        {!ONLINE_BUILD && <Choice label="LLM 连接方式" testId="llm-provider" value={activeProvider} disabled={disabled || pending || backend.status !== "online"}
           options={[{ value: "stepfun", label: "StepFun Coding Plan" }, { value: "gpt", label: "GPT · Pi 登录" }]}
           onChange={provider => void configureModel(() => selectLlmProvider(provider as LlmProvider))} />}
-        {active?.connected && modelOptions.length > 0 && <Choice label="当前推理模型" testId="llm-model" value={active.defaultModel ?? modelOptions[0]} disabled={disabled || busy}
+        {active?.connected && modelOptions.length > 0 && <Choice label="当前推理模型" testId="llm-model" value={active.defaultModel ?? modelOptions[0]} disabled={disabled || pending}
           options={modelOptions.map(model => ({ value: model, label: model }))} onChange={model => void configureModel(() => selectLlmModel(activeProvider, model))} />}
       </div>
-      {!ONLINE_BUILD && activeProvider === "gpt" && <GptConnection disabled={disabled || busy || backend.status !== "online"} connected={Boolean(gpt?.connected)} onChange={refresh} />}
-      <p className="mt-3 text-xs font-medium text-neutral-700">StepFun Plan 连接 · 可独立用于语音</p>
+      {!ONLINE_BUILD && activeProvider === "gpt" && <GptConnection disabled={disabled || pending || backend.status !== "online"} connected={Boolean(gpt?.connected)} onChange={refresh} />}
+      <p className="mt-3 text-xs font-medium text-neutral-700"><StepFunBrand label="StepFun Plan 连接" /> · 可独立用于语音</p>
 
       <div className="se-provider-key">
         <Input
@@ -234,21 +279,21 @@ export const AiSection = ({ onBackendChange, disabled = false, renderPanels }: A
           placeholder={ONLINE_BUILD ? "StepFun Coding Plan Key（仅存当前会话内存）" : "StepFun Coding Plan Key（仅存本机后端内存）"}
           value={keyInput}
           onChange={(e) => setKeyInput(e.target.value)}
-          disabled={disabled || busy || backend.status !== "online" || stepfun?.connected}
+          disabled={disabled || pending || backend.status !== "online" || stepfun?.connected}
           aria-label="StepFun API Key"
           data-vivic-ai-key-input
         />
         <Button
           onClick={connect}
-          disabled={disabled || busy || backend.status !== "online" || !keyInput.trim() || stepfun?.connected}
+          disabled={disabled || pending || backend.status !== "online" || !keyInput.trim() || stepfun?.connected}
           data-vivic-ai-connect
         >
-          {busy ? "验证推理中…" : "连接测试"}
+          {pending ? "验证推理中…" : "连接测试"}
         </Button>
         <Button
           variant="secondary"
           onClick={disconnect}
-          disabled={disabled || busy || !stepfun?.connected}
+          disabled={disabled || pending || !stepfun?.connected}
           data-vivic-ai-disconnect
         >
           断开
@@ -273,10 +318,10 @@ export const AiSection = ({ onBackendChange, disabled = false, renderPanels }: A
       <div className="se-ai-block">
       <div className="se-ai-heading"><h2 className="text-sm font-semibold">语音输入与反馈</h2><span className="text-xs text-neutral-500">按需开启</span></div>
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        <div className="space-y-1"><p className="text-xs text-neutral-700">语音输入（STT）</p><Choice label="语音输入服务" testId="stt-provider" value={voiceConfig.stt} disabled={disabled || busy}
+        <div className="space-y-1"><p className="text-xs text-neutral-700">语音输入（STT）</p><Choice label="语音输入服务" testId="stt-provider" value={voiceConfig.stt} disabled={disabled || pending}
           options={ONLINE_BUILD ? [{ value: "stepfun", label: "StepFun Plan ASR" }, { value: "none", label: "仅文字输入" }] : [{ value: "stepfun", label: "StepFun Plan ASR" }, { value: "local", label: "本地 Sherpaw ASR" }, { value: "none", label: "仅文字输入" }]}
           onChange={stt => setVoiceConfiguration({ stt: stt as SttProvider })} /></div>
-        <div className="space-y-1"><p className="text-xs text-neutral-700">语音输出（TTS）</p><Choice label="语音输出服务" testId="tts-provider" value={voiceConfig.tts} disabled={disabled || busy}
+        <div className="space-y-1"><p className="text-xs text-neutral-700">语音输出（TTS）</p><Choice label="语音输出服务" testId="tts-provider" value={voiceConfig.tts} disabled={disabled || pending}
           options={ONLINE_BUILD ? [{ value: "stepfun", label: "StepFun Plan TTS" }, { value: "none", label: "仅卡片与字幕" }] : [{ value: "stepfun", label: "StepFun Plan TTS" }, { value: "local", label: "本地 Sherpa-ONNX TTS" }, { value: "browser", label: "系统本地音色" }, { value: "none", label: "仅卡片与字幕" }]}
           onChange={tts => { setSpeechEnabled(false); setVoiceConfiguration({ tts: tts as TtsProvider }); }} /></div>
       </div>
@@ -291,14 +336,14 @@ export const AiSection = ({ onBackendChange, disabled = false, renderPanels }: A
         </Button>}
       </div>
 
-      <AudioOutputSettings disabled={disabled || busy} />
+      <AudioOutputSettings disabled={disabled || pending} />
       <label className="mt-3 flex items-center gap-2 text-xs text-neutral-700">
         <Input
           type="checkbox"
           className="h-4 w-4 shrink-0 accent-neutral-900"
           checked={speech.enabled}
           onChange={(event) => setSpeechEnabled(event.target.checked)}
-          disabled={disabled || busy || voiceConfig.tts === "none"}
+          disabled={disabled || pending || voiceConfig.tts === "none"}
           aria-describedby="vivic-tts-note"
           data-vivic-tts-toggle
         />
@@ -307,7 +352,7 @@ export const AiSection = ({ onBackendChange, disabled = false, renderPanels }: A
       <p className="mt-2 text-xs text-neutral-500">选择 StepFun 温柔女声并开启语音反馈后，匹配的常用短句使用内置音频；其他内容与音色按所选服务生成。{!ttsReady && voiceConfig.tts !== "none" ? "当前语音服务尚未就绪，请先检查连接或系统音色。" : ""}</p>
       {voiceConfig.tts === "stepfun" && <label className="mt-2 flex items-center gap-2 text-xs text-neutral-700">
         <Input type="checkbox" className="h-4 w-4 shrink-0 accent-neutral-900" checked={speech.preferences.timestamps === true}
-          disabled={disabled || busy} onChange={event => setSpeechPreferences({ timestamps: event.target.checked })} data-vivic-word-timing />
+          disabled={disabled || pending} onChange={event => setSpeechPreferences({ timestamps: event.target.checked })} data-vivic-word-timing />
         请求逐词字幕（需语音服务支持，默认关闭）
       </label>}
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -343,7 +388,7 @@ export const AiSection = ({ onBackendChange, disabled = false, renderPanels }: A
                 </Select.Content>
               </Select.Portal>
             </Select.Root>
-            <Button variant="secondary" onClick={preview} disabled={disabled || busy || !stepfun?.connected} data-vivic-tts-preview>
+            <Button variant="secondary" onClick={preview} disabled={disabled || pending || !stepfun?.connected} data-vivic-tts-preview>
               {speech.kind === "preview" && speech.loading ? "取消试听" : speech.kind === "preview" && speech.playing ? "停止试听" : "试听音色"}
             </Button>
           </div>

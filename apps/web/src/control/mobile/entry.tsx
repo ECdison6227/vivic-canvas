@@ -1,6 +1,6 @@
 import { createRoot } from "react-dom/client";
-import "../../index.css";
-import { MobileConsole } from "./MobileConsole";
+import { HostedBootstrap } from "@/hostedMobile/HostedBootstrap";
 
-// This separate entry deliberately never imports App or the desktop owner runtime.
-createRoot(document.getElementById("root")!).render(<MobileConsole />);
+// Only the immutable service bootstrap ships in the APK. The confirmed service
+// provides /remote/ and its authenticated server Space UI.
+createRoot(document.getElementById("root")!).render(<HostedBootstrap />);

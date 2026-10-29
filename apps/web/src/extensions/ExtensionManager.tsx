@@ -65,7 +65,7 @@ export function ExtensionManager({ host, disabled = false }: { host: ControlHost
     <div className="flex items-center justify-between gap-3"><div><h2 className="text-sm font-semibold">扩展卡片管理</h2><p className="mt-1 text-xs opacity-65">导入 .vivicard 包，校验并试跑后安装。</p></div>
       <button ref={importRef} type="button" disabled={disabled || busy} className="vivic-scene-action" onClick={() => fileRef.current?.click()}>导入卡片包</button></div>
     <input ref={fileRef} hidden type="file" accept=".vivicard,.zip" aria-label="选择卡片包" data-extension-file onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file && !disabled) void importFile(file); }} />
-    <div className="mt-4 grid gap-2 sm:grid-cols-3" aria-label="Vivic 办公卡片">
+    <div className="mt-4 flex flex-col gap-2" aria-label="Vivic 办公卡片">
       {OFFICE_PLANNER_CATALOG.map(entry => <button key={entry.id} type="button" data-office-builtin={entry.kind} disabled={disabled || busy}
         className="rounded-xl border border-[var(--border)] p-3 text-left text-xs transition-colors hover:bg-black/5 disabled:opacity-50"
         onClick={() => void previewBuiltin(entry.id)}><strong className="block text-sm">{entry.name}</strong><span className="mt-1 block opacity-65">{entry.description}</span><span className="mt-3 block">预览与安装 →</span></button>)}

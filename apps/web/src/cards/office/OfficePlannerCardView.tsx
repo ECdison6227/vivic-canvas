@@ -65,7 +65,7 @@ export function OfficePlannerCardView({ card, height, definition, kind, preview 
   return <SceneCardShell card={card} height={height} title={title} kicker={definition.manifest.name} harkIcon={icon}
     badge={demo ? "DEMO · 虚构样例" : "用户输入"} badgeTone={demo ? "caution" : "neutral"}
     meta={kind === "week" ? text(props.config.period) : undefined}
-    footer={<><span>本地整理，未同步外部日历</span>{editor.editable && canUndo && <button type="button" className="vivic-scene-action nodrag nopan" onClick={() => { if (undo) commit(undo.before, false); }}><HarkIcon name="refresh" size={13} aria-hidden />撤销上次编辑</button>}</>}
+    footer={<><span>Space 内整理，未同步外部日历</span>{editor.editable && canUndo && <button type="button" className="vivic-scene-action nodrag nopan" onClick={() => { if (undo) commit(undo.before, false); }}><HarkIcon name="refresh" size={13} aria-hidden />撤销上次编辑</button>}</>}
     className="vivic-office vh-hark">
     {problem ? <SceneEmpty>{problem}</SceneEmpty> : <div className="vivic-office-content" data-office-planner={kind} data-extension-rendered={definition.manifest.id} data-hark-card="action-list">
       {text(props.config.context) && <p className="vivic-office-context">{text(props.config.context)}</p>}
