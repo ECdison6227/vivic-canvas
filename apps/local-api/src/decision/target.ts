@@ -16,9 +16,15 @@ export async function resolveTarget(text: string, context: CanvasContext, route:
   const names = cards.filter(card => [cardTitle(card), ...(card.aliases ?? [])]
     .some(name => name.length >= 2 && text.toLocaleLowerCase().includes(name.toLocaleLowerCase())));
   if (names.length === 1) return { targetId: names[0]!.id };
-  if (/这张|它|刚才那张/.test(text) || ["highlight", "edit"].includes(route) && /第[一二三四五六七八九十百\d]+[条项点行]/.test(text)) {
+  const ordinal = ["highlight", "edit"].includes(route) && /第[一二三四五六七八九十百\d]+[条项点行]/.test(text);
+  const hasEntries = (card: typeof cards[number]) => [card.displayProps.items, card.displayProps.bullets,
+    card.displayProps.keyPoints, card.displayProps.rows, card.sourceDataSummary.items, card.sourceDataSummary.bullets,
+    card.sourceDataSummary.keyPoints].some(value => Array.isArray(value) && value.length > 0);
+  if (/这张|它|刚才那张/.test(text) || ordinal) {
     const focus = context.focusHistory.at(-1);
-    if (focus && cards.some(card => card.id === focus)) return { targetId: focus };
+    const focused = cards.find(card => card.id === focus);
+    if (focused && (/这张|它|刚才那张/.test(text) || hasEntries(focused))) return { targetId: focused.id };
+    if (ordinal) { const lists = cards.filter(hasEntries); return { ambiguous: labels(lists.length ? lists : cards) }; }
   }
   const type = types.find(([pattern]) => pattern.test(text))?.[1];
   const pool = type ? cards.filter(card => type.test(card.type)) : cards;

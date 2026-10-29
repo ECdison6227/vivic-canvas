@@ -96,12 +96,12 @@ describe("shadow observer", () => {
   });
   it("carries hypothetical focus between clauses without changing the real context", async () => {
     const context = emptyContext([
-      { id: "left", type: "TodoCard", displayProps: { title: "本周待办" }, sourceDataSummary: {}, layout: { x: 0, y: 0 } },
-      { id: "right", type: "TodoCard", displayProps: { title: "购物清单" }, sourceDataSummary: {}, layout: { x: 900, y: 0 } },
+      { id: "left", type: "TodoCard", displayProps: { title: "本周待办", items: [{ text: "交周报" }, { text: "买牛奶" }] }, sourceDataSummary: {}, layout: { x: 0, y: 0 } },
+      { id: "right", type: "TodoCard", displayProps: { title: "购物清单", items: [{ text: "鸡蛋" }] }, sourceDataSummary: {}, layout: { x: 900, y: 0 } },
     ]);
-    const query: IntentRouter["routeUtterance"] = vi.fn(async (text, ctx) => {
+    const query: IntentRouter["routeUtterance"] = vi.fn<IntentRouter["routeUtterance"]>(async (text, ctx) => {
       if (text.startsWith("高亮")) expect(ctx.focusHistory).toEqual(["left"]);
-      return { ...answer, route: text.startsWith("聚焦") ? "focus" : "highlight" };
+      return { ...answer, route: text.startsWith("聚焦") ? "focus" as const : "highlight" as const };
     });
     const model = router(query);
     const result = await observeDecision({ text: "聚焦左边的待办，高亮第二条", canvasContext: context }, deps(model), undefined, async () => output);

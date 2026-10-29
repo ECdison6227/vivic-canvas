@@ -103,4 +103,13 @@ describe("target resolution", () => {
     expect(await resolveTarget("显示全部", context, "overview", model)).toBeUndefined();
     expect(model.chooseTarget).not.toHaveBeenCalled();
   });
+  it("does not invent a first list entry on a plain-text focused note", async () => {
+    const model = { chooseTarget: vi.fn() };
+    const list = card("list", "待办");
+    const note = card("note", "会议便笺", "NoteCard");note.displayProps = { text: "一段普通文字" };
+    const result = await resolveTarget("高亮第一条", { ...emptyContext([list, note]), focusHistory: ["note"] }, "highlight", model);
+    expect(result).toHaveProperty("ambiguous");
+    expect(result).not.toEqual({ targetId: "note" });
+    expect(model.chooseTarget).not.toHaveBeenCalled();
+  });
 });
