@@ -33,10 +33,14 @@ import type { TravelProvider } from "../providers/travel.js";
 import { buildAllSceneActions, extensionScenePrompt, validateRequestDefinitions } from "../scenes/extensions.js";
 import { incompleteCanvasIssue } from "./contextSafety.js";
 import type { DecisionManager } from "../decision/manager.js";
+import type { IntentRouter } from "../decision/router.js";
+import { observeDecision, type DecisionTrace } from "../decision/trace.js";
 
 export interface IntentRequest { text: string; canvasContext: CanvasContext; attachments?: Attachment[]; continuation?: { utterance: string; question: string }; deviceLocation?: DevicePosition; extensionDefinitions?: unknown[]; task?: DecisionTaskRequest; taskContext?: unknown;
   /** Internal task-manager opt-in, never accepted from the HTTP request schema. */
   offlineReferenceCompatibility?: boolean;
+  /** Authenticated host metadata; never accepted by the HTTP body schema. */
+  tracePath?: "browser" | "task";
 }
 export interface IntentResult {
   kind: "envelope" | "host-operation" | "clarify" | "unknown" | "error" | "locale" | "task";
@@ -48,12 +52,16 @@ export interface IntentResult {
   message?: string;
   suggestions?: string[];
   usedProvider?: "rules" | "stepfun" | "gpt" | "rules-offline" | "search" | "decision";
+  trace?: DecisionTrace;
 }
 export interface PipelineDeps {
   travel?: TravelProvider;
   /** Metadata only. Observer failures must never affect a user's request. */
   onStage?: (event: { stage: "rules" | "data" | "search" | "decision" | "planner" | "validation" | "travel" | "total"; status: "started" | "completed" | "failed"; elapsedMs?: number }) => void;
   decision?: Pick<DecisionManager, "score">;
+  router?: IntentRouter;
+  /** Same trace id may arrive pending then complete; persistence must upsert it. */
+  onDecisionTrace?: (request: IntentRequest, trace: DecisionTrace, result: IntentResult) => void | Promise<void>;
   credentials: CredentialStore;
   stepfun: StepfunDeps;
   onPlannerCall?: (attempt: number) => void;
@@ -89,7 +97,12 @@ const assembleEnvelope = (actions: Action[], canvasId: string, spokenText?: stri
 
 /** Exact rules, otherwise one compact planning call and at most one format /
  * validation repair. The 90s turn deadline is never restarted by a retry. */
-export const runIntent = async (
+export const runIntent = async (req: IntentRequest, deps: PipelineDeps, signal?: AbortSignal, adapterOnly = false, plannerOnly = false): Promise<IntentResult> => {
+  const legacy = () => runLegacyIntent(req, { ...deps, router: undefined, onDecisionTrace: undefined }, signal, adapterOnly, plannerOnly);
+  return adapterOnly || plannerOnly ? legacy() : observeDecision(req, deps, signal, legacy);
+};
+
+const runLegacyIntent = async (
   req: IntentRequest,
   deps: PipelineDeps,
   signal?: AbortSignal,

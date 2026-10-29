@@ -9,6 +9,7 @@ import { createHostedReminderScheduler } from "./reminders.js";
 import { createHostedMigrationService } from "./migration.js";
 import { boundedBytes, hostedBody, hostedFailure, hostedForm, hostedJson } from "./http.js";
 import { ownerRoute } from "./owner.js";
+import { createIntentRouter, type IntentRouter } from "../decision/router.js";
 
 type SessionApp = ReturnType<typeof createOnlineSessionApp>;
 interface AccountApp { app: SessionApp; token: string; created: number; touched: number }
@@ -18,6 +19,7 @@ export interface HostedServiceOptions {
   origin: string; dataDir: string; inviteCode?: string; now?: () => number; fetchImpl?: typeof fetch;
   modelApiBaseUrl?: string; modelApiToken?: string; allowLoopbackModelApi?: boolean;
   autoStartReminders?: boolean;
+  router?: IntentRouter;
 }
 const IDLE = 30 * 60_000, MAX_AGE = 8 * 60 * 60_000;
 const DECISION_TEST_INPUT = "请把所有卡片显示在一屏里";
@@ -31,6 +33,7 @@ const proxyPost = new Set(["/api/credentials/stepfun/validate", "/api/credential
 /** Durable domain data and short-lived model credentials have deliberately separate lifetimes. */
 export function createHostedService(options: HostedServiceOptions) {
   const now = options.now ?? Date.now;
+  const router = options.router ?? createIntentRouter({ fetchImpl: options.fetchImpl });
   const space = createSpaceHandler({ origin: options.origin, dataDir: options.dataDir, inviteCode: options.inviteCode, now });
   const apps = new Map<string, AccountApp>(), models = new Map<string, ModelConnection>();
   const disabledModels = new Set<string>();
@@ -46,18 +49,18 @@ export function createHostedService(options: HostedServiceOptions) {
     }
     if (!value) {
       const token = randomBytes(32).toString("base64url");
-      value = { token, app: createOnlineSessionApp({ token, origin: options.origin }, { fetchImpl: options.fetchImpl }), created: now(), touched: now() };
+      value = { token, app: createOnlineSessionApp({ token, origin: options.origin }, { fetchImpl: options.fetchImpl, router }), created: now(), touched: now() };
       apps.set(accountId, value);
     }
     if (activity) value.touched = now(); return value;
   }
-  async function invoke(accountId: string, route: string, body: unknown, signal?: AbortSignal): Promise<Response> {
+  async function invoke(accountId: string, route: string, body: unknown, signal?: AbortSignal, tracePath: "browser" | "task" = "browser"): Promise<Response> {
     const value = appFor(accountId, route !== "/api/providers/status");
     return value.app.fetch(new Request(`${options.origin}${route}`, { method: body === undefined ? "GET" : "POST", signal,
-      headers: { authorization: `Bearer ${value.token}`, origin: options.origin, "content-type": "application/json" },
+      headers: { authorization: `Bearer ${value.token}`, origin: options.origin, "content-type": "application/json", "x-vivic-trace-path": tracePath },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }) }));
   }
-  const tasks = createHostedTaskService({ store: space.store, invoke, now });
+  const tasks = createHostedTaskService({ store: space.store, invoke: (accountId, route, body, signal) => invoke(accountId, route, body, signal, "task"), now });
   const migration = createHostedMigrationService({ store: space.store, assetService: assets });
   function modelFor(accountId: string) {
     let session = models.get(accountId);
@@ -181,7 +184,7 @@ export function createHostedService(options: HostedServiceOptions) {
       if (proxyPost.has(route) && request.method === "POST") {
         if (route === "/api/credentials/stepfun/validate") {
           const token = randomBytes(32).toString("base64url");
-          const candidate: AccountApp = { token, app: createOnlineSessionApp({ token, origin: options.origin }, { fetchImpl: options.fetchImpl }), created: now(), touched: now() };
+          const candidate: AccountApp = { token, app: createOnlineSessionApp({ token, origin: options.origin }, { fetchImpl: options.fetchImpl, router }), created: now(), touched: now() };
           try {
             const body = await hostedBody(request);
             const response = await candidate.app.fetch(new Request(`${options.origin}${route}`, { method: "POST", signal: request.signal,

@@ -4,6 +4,7 @@ import { SPEECH_VOICE_IDS } from "./voices.js";
 import { ImageAttachmentsSchema } from "./images.js";
 import { TimeZoneSchema } from "@vivic/contracts";
 import { DevicePositionSchema } from "./data/deviceRegion.js";
+import { DecisionTraceSchema } from "./decision/trace.js";
 
 /** Compact canvas context the control page sends with each intent request. */
 export const CanvasContextSchema = z.strictObject({
@@ -70,6 +71,7 @@ export const SpeechRequestSchema = z.strictObject({
 });
 
 export const IntentResponseSchema = z.strictObject({
+  trace: DecisionTraceSchema.optional(),
   kind: z.enum(["envelope", "host-operation", "clarify", "unknown", "error", "locale", "task"]),
   envelope: ActionEnvelopeSchema.optional(),
   hostOperation: HostOperationSchema.optional(),

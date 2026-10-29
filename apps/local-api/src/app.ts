@@ -9,6 +9,7 @@ import { CredentialStore } from "./credentials.js";
 import { PlatformCredentialStore } from "./platformCredential.js";
 import { createModelApiClient } from "./modelApi/index.js";
 import { runIntent, type PipelineDeps } from "./intent/pipeline.js";
+import { observeDecision } from "./decision/trace.js";
 import { safeDiagnostic, type DiagnosticSink } from "./diagnostics.js";
 import {
   IntentRequestSchema,
@@ -67,6 +68,8 @@ export interface AppDeps {
   /** Optional independent DEC-01 API/local provider. */
   decisionProvider?: DecisionProvider;
   decisionV2Provider?: NativeV2Provider;
+  router?: PipelineDeps["router"];
+  onDecisionTrace?: PipelineDeps["onDecisionTrace"];
   onDiagnostic?: DiagnosticSink;
   travel?: TravelProvider;
   /** Remembers the chosen connection across restarts; absent in tests. */
@@ -616,22 +619,24 @@ export const createApp = (deps: AppDeps) => {
     });
     const execute = (signal: AbortSignal, onStage = observeStage) => {
       const pipeline: PipelineDeps = { credentials, stepfun, search, data, decision, onStage, travel: deps.travel,
+      router: deps.router, onDecisionTrace: deps.onDecisionTrace,
       isSessionCurrent: () => version === providerRevision,
       ...(activeProvider === "gpt" ? { planner: { provider: "gpt" as const, connected: gpt.status().connected,
         generate: (messages, signal) => gpt.generate(messages, signal), isCurrent: () => gpt.isCurrent(gptVersion) } } : {}),
       };
-      if (!nativeV2 && !parsed.data.task) return runIntent(parsed.data, pipeline, signal);
-      return decisionTasks.run(parsed.data, {
+      const intent = { ...parsed.data, tracePath: c.req.header("x-vivic-trace-path") === "task" ? "task" as const : "browser" as const };
+      if (!nativeV2 && !parsed.data.task) return runIntent(intent, pipeline, signal);
+      return observeDecision(intent, pipeline, signal, () => decisionTasks.run(intent, {
         legacy: (request, taskSignal, plannerOnly) => runIntent({ ...request,
           offlineReferenceCompatibility: request.offlineReferenceCompatibility === true
             && (online || !configuredProvider && !deps.decision && !decision.status().enabled),
-        }, pipeline, taskSignal, false, plannerOnly),
+        }, { ...pipeline, router: undefined, onDecisionTrace: undefined }, taskSignal, false, plannerOnly),
         isCurrent: () => version === providerRevision,
         tools: {
           weather: (city, canvasContext, taskSignal) => runIntent({ text: `${city}天气`, canvasContext, deviceLocation: parsed.data.deviceLocation }, { ...pipeline, decision: undefined }, taskSignal, true),
           ...(search ? { search: (query: string, canvasContext: typeof parsed.data.canvasContext, taskSignal: AbortSignal) => runIntent({ text: `搜索 ${query}`, canvasContext }, { ...pipeline, decision: undefined }, taskSignal, true) } : {}),
         },
-      }, signal);
+      }, signal));
     };
     if (c.req.path.endsWith("/stream") || c.req.header("accept")?.includes("text/event-stream")) {
       c.header("X-Accel-Buffering", "no");

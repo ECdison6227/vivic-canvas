@@ -3,11 +3,12 @@ import {
   STEPFUN_PLAN_BASE_URL, INFERENCE_TIMEOUT_MS, CONNECTION_TIMEOUT_MS, SPEECH_TIMEOUT_MS,
 } from "../config.js";
 import type { LocalApiConfig } from "../config.js";
+import type { PipelineDeps } from "../intent/pipeline.js";
 
 /** Each cookie session owns only memory; no loadConfig, preferences or local OAuth. */
 export function createOnlineSessionApp(
   session: { token: string; origin: string },
-  overrides: { fetchImpl?: typeof fetch } = {},
+  overrides: { fetchImpl?: typeof fetch; router?: PipelineDeps["router"]; onDecisionTrace?: PipelineDeps["onDecisionTrace"] } = {},
 ) {
   const config: LocalApiConfig = {
     host: "127.0.0.1", port: 0, token: session.token,
@@ -25,7 +26,8 @@ export function createOnlineSessionApp(
     decisionV2ExecutionEnabled: false,
   };
   const lifetime = new AbortController();
-  const app = createApp({ config, mode: "online", fetchImpl: overrides.fetchImpl });
+  const app = createApp({ config, mode: "online", fetchImpl: overrides.fetchImpl,
+    router: overrides.router, onDecisionTrace: overrides.onDecisionTrace });
   return {
     fetch(request: Request) {
       if (lifetime.signal.aborted) return Response.json({ ok: false, error: "会话已结束。" }, { status: 410 });

@@ -58,7 +58,7 @@ tests/helpers.ts(8,23): TS2322: modelApiBaseUrl is string | undefined, but Local
 
 - [x] C1 路由类别定义 + 重跑评测
 - [x] C2 决策客户端 / 目标解析 / 切句
-- [ ] C3 接入 runIntent（影子）
+- [x] C3 接入 runIntent（影子）
 - [ ] C4 决策日志
 - [ ] C5 部署影子模式（🛑 检查点 2）
 
@@ -232,3 +232,15 @@ DEPLOY_OK sha=ff981e1ee401c5d3b4e6554d3f40366d64fc4179
 - `decision-routing.test.ts` 共 17 项通过，覆盖单次调用、非法输出、弃权、超时、上下文边界、否定/引用、多意图、明确目标和歧义。
 - 类型检查没有新增错误，仍只有 A1 记录的 2 个基线问题。
 - C3 的影子观察器和依赖注入正在工作区实现，未部署，现有线上执行行为未改。
+
+## C3 执行记录（2026-10-29，Codex）
+
+- `runIntent` 增加只读影子观察，原实现保持为 authoritative legacy 路径；模型与旧流程并行，旧流程结束最多额外等待 300ms。
+- `trace` 为可选字段，包含分类/目标、延迟和旧流程动作/卡型；旧网页使用宽松结果解析，可忽略新字段，不需要修改或发布前端。
+- 对旧 task/V2 包装的直接宿主操作也在外层观察，避免漏记“不经过 legacy runIntent”的聚焦、撤销等路径；内部子查询不重复触发影子。
+- 将 operator router 经 hosted service → online session → createApp → PipelineDeps 注入；更新了普通会话和模型连接验证后替换的候选会话。
+- 影子观察完成前先返回 pending trace；之后完成的 trace 使用相同 id 异步更新。SSE 正常结束不取消只读观察，用户在旧流程结束前取消则仍向模型传递取消信号。
+- 记录回调异步调度，失败不会影响响应；单独记录 decision elapsed，不把主 LLM 的等待误算为分类耗时。
+- 6 项影子测试通过，旧 planning 回归 71 项通过；C2 共17项通过。类型检查仍只有 A1 的 2 个基线错误。
+- off 是精确旁路；on 在此阶段仍不启用新执行，等待 D/E 与检查点 3。
+- C4 的存储/账号日志功能在工作区实现，已通过 6 项定向存储测试，待独立提交及全量回归。
