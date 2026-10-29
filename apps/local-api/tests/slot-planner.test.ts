@@ -73,6 +73,45 @@ function todoContext() {
 }
 
 describe("runIntent slot planning with the shared shadow route", () => {
+  it("canonicalizes a registered scene label while preserving slots and grounding checks", async () => {
+    const f = setup("generate", [{ contract: "option_comparison", slots: { title: "参数对比", options: ["iPhone", "华为"], criteria: [{ name: "尺寸", values: [6.1, 6.7], unit: "寸" }] } }]);
+    const r = await runIntent({ text: "做一个表格对比iPhone和华为的参数，用我给的数据：iPhone 6.1寸 华为6.7寸", canvasContext: emptyContext() }, f.deps);
+    expect(r.kind).toBe("envelope");
+    expect(cards(r).map(card => card.type)).toEqual(["ComparisonCard"]);
+    expect(f.generate).toHaveBeenCalledTimes(1);
+  });
+  it.each(["id", "layout", "metadata"])("rejects %s hidden in registered-scene alias data", async field => {
+    const f = setup("generate", [{ contract: "quote_note", slots: { text: "知行合一", [field]: "TEST-injected" } }]);
+    noExecution(await runIntent({ text: "制作金句卡：知行合一", canvasContext: emptyContext() }, f.deps));
+  });
+  it("does not expose unrelated old todo items when filling a new task", async () => {
+    const f = setup("todo", [{ slots: { items: ["周五之前缴电费"] } }]);
+    const ctx = todoContext();
+    const r = await runIntent({ text: "我要记得周五之前缴电费，加到待办里", canvasContext: ctx }, f.deps);
+    expect(r.kind).toBe("envelope");
+    const payload = JSON.parse(f.generate.mock.calls[0]![0][1]!.content);
+    expect(payload.canvas.cards).toEqual([]);
+    expect(cards(r)[0]?.displayProps).toMatchObject({ items: [{ text: "周五之前缴电费" }] });
+  });
+  it("repairs a new todo that drops a user-supplied weekday", async () => {
+    const f = setup("todo", [{ slots: { items: ["缴电费"] } }, { slots: { items: ["周五之前缴电费"] } }]);
+    const r = await runIntent({ text: "我要记得周五之前缴电费，加到待办里", canvasContext: emptyContext() }, f.deps);
+    expect(r.kind).toBe("envelope");
+    expect(f.generate).toHaveBeenCalledTimes(2);
+    expect(f.generate.mock.calls[1]![0][1]!.content).toContain("missing_requested_weekday");
+  });
+  it("never saves an invented remaining-day note in place of a date countdown", async () => {
+    const f = setup("countdown", [{ contract: "note", slots: { text: "离高考还有220天" } }]);
+    const r = await runIntent({ text: "离高考还有多少天，做个倒数", canvasContext: emptyContext() }, f.deps);
+    noExecution(r);
+  });
+  it("keeps an explanation of a date countdown in the answer contract", async () => {
+    const f = setup("answer", [{ slots: { headline: "高考倒计时的含义", summary: "按目标考试日期显示剩余时间。" } }]);
+    const r = await runIntent({ text: "解释什么叫高考倒计时", canvasContext: emptyContext() }, f.deps);
+    expect(r.kind).toBe("envelope");
+    expect(cards(r).map(card => card.type)).toEqual(["NewsCard"]);
+    expect(f.generate).toHaveBeenCalledTimes(1);
+  });
   it("offers the note contract for creative generation even when chat ranks second", async () => {
     const f = setup("generate", [{ contract: "note", slots: { bullets: ["晨露", "拂晓", "拾光", "暖杯", "慢巷"] } }]);
     vi.mocked(f.router.routeUtterance).mockResolvedValue({ ...decision("generate"), probabilities: { generate: .96, chat: .03, answer: .01 } });
