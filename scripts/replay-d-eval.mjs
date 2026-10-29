@@ -105,6 +105,8 @@ try{
  let cases=dataset.cases.filter(test=>allowed.has(test.route));report.originalCaseCount=cases.length;
  if(argv.includes('--smoke'))cases=['answer-01','note-03','generate-01'].map(id=>cases.find(test=>test.id===id)).filter(Boolean);
  if(argv.includes('--case')){cases=dataset.cases.filter(test=>test.id===option('--case'));assert(cases.length===1,'Missing case');}
+ if(argv.includes('--cases'))cases=option('--cases').split(',').map(id=>{const test=dataset.cases.find(test=>test.id===id);assert(test,'Missing case '+id);return test;});
+ report.selectedCaseIds=cases.map(test=>test.id);
  for(const test of cases)await one(test);
  if(!argv.includes('--no-image')){
   const sharp=(await import('sharp')).default;
