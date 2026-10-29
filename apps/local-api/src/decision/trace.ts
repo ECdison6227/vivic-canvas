@@ -68,7 +68,8 @@ export async function observeDecision(req: IntentRequest, deps: PipelineDeps, si
   const waitStarted = performance.now();
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    if (!rows) await Promise.race([pending, new Promise<void>(resolve => { timer = setTimeout(resolve, 300); })]);
+    // Leave 50ms of the 300ms public budget for serialization and transport.
+    if (!rows) await Promise.race([pending, new Promise<void>(resolve => { timer = setTimeout(resolve, 250); })]);
   } finally {
     if (timer) clearTimeout(timer);
     // A completed SSE stream aborts its transport controller. Do not cancel the

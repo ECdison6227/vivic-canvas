@@ -39,7 +39,7 @@ describe("shadow observer", () => {
     const pending = observeDecision(req, deps(model, sink), transport.signal, async () => output);
     await vi.advanceTimersByTimeAsync(300);
     const result = await pending;
-    expect(result.trace).toMatchObject({ status: "pending", shadowWaitMs: 300 });
+    expect(result.trace).toMatchObject({ status: "pending", shadowWaitMs: 250 });
     await vi.advanceTimersByTimeAsync(1);
     expect(sink).toHaveBeenCalledTimes(1);
     expect(sink.mock.calls[0]![1]).toMatchObject({ status: "pending" });
