@@ -50,7 +50,7 @@ tests/helpers.ts(8,23): TS2322: modelApiBaseUrl is string | undefined, but Local
 
 ## 阶段 B
 
-- [ ] B1 Mac 常驻 vivic-decision
+- [x] B1 Mac 常驻 vivic-decision
 - [ ] B2 worker 转发
 - [ ] B3 网关放行 + 专用密钥
 
@@ -181,3 +181,15 @@ DEPLOY_OK sha=ff981e1ee401c5d3b4e6554d3f40366d64fc4179
 - 服务器协作说明已更新为“只保留当前版本，先 Git 备份再清理历史”。私有数据库和密钥未上传 Git，也未清理线上数据目录。
 - 审计记录：`/opt/vivic-preview-20261025/evidence/prune-latest-20261029T192209/`。
 - 部署脚本不再依赖已删除的旧构建目录；新环境仍须单独提供私有 `backend/env.list`。
+
+## B1 执行记录（2026-10-29，Codex）
+
+- 新增 `deploy/decision/service.py`、`install.py`、`verify.py`，部署到 Mac 的 `VivicModelAPI/decision-service/`；权重复制到正式 models 目录。
+- launchd：`com.vivic.decision`，开机自启并保持运行；仅监听 `127.0.0.1:19095`，llama-server 使用 Metal、单并行、4096 上下文、4 线程，与既有评测参数一致。
+- 采用原 worker-token 鉴权；单次推理串行，最多 4 个等待请求；过载返回 429，未认证返回 401。
+- 10 道既有中文评测题全部判对，热请求中位数 1579.1ms（目标 <2200ms）。
+- 原 TTS 服务同时合成成功（WAV 69,164 字节，未播放）；决策中位数为 1596.0ms，合成完成后为 1583.1ms；模型 PID/generation 未变，确认没有被语音服务换出。
+- 6 个并发请求返回 `[200,200,200,200,200,429]`，符合 1 个执行 + 4 个等待的上限。
+- 主动终止独立模型子进程后自动恢复；`launchctl kickstart -k` 后父服务恢复，旧模型进程已退出，没有遗留占用。
+- 验收文件：Mac `decision-service/acceptance-B1.json`，包含延迟、鉴权、队列与恢复结果。
+- 未改变既有 ASR/TTS 调度或文件服务行为。下一项 B2：只给现有 worker 增加原生 4B 转发分支。
