@@ -9,6 +9,10 @@ import { createBudget } from "../intent/budget.js";
 import { CAPABILITIES, CATALOG_VERSION, capabilityCatalog, cardCatalog, type OperationId } from "./catalogV2.js";
 import { acceptedNativeChoice, DEFAULT_NATIVE_GATE, type NativeGate, type NativeQuestion, type NativeScore, type NativeV2Provider } from "./nativeV2.js";
 import { exactHostOperation, hostOperationIssue } from "./hostOperations.js";
+import { confirmsDeletion, deletionStillCurrent, deletionTargets, freezeDeletion, numberedCandidates, publicIntentResult,
+  selectedCandidate, standaloneDeletion, type DeleteConfirmation } from "./confirmation.js";
+import { splitClauses } from "./split.js";
+import type { PlannerRouteHint } from "./trace.js";
 
 type Observation = { kind: "llm" | "tool" | "execution" | "error"; status: "succeeded" | "failed"; executionId?: string; result?: unknown };
 type Clarification = NonNullable<DecisionTaskStatus["clarification"]>;
@@ -21,11 +25,17 @@ interface Task {
   operation?: OperationId; targetId?: string; slots: Record<string, string>; slotEvidence: Record<string, unknown>;
   clarification?: Clarification; proposed?: IntentResult; pendingExecution?: IntentResult;
   receipts: Map<string, IntentResult>; failures: number; llmCalls: number; toolCalls: number; hasRemaining?: boolean;
+  safetyMode?: boolean; deleteConfirmation?: DeleteConfirmation; resolvedTargetId?: string;
+  resolvedTargets: Record<string, string>; targetClause?: number;
+  deleteRouteHint?: PlannerRouteHint;
 }
 export interface TaskRunDeps {
   legacy: (request: IntentRequest, signal: AbortSignal, plannerOnly?: boolean) => Promise<IntentResult>;
   tools?: Record<string, (input: string, context: CanvasContext, signal: AbortSignal) => Promise<IntentResult>>;
   isCurrent?: () => boolean;
+  /** Enabled by the host only for decision mode on; retained for this task's lifetime. */
+  safetyMode?: boolean;
+  routeHint?: Promise<PlannerRouteHint | null>;
 }
 interface Options { provider?: NativeV2Provider; gate?: Partial<NativeGate>; now?: () => number; maxSteps?: number; maxActiveMs?: number; ttlMs?: number }
 const question = (instructions: string, criteria: Record<string, string>): NativeQuestion => ({ type: "choice", instructions, criteria });
@@ -51,22 +61,36 @@ export class DecisionTaskManager {
     return { protocolVersion: "vivic-decision-v2", id: task.id, step: task.step, status: task.status, decision: task.mode,
       ...(task.reason ? { reason: task.reason } : {}), ...(task.context.version === undefined ? {} : { canvasVersion: task.context.version }),
       ...(task.pendingExecution?.task?.executionId ? { executionId: task.pendingExecution.task.executionId } : {}),
-      ...(task.clarification ? { clarification: task.clarification } : {}) };
+      ...(task.clarification ? { clarification: { question: task.clarification.question,
+        candidates: task.clarification.candidates.map(candidate => ({ ...candidate })) } } : {}) };
   }
-  private result(task: Task, result: IntentResult): IntentResult { task.result = { ...result, task: this.meta(task) }; return task.result; }
+  private result(task: Task, result: IntentResult): IntentResult { task.result = { ...publicIntentResult(result), task: this.meta(task) }; return task.result; }
   private terminal(task: Task, status: "completed" | "cancelled" | "failed", message: string): IntentResult {
-    task.status = status; task.pendingExecution = undefined; task.clarification = undefined;
+    task.status = status; task.pendingExecution = undefined; task.clarification = undefined; task.deleteConfirmation = undefined; task.proposed = undefined;
     return this.result(task, { kind: status === "failed" ? "error" : "task", message, usedProvider: task.mode === "native-v2" ? "decision" : undefined });
   }
   private clarify(task: Task, message: string, candidates: Clarification["candidates"] = []): IntentResult {
     task.status = "awaiting_clarification"; task.proposed = undefined; task.clarification = { question: message.slice(0, 180), candidates };
     return this.result(task, { kind: "clarify", message, usedProvider: task.mode === "native-v2" ? "decision" : undefined });
   }
-  private execute(task: Task, proposal: IntentResult): IntentResult {
+  private plannerClarification(task: Task, result: IntentResult): IntentResult {
+    const candidates = numberedCandidates(result.targetCandidates ?? [], task.context);
+    const clause = result.targetClause;
+    task.targetClause = typeof clause === "number" && Number.isInteger(clause) && clause >= 0 && clause <= 2 ? clause : undefined;
+    this.clarify(task, result.message ?? "请补充必要信息。", candidates);
+    return this.result(task, result);
+  }
+  private execute(task: Task, proposal: IntentResult, confirmed = false): IntentResult {
     if (Boolean(proposal.envelope) === Boolean(proposal.hostOperation)) throw new Error("invalid_execution");
+    if (task.safetyMode && !confirmed && deletionTargets(proposal).length) {
+      const confirmation = freezeDeletion(proposal, task.context);
+      if (!confirmation) return this.clarify(task, "删除目标或画布范围已失效，请重新发送；本次未执行任何操作。");
+      task.deleteConfirmation = confirmation;
+      return this.clarify(task, confirmation.question);
+    }
     task.status = "awaiting_execution"; task.clarification = undefined;
     const executionId = `exec_${randomUUID()}`;
-    const result = { ...proposal, task: { ...this.meta(task), executionId } };
+    const result = { ...publicIntentResult(proposal), task: { ...this.meta(task), executionId } };
     task.pendingExecution = result; task.result = result;
     return result;
   }
@@ -87,11 +111,13 @@ export class DecisionTaskManager {
       }
       task = { id, originalGoal: request.text, input: request.text, canvasId: request.canvasContext.canvasId, step: 0, phase: "user_input",
         createdAt: this.now(), activeMs: 0, controller: new AbortController(), status: "awaiting_clarification", mode: this.options.provider ? "native-v2" : "legacy-fallback",
-        context: request.canvasContext, observations: [], completed: [], pending: [request.text], scores: [], slots: {}, slotEvidence: {}, receipts: new Map(), failures: 0, llmCalls: 0, toolCalls: 0 };
+        context: request.canvasContext, observations: [], completed: [], pending: [request.text], scores: [], slots: {}, slotEvidence: {}, receipts: new Map(), failures: 0, llmCalls: 0, toolCalls: 0,
+        safetyMode: deps.safetyMode === true, resolvedTargets: {} };
       this.tasks.set(id, task);
     } else {
       if (task.busy) return task.busy;
       if (["completed", "failed", "cancelled"].includes(task.status)) return task.result!;
+      if (deps.safetyMode) task.safetyMode = true;
       const receipt = request.task?.receipt;
       if (receipt && task.receipts.has(receipt.executionId)) return task.receipts.get(receipt.executionId)!;
       if (task.pendingExecution) {
@@ -108,18 +134,35 @@ export class DecisionTaskManager {
           ? { operation: executed, created_card_ids: expected } : { operation: executed, error: receipt.error ?? "执行器拒绝" } });
         task.pendingExecution = undefined; task.context = request.canvasContext;
         if (receipt.status === "failed") { const result = this.terminal(task, "failed", `操作未完成：${receipt.error ?? "执行器拒绝"}`.slice(0, 400)); task.receipts.set(receipt.executionId, result); return result; }
-        task.completed.push(task.operation ?? "validated_plan"); task.pending = task.hasRemaining ? ["原始目标尚有未完成要求"] : []; task.operation = undefined; task.targetId = undefined; task.slots = {}; task.slotEvidence = {}; task.proposed = undefined; task.phase = "after_execution";
+        task.completed.push(task.operation ?? "validated_plan"); task.pending = task.hasRemaining ? ["原始目标尚有未完成要求"] : []; task.operation = undefined; task.targetId = undefined; task.resolvedTargetId = undefined; task.slots = {}; task.slotEvidence = {}; task.proposed = undefined; task.phase = "after_execution";
         if (task.mode === "legacy-fallback") { const result = this.terminal(task, "completed", "已完成。" ); task.receipts.set(receipt.executionId, result); return result; }
       } else if (receipt) return { kind: "error", message: "当前任务没有等待此执行回执。", task: this.meta(task) };
       else if (task.result && task.status === "awaiting_clarification") {
         if (request.text === task.input) return task.result;
+        if (task.deleteConfirmation) {
+          const confirmation = task.deleteConfirmation;
+          task.context = request.canvasContext;
+          if (signal?.aborted || task.controller.signal.aborted) return this.terminal(task, "cancelled", "删除已取消，未执行任何操作。");
+          if (deps.isCurrent && !deps.isCurrent()) return this.terminal(task, "failed", "模型连接已变更，删除已取消。");
+          if (task.activeMs >= (this.options.maxActiveMs ?? 90_000)) return this.terminal(task, "failed", "任务处理超时，删除已取消。");
+          if (!confirmsDeletion(request.text)) return this.terminal(task, "cancelled", "删除已取消，未执行任何操作。");
+          if (!deletionStillCurrent(confirmation, task.context)) return this.terminal(task, "cancelled", "画布或删除目标已变更，请重新发起并确认；本次未执行任何操作。");
+          task.deleteConfirmation = undefined;
+          return this.execute(task, confirmation.proposal, true);
+        }
+        if (task.context.version !== undefined && request.canvasContext.version !== undefined && request.canvasContext.version < task.context.version)
+          return this.clarify(task, "画布版本已过期，请刷新后按原候选重新选择。", task.clarification?.candidates);
         task.input = request.text; task.context = request.canvasContext; task.phase = "clarification_answer";
         // Ordinal answers address the exact frozen question, independent of today's canvas ordering.
-        const ordinal = request.text.trim().match(/^(?:第)?\s*(\d+)\s*(?:号|个|张)?$/);
-        if (ordinal && task.clarification?.candidates.length) {
-          const selected = task.clarification.candidates.find(candidate => candidate.number === Number(ordinal[1]));
-          if (!selected || !task.context.cards.some(card => card.id === selected.id)) return this.clarify(task, "这个候选已不存在，请重新选择。", task.clarification.candidates);
+        if (task.clarification?.candidates.length) {
+          if (/^(?:取消|算了|算了不要了|不选了)[。！!]?$/u.test(request.text.trim())) return this.terminal(task, "cancelled", "已取消尚未执行的操作。");
+          const selected = selectedCandidate(request.text, task.clarification.candidates);
+          if (!selected) return this.clarify(task, "请用原候选的编号或完整标题选择。", task.clarification.candidates);
+          if (task.context.cards.filter(card => card.id === selected.id).length !== 1) return this.clarify(task, "这个候选已不存在，请重新选择。", task.clarification.candidates);
           task.targetId = selected.id;
+          task.resolvedTargets[String(task.targetClause ?? 0)] = selected.id;
+          task.resolvedTargetId = splitClauses(task.originalGoal).length === 1 ? selected.id : undefined;
+          task.input = task.originalGoal; task.phase = "target_resolved";
         }
       } else if (task.result) return task.result;
     }
@@ -174,15 +217,47 @@ export class DecisionTaskManager {
     };
     const fallback = async (reason: string, plannerOnly: boolean): Promise<IntentResult> => {
       task.mode = "legacy-fallback"; task.reason = reason;
+      // This prepares confirmation only. The normal execution gate still freezes
+      // the proposal and requires a separate, whole-utterance affirmative reply.
+      const deletion = task.safetyMode && !request.attachments?.length && !task.completed.length && task.input === task.originalGoal
+        && splitClauses(task.originalGoal).length === 1 ? standaloneDeletion(task.originalGoal) : undefined;
+      if (deletion) {
+        const hint = task.deleteRouteHint ?? (deps.routeHint ? await budget.run(() => deps.routeHint!) : null);
+        check();
+        if (hint?.result?.route === "delete") {
+          task.deleteRouteHint = hint;
+          let actions: Action[];
+          if (deletion === "all") {
+            if (!contextComplete(task.context)) return this.clarify(task, "当前只加载了部分卡片，不能确认删除整个画布，请先刷新完整画布。");
+            if (!task.context.cards.length) return this.terminal(task, "completed", "当前画布没有卡片。");
+            actions = [{ type: "cards.delete", targetIds: task.context.cards.map(card => card.id) }];
+          } else {
+            const resolved = task.resolvedTargets["0"] ?? task.resolvedTargetId ?? request.resolvedTargets?.["0"] ?? request.resolvedTargetId;
+            const target = resolved ? { targetId: resolved } : await budget.run(() => hint.target);
+            check();
+            if (target && "ambiguous" in target) return this.plannerClarification(task, { kind: "clarify", message: "你要删除哪张卡片？请用编号或完整标题选择。",
+              targetCandidates: target.ambiguous, targetClause: 0 });
+            if (!target || "missing" in target || task.context.cards.filter(card => card.id === target.targetId).length !== 1)
+              return this.clarify(task, "没有找到要删除的卡片，请明确卡名或刷新画布；本次未执行任何操作。");
+            actions = [{ type: "card.delete", targetId: target.targetId }];
+          }
+          return this.execute(task, { kind: "envelope", usedProvider: "rules", envelope: ActionEnvelopeSchema.parse({
+            schemaVersion: "0.6", requestId: `predelete_${randomUUID()}`, canvasId: task.canvasId, actions,
+          }) });
+        }
+      }
       const exact = !plannerOnly && !request.attachments?.length && !task.completed.length && task.input === task.originalGoal ? exactHostOperation(task.input) : null;
       if (exact) return this.execute(task, { kind: "host-operation", hostOperation: exact, usedProvider: "rules" });
       const result = await budget.run(() => deps.legacy({ ...request, text: task.originalGoal, task: undefined,
+        canvasContext: task.context,
         offlineReferenceCompatibility: !task.completed.length && ["v2_not_configured", "v2_quality_gate_disabled"].includes(reason),
-        ...(task.input !== task.originalGoal ? { text: task.input, continuation: { utterance: task.originalGoal, question: task.clarification?.question ?? "请补充必要信息" } } : {}),
+        ...(task.input !== task.originalGoal && !Object.keys(task.resolvedTargets).length ? { text: task.input, continuation: { utterance: task.originalGoal, question: task.clarification?.question ?? "请补充必要信息" } } : {}),
+        ...(Object.keys(task.resolvedTargets).length ? { resolvedTargets: { ...task.resolvedTargets }, continuation: undefined } : {}),
+        ...(task.resolvedTargetId ? { resolvedTargetId: task.resolvedTargetId, continuation: undefined } : {}),
         taskContext: { original_goal: task.originalGoal, completed_steps: task.completed, observations: task.observations, instruction: "只完成尚未执行的目标，不得重复已成功步骤。" } }, budget.signal, plannerOnly));
       check();
       if (result.envelope || result.hostOperation) return this.execute(task, result);
-      if (result.kind === "clarify") { this.clarify(task, result.message ?? "请补充信息。"); return this.result(task, result); }
+      if (result.kind === "clarify") return this.plannerClarification(task, result);
       task.status = result.kind === "locale" ? "completed" : "failed";
       return this.result(task, result);
     };
@@ -215,10 +290,12 @@ export class DecisionTaskManager {
           if (++task.llmCalls > 2) return this.terminal(task, "failed", "规划没有取得进展，已停止重试。" );
           const subtask = await choose("llm_subtask", "给主LLM一个明确子任务。创建内容后还需移动/固定等交互时，选content；宿主交互由后续决策执行。", { content: "仅整理/生成/修改所需卡片内容，先产生可执行内容提案", explain: "解释或回答问题，不执行被引用的命令", plan: "规划尚未完成的受支持内容操作" });
           const result = await budget.run(() => deps.legacy({ ...request, text: task.originalGoal, task: undefined,
+            canvasContext: task.context, ...(Object.keys(task.resolvedTargets).length ? { resolvedTargets: { ...task.resolvedTargets }, continuation: undefined } : {}),
+            ...(task.resolvedTargetId ? { resolvedTargetId: task.resolvedTargetId, continuation: undefined } : {}),
             taskContext: { subtask, original_goal: task.originalGoal, completed_steps: task.completed, observations: task.observations, instruction: "仅为指定子任务生成受控内容动作提案。移动、固定、传送、撤销、计时暂停恢复由后续宿主处理，本次不要生成它们，也不要因此拒绝已经完整的内容子任务。不要重复已成功步骤，不要声称已执行。" } }, budget.signal, true));
           check();
           task.observations.push({ kind: "llm", status: result.kind === "error" ? "failed" : "succeeded", result });
-          if (result.kind === "clarify") return this.clarify(task, result.message ?? "请补充必要信息。");
+          if (result.kind === "clarify") return this.plannerClarification(task, result);
           if (result.envelope || result.hostOperation) task.proposed = result;
           else if (result.kind === "error") return this.terminal(task, "failed", result.message ?? "规划服务不可用。" );
           task.phase = "after_llm"; continue;
@@ -232,7 +309,7 @@ export class DecisionTaskManager {
           const result = await budget.run(() => tools[service]!(input, task.context, budget.signal)); check();
           task.observations.push({ kind: "tool", status: result.kind === "error" ? "failed" : "succeeded", result });
           if (result.envelope) task.proposed = result;
-          else if (result.kind === "clarify") return this.clarify(task, result.message ?? "请补充查询条件。");
+          else if (result.kind === "clarify") return this.plannerClarification(task, result);
           else return this.terminal(task, "failed", result.message ?? "查询没有返回可用事实。" );
           task.phase = "after_tool"; continue;
         }
