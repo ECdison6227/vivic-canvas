@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { buildState, createIntentRouter } from "../src/decision/router.js";
+import { buildState, cardLabel, cardTitle, createIntentRouter } from "../src/decision/router.js";
 import { resolveTarget } from "../src/decision/target.js";
 import { splitClauses } from "../src/decision/split.js";
 import { emptyContext } from "./helpers.js";
@@ -55,6 +55,15 @@ describe("independent route classification", () => {
     expect(state.canvas.cards).toHaveLength(40);
     expect(state.canvas.cards[0]!.id).toBe("c63");
     expect(state.canvas.cards.every(c => c.desc.length <= 110)).toBe(true);
+  });
+  it("uses actual NewsCard and CountdownCard fields, not only abstract evaluation fields", () => {
+    const news = card("news", "unused", "NewsCard");news.aliases = [];
+    news.displayProps = { headline: "Google公司介绍", summary: "summary", keyPoints: ["1998年成立"] };
+    expect(cardTitle(news)).toBe("Google公司介绍");
+    expect(cardLabel(news)).toContain("1998年成立");
+    const timer = card("timer", "unused", "CountdownCard");timer.aliases = [];timer.displayProps = {};
+    timer.sourceDataSummary = { reminderText: "喝水提醒", targetAt: "2026-10-29T10:18:00.000Z", pausedAt: "2026-10-29T10:00:00.000Z" };
+    expect(cardTitle(timer)).toBe("喝水提醒");expect(cardLabel(timer)).toContain("18分钟");
   });
 });
 describe("clause splitting", () => {

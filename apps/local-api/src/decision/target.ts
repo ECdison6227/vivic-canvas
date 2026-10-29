@@ -16,7 +16,7 @@ export async function resolveTarget(text: string, context: CanvasContext, route:
   const names = cards.filter(card => [cardTitle(card), ...(card.aliases ?? [])]
     .some(name => name.length >= 2 && text.toLocaleLowerCase().includes(name.toLocaleLowerCase())));
   if (names.length === 1) return { targetId: names[0]!.id };
-  if (/这张|它|刚才那张/.test(text)) {
+  if (/这张|它|刚才那张/.test(text) || ["highlight", "edit"].includes(route) && /第[一二三四五六七八九十百\d]+[条项点行]/.test(text)) {
     const focus = context.focusHistory.at(-1);
     if (focus && cards.some(card => card.id === focus)) return { targetId: focus };
   }

@@ -11,11 +11,15 @@ import { executeHostedCommand, executeHostedEnvelope, hostedImageSources, parseC
 import { SpaceError, invalid } from "./errors.js";
 import { acquireSpaceLock } from "./lock.js";
 import type { OwnerCanvas } from "../hosted/owner.js";
+import { DecisionTraceSchema, type DecisionTrace } from "../decision/trace.js";
+import { redactDecisionText } from "../decision/logging.js";
 
 export interface SpaceIdentity { accountId: string; user: { id: string; username: string }; device: { id: string; name: string } }
 export interface HostedSpaceStoreOptions { dataDir: string; inviteCode?: string; now?: () => number }
 export interface SpaceDevice { id: string; name: string; createdAt: string; lastSeenAt: string; expiresAt: string }
 export interface SpaceAccount { id: string; username: string }
+export interface DecisionLogEntry { id: number; at: string; accountId: string; spaceId: string | null;
+  path: "browser" | "task"; text: string; trace: DecisionTrace; outcome: string | null; undone: boolean }
 export interface SpaceEnvelopeRequest { requestId: string; expectedVersion: number; envelope: ActionEnvelope }
 export type HostedCardAssetAuthority = "user" | "provider" | "migration";
 export type HostedCardAssetValidator = (accountId: string, spaceId: string, card: CardRecord, authority: HostedCardAssetAuthority) => CardRecord;
@@ -77,6 +81,12 @@ export class HostedSpaceStore {
         created_at TEXT NOT NULL, cursor INTEGER NOT NULL DEFAULT 0 CHECK(cursor >= 0)
       ) STRICT;
       CREATE TABLE IF NOT EXISTS invitations (digest TEXT PRIMARY KEY, consumed_by TEXT REFERENCES accounts(id), consumed_at INTEGER) STRICT;
+      CREATE TABLE IF NOT EXISTS decision_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, account_id TEXT NOT NULL, space_id TEXT,
+        path TEXT NOT NULL, text TEXT NOT NULL, trace_json TEXT NOT NULL, outcome TEXT, undone INTEGER DEFAULT 0
+      ) STRICT;
+      CREATE INDEX IF NOT EXISTS decision_log_account ON decision_log(account_id, id DESC);
+      CREATE UNIQUE INDEX IF NOT EXISTS decision_log_trace ON decision_log(account_id, json_extract(trace_json, '$.id'));
       CREATE TABLE IF NOT EXISTS devices (
         id TEXT PRIMARY KEY, account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
         token_digest TEXT NOT NULL UNIQUE, name TEXT NOT NULL, created_at TEXT NOT NULL, last_seen_at TEXT NOT NULL,
@@ -147,6 +157,48 @@ export class HostedSpaceStore {
       ?? (() => { throw new SpaceError(401, "session-required", "请先登录。"); })();
   }
   listAccounts(): SpaceAccount[] { return this.db.prepare("SELECT id, username FROM accounts ORDER BY id").all() as unknown as SpaceAccount[]; }
+  recordDecisionLog(accountId: string, input: { spaceId?: string; path: "browser" | "task"; text: string; trace: DecisionTrace; outcome?: string }): { id: number; inserted: boolean } {
+    this.account(accountId);
+    const trace = DecisionTraceSchema.parse(JSON.parse(JSON.stringify(input.trace,
+      (_key, value) => typeof value === "string" ? redactDecisionText(value) : value)));
+    const previous = this.db.prepare("SELECT id, trace_json FROM decision_log WHERE account_id=? AND json_extract(trace_json,'$.id')=?")
+      .get(accountId, trace.id) as { id: number; trace_json: string } | undefined;
+    if (previous) {
+      const wasPending = (JSON.parse(previous.trace_json) as DecisionTrace).status === "pending";
+      if (trace.status !== "pending" || wasPending) this.db.prepare("UPDATE decision_log SET trace_json=? WHERE id=? AND account_id=?")
+        .run(JSON.stringify(trace), previous.id, accountId);
+      return { id: previous.id, inserted: false };
+    }
+    const spaceId = input.spaceId && this.db.prepare("SELECT id FROM spaces WHERE account_id=? AND id=?").get(accountId, input.spaceId) ? input.spaceId : null;
+    const saved = this.db.prepare("INSERT INTO decision_log(at,account_id,space_id,path,text,trace_json,outcome) VALUES(?,?,?,?,?,?,?)")
+      .run(this.stamp(), accountId, spaceId, input.path, redactDecisionText(input.text), JSON.stringify(trace), input.outcome ?? null);
+    this.db.prepare("DELETE FROM decision_log WHERE id NOT IN (SELECT id FROM decision_log ORDER BY id DESC LIMIT 20000)").run();
+    return { id: Number(saved.lastInsertRowid), inserted: true };
+  }
+  listDecisionLogs(accountId: string, limit = 200): DecisionLogEntry[] {
+    this.account(accountId);
+    const count = Math.min(200, Math.max(1, Number.isSafeInteger(limit) ? limit : 200));
+    const rows = this.db.prepare("SELECT * FROM decision_log WHERE account_id=? ORDER BY id DESC LIMIT ?").all(accountId, count) as unknown as Array<{
+      id: number; at: string; account_id: string; space_id: string | null; path: "browser" | "task";
+      text: string; trace_json: string; outcome: string | null; undone: number;
+    }>;
+    return rows.map(row => ({ id: row.id, at: row.at, accountId: row.account_id, spaceId: row.space_id,
+      path: row.path, text: row.text, trace: JSON.parse(row.trace_json), outcome: row.outcome, undone: row.undone === 1 }));
+  }
+  setDecisionOutcome(accountId: string, traceId: string, outcome: string): void {
+    this.db.prepare("UPDATE decision_log SET outcome=? WHERE account_id=? AND json_extract(trace_json,'$.id')=?")
+      .run(outcome.slice(0, 32), accountId, traceId);
+  }
+  setDecisionTaskOutcome(accountId: string, taskId: string, outcome: "succeeded" | "failed"): void {
+    this.db.prepare("UPDATE decision_log SET outcome=? WHERE account_id=? AND json_extract(trace_json,'$.taskId')=? AND (outcome IS NULL OR outcome IN ('pending','proposed'))")
+      .run(outcome, accountId, taskId);
+  }
+  markLastDecisionUndone(accountId: string, spaceId?: string): void {
+    this.db.prepare(`UPDATE decision_log SET undone=1 WHERE id=(SELECT id FROM decision_log
+      WHERE account_id=? AND at>=? AND (? IS NULL OR space_id=?)
+        AND NOT EXISTS(SELECT 1 FROM json_each(json_extract(trace_json,'$.legacyActionTypes')) WHERE value='history.undo')
+      ORDER BY id DESC LIMIT 1)`).run(accountId, new Date(this.now() - 30_000).toISOString(), spaceId ?? null, spaceId ?? null);
+  }
   /** Trusted host-module capability, never a request option. Bare stores fail closed for controlled photo writes. */
   setCardAssetValidator(validator: HostedCardAssetValidator): void { this.cardAssetValidator = validator; }
   private validateCardAssets(accountId: string, spaceId: string, before: SpaceContent, after: SpaceContent, authority: HostedCardAssetAuthority): SpaceContent {
@@ -371,6 +423,7 @@ export class HostedSpaceStore {
           const restored = this.validateCardAssets(accountId, spaceId, current, copy(undo ? frame.before : frame.after), "user");
           destination.push(frame); history.version = version + 1;
           this.saveHistory(accountId, spaceId, actor, history);
+          if (undo) { try { this.markLastDecisionUndone(accountId, spaceId); } catch { /* telemetry does not affect undo */ } }
           return restored;
         }
         const next = this.validateCardAssets(accountId, spaceId, current, executeHostedCommand(current, command, this.stamp()), "user");

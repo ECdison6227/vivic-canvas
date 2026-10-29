@@ -105,6 +105,7 @@ export function createHostedTaskService(options: { store: HostedSpaceStore; invo
     throw new SpaceError(409, "unsupported-operation", "此操作暂不支持，未更改Space。");
   }
   async function run(task: HostedTaskRecord, signal: AbortSignal) {
+    const traceIds = new Set<string>();
     let continuation: { id: string; receipt?: { executionId: string; status: "succeeded"; createdCardIds: string[] } } = { id: task.businessTaskId };
     try {
       task.status = "running"; task.message = "正在处理…"; save(task);
@@ -115,6 +116,11 @@ export function createHostedTaskService(options: { store: HostedSpaceStore; invo
         const response = await invoke(task.accountId, "/api/intent", { text: task.text, canvasContext: hostedCanvasContext(snapshot), task: continuation }, signal);
         if (!response.ok) throw new SpaceError(503, "planner-unavailable", "模型请求暂未完成，请检查连接或稍后重试。");
         const result: IntentResponse = IntentResponseSchema.parse(await response.json());
+        if (result.trace) {
+          traceIds.add(result.trace.id);
+          try { store.recordDecisionLog(task.accountId, { spaceId: task.spaceId, path: "task", text: task.text, trace: result.trace, outcome: "pending" }); }
+          catch { /* logging does not affect task execution */ }
+        }
         current(task, signal);
         if (result.kind === "clarify" || result.task?.status === "awaiting_clarification") {
           task.status = "awaiting_clarification"; task.message = result.message ?? "请补充这次操作的具体要求。"; save(task); return;
@@ -156,6 +162,13 @@ export function createHostedTaskService(options: { store: HostedSpaceStore; invo
         : signal.aborted ? (task.executions.length ? "后续操作已取消，已保存的变化保留。" : "已取消尚未执行的操作。")
         : error instanceof SpaceError ? error.message : "本次处理或保存未完成，请检查已有内容后重试。";
       try { save(task); } catch { /* A lost storage confirmation is reported as unknown on a later query. */ }
+    } finally {
+      const outcome = task.status === "awaiting_clarification" ? "clarify"
+        : task.status === "succeeded" ? "succeeded" : task.status === "running" ? "pending" : "failed";
+      for (const traceId of traceIds) {
+        try { store.setDecisionOutcome(task.accountId, traceId, outcome); }
+        catch { /* telemetry does not change the task outcome */ }
+      }
     }
   }
   async function handle(request: Request, identity: SpaceIdentity): Promise<Response | null> {

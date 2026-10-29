@@ -15,6 +15,7 @@ const decision = z.strictObject({ text: z.string().max(500), route: route.nullab
   none: z.boolean(), latencyMs: z.number().nonnegative(), failed: z.boolean(), target: target.optional() });
 export const DecisionTraceSchema = z.strictObject({
   id: z.string().max(128), mode: z.enum(["shadow", "on"]), status: z.enum(["pending", "complete", "failed"]),
+  taskId: z.string().max(128).optional(),
   clauses: z.array(z.string().max(500)).max(3), decisions: z.array(decision).max(3),
   route: route.nullable(), probability: z.number().min(0).max(1), target: target.optional(),
   latencyMs: z.number().nonnegative(), routeLatencyMs: z.number().nonnegative(),
@@ -28,7 +29,7 @@ export type DecisionTrace = z.infer<typeof DecisionTraceSchema>;
 /** Advisory only. The old execution path remains authoritative in shadow mode. */
 export async function observeDecision(req: IntentRequest, deps: PipelineDeps, signal: AbortSignal | undefined,
   legacy: () => Promise<IntentResult>): Promise<IntentResult> {
-  if (deps.router?.mode !== "shadow") return legacy();
+  if (deps.router?.mode !== "shadow" || req.task?.receipt || req.task?.cancel) return legacy();
   const router = deps.router, clauses = splitClauses(req.text), id = `decision_${randomUUID()}`;
   const start = performance.now(), controller = new AbortController();
   const abort = () => controller.abort();
@@ -38,13 +39,17 @@ export async function observeDecision(req: IntentRequest, deps: PipelineDeps, si
   let decisionElapsedMs: number | undefined;
   const pending = (async () => {
     const output: DecisionTrace["decisions"] = [];
+    let shadowContext = req.canvasContext;
     for (const text of clauses) {
       const clauseStarted = performance.now();
       try {
-        const value = await router.routeUtterance(text, req.canvasContext, controller.signal);
-        const selected = value?.route ? await resolveTarget(text, req.canvasContext, value.route, router, controller.signal) : undefined;
+        const value = await router.routeUtterance(text, shadowContext, controller.signal);
+        const selected = value?.route ? await resolveTarget(text, shadowContext, value.route, router, controller.signal) : undefined;
         output.push(value ? { text, ...value, failed: false, ...(selected ? { target: selected } : {}) }
           : { text, route: null, probability: 0, probabilities: {}, none: true, latencyMs: Math.round(performance.now() - clauseStarted), failed: true });
+        if (value?.route === "focus" && value.probability >= .8 && selected && "targetId" in selected) {
+          shadowContext = { ...shadowContext, focusHistory: [...shadowContext.focusHistory, selected.targetId].slice(-20) };
+        }
       } catch {
         output.push({ text, route: null, probability: 0, probabilities: {}, none: true, latencyMs: Math.round(performance.now() - clauseStarted), failed: true });
       }
@@ -75,6 +80,7 @@ export async function observeDecision(req: IntentRequest, deps: PipelineDeps, si
     const first = rows?.[0], failures = rows?.filter(row => row.failed).length ?? 0;
     const actions = result.envelope?.actions ?? [];
     return { id, mode: "shadow", status: !rows ? "pending" : failures ? "failed" : "complete",
+      ...(req.task?.id ? { taskId: req.task.id } : {}),
       clauses, decisions: rows ?? [], route: first?.route ?? null, probability: first?.probability ?? 0,
       ...(first?.target ? { target: first.target } : {}),
       latencyMs: decisionElapsedMs ?? Math.round(performance.now() - start), routeLatencyMs: first?.latencyMs ?? 0,

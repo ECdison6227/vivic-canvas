@@ -75,6 +75,14 @@ describe("shadow observer", () => {
       expect(model.routeUtterance).not.toHaveBeenCalled();
     }
   });
+  it.each([
+    { id: "task-one", receipt: { executionId: "execute-one", status: "succeeded" as const } },
+    { id: "task-one", cancel: true as const },
+  ])("does not classify execution receipts or cancellation as new user intents", async task => {
+    const model = router();
+    expect(await observeDecision({ ...req, task }, deps(model), undefined, async () => output)).toBe(output);
+    expect(model.routeUtterance).not.toHaveBeenCalled();
+  });
   it("keeps cancellation before the old response and observes clauses sequentially", async () => {
     const transport = new AbortController();
     const model = router(vi.fn(async (_text: string, _ctx: CanvasContext, signal?: AbortSignal) => {
@@ -85,5 +93,20 @@ describe("shadow observer", () => {
     const result = await observeDecision({ ...req, text: "显示全部，然后写便签" }, deps(model), transport.signal, async () => output);
     expect(result.trace?.clauses).toEqual(["显示全部", "写便签"]);
     expect(model.routeUtterance).toHaveBeenCalledTimes(2);
+  });
+  it("carries hypothetical focus between clauses without changing the real context", async () => {
+    const context = emptyContext([
+      { id: "left", type: "TodoCard", displayProps: { title: "本周待办" }, sourceDataSummary: {}, layout: { x: 0, y: 0 } },
+      { id: "right", type: "TodoCard", displayProps: { title: "购物清单" }, sourceDataSummary: {}, layout: { x: 900, y: 0 } },
+    ]);
+    const query: IntentRouter["routeUtterance"] = vi.fn(async (text, ctx) => {
+      if (text.startsWith("高亮")) expect(ctx.focusHistory).toEqual(["left"]);
+      return { ...answer, route: text.startsWith("聚焦") ? "focus" : "highlight" };
+    });
+    const model = router(query);
+    const result = await observeDecision({ text: "聚焦左边的待办，高亮第二条", canvasContext: context }, deps(model), undefined, async () => output);
+    expect(result.trace?.decisions.map(x => x.target)).toEqual([{ targetId: "left" }, { targetId: "left" }]);
+    expect(context.focusHistory).toEqual([]);
+    expect(model.chooseTarget).not.toHaveBeenCalled();
   });
 });

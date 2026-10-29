@@ -10,6 +10,8 @@ import { createHostedMigrationService } from "./migration.js";
 import { boundedBytes, hostedBody, hostedFailure, hostedForm, hostedJson } from "./http.js";
 import { ownerRoute } from "./owner.js";
 import { createIntentRouter, type IntentRouter } from "../decision/router.js";
+import { decisionOutcome } from "../decision/logging.js";
+import type { PipelineDeps } from "../intent/pipeline.js";
 
 type SessionApp = ReturnType<typeof createOnlineSessionApp>;
 interface AccountApp { app: SessionApp; token: string; created: number; touched: number }
@@ -42,6 +44,24 @@ export function createHostedService(options: HostedServiceOptions) {
   let closed = false;
   let httpActive = 0;
   const httpBySession = new Map<string, number>();
+  const recentDecisionReceipts = new Map<string, { outcome: "succeeded" | "failed"; at: number }>();
+  function sessionOptions(accountId: string) {
+    const onDecisionTrace: NonNullable<PipelineDeps["onDecisionTrace"]> = (request, trace, result) => {
+      const saved = space.store.recordDecisionLog(accountId, { spaceId: request.canvasContext.canvasId,
+        path: request.tracePath ?? "browser", text: request.text, trace, outcome: decisionOutcome(result) });
+      const receipt = trace.taskId ? recentDecisionReceipts.get(JSON.stringify([accountId, trace.taskId])) : undefined;
+      if (trace.taskId && receipt && now() - receipt.at <= 60_000) space.store.setDecisionTaskOutcome(accountId, trace.taskId, receipt.outcome);
+      if (saved.inserted && trace.legacyActionTypes.includes("history.undo")) space.store.markLastDecisionUndone(accountId, request.canvasContext.canvasId);
+    };
+    return { fetchImpl: options.fetchImpl, router, onDecisionTrace,
+      onDecisionReceipt: (taskId: string, outcome: "succeeded" | "failed") => {
+        const key = JSON.stringify([accountId, taskId]);
+        recentDecisionReceipts.delete(key); recentDecisionReceipts.set(key, { outcome, at: now() });
+        for (const [id, value] of recentDecisionReceipts) if (now() - value.at > 60_000) recentDecisionReceipts.delete(id);
+        while (recentDecisionReceipts.size > 256) { const first = recentDecisionReceipts.keys().next().value; if (first === undefined) break; recentDecisionReceipts.delete(first); }
+        space.store.setDecisionTaskOutcome(accountId, taskId, outcome);
+      } };
+  }
   function appFor(accountId: string, activity: boolean): AccountApp {
     let value = apps.get(accountId);
     if (value && (now() - value.created >= MAX_AGE || now() - value.touched >= IDLE)) {
@@ -49,7 +69,7 @@ export function createHostedService(options: HostedServiceOptions) {
     }
     if (!value) {
       const token = randomBytes(32).toString("base64url");
-      value = { token, app: createOnlineSessionApp({ token, origin: options.origin }, { fetchImpl: options.fetchImpl, router }), created: now(), touched: now() };
+      value = { token, app: createOnlineSessionApp({ token, origin: options.origin }, sessionOptions(accountId)), created: now(), touched: now() };
       apps.set(accountId, value);
     }
     if (activity) value.touched = now(); return value;
@@ -60,7 +80,8 @@ export function createHostedService(options: HostedServiceOptions) {
       headers: { authorization: `Bearer ${value.token}`, origin: options.origin, "content-type": "application/json", "x-vivic-trace-path": tracePath },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }) }));
   }
-  const tasks = createHostedTaskService({ store: space.store, invoke: (accountId, route, body, signal) => invoke(accountId, route, body, signal, "task"), now });
+  const tasks = createHostedTaskService({ store: space.store,
+    invoke: (accountId, route, body, signal) => invoke(accountId, route, body, signal, "task"), now });
   const migration = createHostedMigrationService({ store: space.store, assetService: assets });
   function modelFor(accountId: string) {
     let session = models.get(accountId);
@@ -161,6 +182,11 @@ export function createHostedService(options: HostedServiceOptions) {
       if (!identity) throw new SpaceError(401, "login-required", "请先登录或连接此设备。");
       const { accountId } = identity;
       if (!space.store.takeRateLimit(`hosted:${accountId}`, 180)) throw new SpaceError(429, "rate-limit", "请求较多，请稍后重试。");
+      if (route === "/api/space/decision-log" && request.method === "GET") {
+        const raw = url.searchParams.get("limit") ?? "200";
+        if (!/^\d{1,3}$/.test(raw) || Number(raw) < 1 || Number(raw) > 200) throw new SpaceError(400, "invalid-limit", "limit 需要为1–200。");
+        return hostedJson({ entries: space.store.listDecisionLogs(accountId, Number(raw)) });
+      }
       const owner = await ownerRoute(space.store, request, identity); if (owner) { if (request.method !== "GET") reminders.check(); return owner; }
       if (route === "/api/transcribe" && request.method === "POST") {
         const value = appFor(accountId, true), bytes = await boundedBytes(request, 22 * 1024 * 1024);
@@ -184,7 +210,7 @@ export function createHostedService(options: HostedServiceOptions) {
       if (proxyPost.has(route) && request.method === "POST") {
         if (route === "/api/credentials/stepfun/validate") {
           const token = randomBytes(32).toString("base64url");
-          const candidate: AccountApp = { token, app: createOnlineSessionApp({ token, origin: options.origin }, { fetchImpl: options.fetchImpl, router }), created: now(), touched: now() };
+          const candidate: AccountApp = { token, app: createOnlineSessionApp({ token, origin: options.origin }, sessionOptions(accountId)), created: now(), touched: now() };
           try {
             const body = await hostedBody(request);
             const response = await candidate.app.fetch(new Request(`${options.origin}${route}`, { method: "POST", signal: request.signal,
@@ -238,6 +264,7 @@ export function createHostedService(options: HostedServiceOptions) {
   }
   return { fetch: boundedFetch, store: space.store, tasks, assets, reminders,
     async dispose() { closed = true; clearInterval(expiry); reminders.dispose(); await tasks.dispose();
+      recentDecisionReceipts.clear();
       for (const model of models.values()) { model.key = undefined; model.controller.abort(); } models.clear();
       await Promise.allSettled([...apps.values()].map(record => Promise.resolve(record.app.dispose()))); apps.clear(); space.dispose(); } };
 }

@@ -70,6 +70,7 @@ export interface AppDeps {
   decisionV2Provider?: NativeV2Provider;
   router?: PipelineDeps["router"];
   onDecisionTrace?: PipelineDeps["onDecisionTrace"];
+  onDecisionReceipt?: (taskId: string, outcome: "succeeded" | "failed") => void;
   onDiagnostic?: DiagnosticSink;
   travel?: TravelProvider;
   /** Remembers the chosen connection across restarts; absent in tests. */
@@ -636,7 +637,14 @@ export const createApp = (deps: AppDeps) => {
           weather: (city, canvasContext, taskSignal) => runIntent({ text: `${city}天气`, canvasContext, deviceLocation: parsed.data.deviceLocation }, { ...pipeline, decision: undefined }, taskSignal, true),
           ...(search ? { search: (query: string, canvasContext: typeof parsed.data.canvasContext, taskSignal: AbortSignal) => runIntent({ text: `搜索 ${query}`, canvasContext }, { ...pipeline, decision: undefined }, taskSignal, true) } : {}),
         },
-      }, signal));
+      }, signal).then(result => {
+        if (intent.task && (intent.task.receipt || intent.task.cancel)) {
+          const outcome = result.task?.status === "completed" ? "succeeded"
+            : result.task?.status === "failed" || result.task?.status === "cancelled" ? "failed" : undefined;
+          if (outcome) { try { deps.onDecisionReceipt?.(intent.task.id, outcome); } catch { /* telemetry is advisory */ } }
+        }
+        return result;
+      }));
     };
     if (c.req.path.endsWith("/stream") || c.req.header("accept")?.includes("text/event-stream")) {
       c.header("X-Accel-Buffering", "no");

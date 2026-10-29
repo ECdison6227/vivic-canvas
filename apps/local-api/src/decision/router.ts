@@ -28,12 +28,20 @@ function short(value: unknown): string {
   return "";
 }
 export function cardTitle(card: ContextCard): string {
-  return short(card.displayProps.title ?? card.sourceDataSummary.title) || card.aliases?.[0] || card.id;
+  const event = card.sourceDataSummary.event;
+  return short(card.displayProps.title ?? card.displayProps.headline ?? card.sourceDataSummary.title)
+    || card.aliases?.[0] || short(card.sourceDataSummary.reminderText
+      ?? (event && typeof event === "object" ? (event as Record<string, unknown>).title : undefined)) || card.id;
 }
 export function cardLabel(card: ContextCard): string {
   const props = card.displayProps, source = card.sourceDataSummary;
-  const detail = short(props.items ?? source.items ?? props.text ?? props.body ?? source.text ?? source.body
-    ?? props.points ?? source.points ?? props.remaining ?? source.remaining ?? source.label);
+  const target = typeof source.targetAt === "string" ? Date.parse(source.targetAt) : NaN;
+  const clock = typeof source.pausedAt === "string" ? Date.parse(source.pausedAt) : Date.now();
+  const remaining = card.type === "CountdownCard" && Number.isFinite(target) && Number.isFinite(clock)
+    ? `${Math.max(0, Math.ceil((target - clock) / 60_000))}分钟` : undefined;
+  const detail = short(props.items ?? source.items ?? props.text ?? props.body ?? props.bullets ?? source.text ?? source.body ?? source.bullets
+    ?? props.keyPoints ?? source.keyPoints ?? props.points ?? source.points ?? props.summary ?? source.summary
+    ?? props.remaining ?? source.remaining ?? remaining ?? source.label);
   return `${card.type}「${cardTitle(card)}」${detail} 位置x=${card.layout.x},y=${card.layout.y}`.slice(0, 110);
 }
 export function selectedCards(context: CanvasContext): ContextCard[] {
