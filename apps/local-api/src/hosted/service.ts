@@ -12,6 +12,8 @@ import { ownerRoute } from "./owner.js";
 import { createIntentRouter, type IntentRouter } from "../decision/router.js";
 import { decisionOutcome } from "../decision/logging.js";
 import type { PipelineDeps } from "../intent/pipeline.js";
+import { IntentRequestSchema } from "../schemas.js";
+import { imageInputErrorMessage } from "../images.js";
 
 type SessionApp = ReturnType<typeof createOnlineSessionApp>;
 interface AccountApp { app: SessionApp; token: string; created: number; touched: number }
@@ -74,10 +76,11 @@ export function createHostedService(options: HostedServiceOptions) {
     }
     if (activity) value.touched = now(); return value;
   }
-  async function invoke(accountId: string, route: string, body: unknown, signal?: AbortSignal, tracePath: "browser" | "task" = "browser"): Promise<Response> {
+  async function invoke(accountId: string, route: string, body: unknown, signal?: AbortSignal, tracePath: "browser" | "task" = "browser", trustedImageRef?: string): Promise<Response> {
     const value = appFor(accountId, route !== "/api/providers/status");
     return value.app.fetch(new Request(`${options.origin}${route}`, { method: body === undefined ? "GET" : "POST", signal,
-      headers: { authorization: `Bearer ${value.token}`, origin: options.origin, "content-type": "application/json", "x-vivic-trace-path": tracePath },
+      headers: { authorization: `Bearer ${value.token}`, origin: options.origin, "content-type": "application/json", "x-vivic-trace-path": tracePath,
+        ...(trustedImageRef ? { "x-vivic-intent-image-ref": trustedImageRef } : {}) },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }) }));
   }
   const tasks = createHostedTaskService({ store: space.store,
@@ -221,7 +224,19 @@ export function createHostedService(options: HostedServiceOptions) {
             return response;
           } catch (error) { await candidate.app.dispose(); throw error; }
         }
-        const response = await invoke(accountId, route, await hostedBody(request, route.startsWith("/api/intent") || route === "/api/files/read" ? 6 * 1024 * 1024 : 64 * 1024), request.signal);
+        const body = await hostedBody(request, route.startsWith("/api/intent") || route === "/api/files/read" ? 6 * 1024 * 1024 : 64 * 1024);
+        let trustedImageRef: string | undefined;
+        if (route.startsWith("/api/intent") && router.mode !== "off") {
+          const parsed = IntentRequestSchema.safeParse(body);
+          if (parsed.success && parsed.data.attachments?.length) {
+            try { trustedImageRef = await assets.persistIntentImage(accountId, parsed.data.canvasContext.canvasId, parsed.data.attachments[0]!, identity.device.id, request.signal); }
+            catch (error) {
+              if (error instanceof SpaceError) throw error;
+              return hostedJson({ kind: "error", message: imageInputErrorMessage(error) });
+            }
+          }
+        }
+        const response = await invoke(accountId, route, body, request.signal, "browser", trustedImageRef);
         space.store.assertDeviceActive(accountId, identity.device.id);
         return response;
       }

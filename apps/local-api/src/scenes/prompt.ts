@@ -55,6 +55,15 @@ const dataGuide = (scene: (typeof SCENES)[number]["id"]): string => {
   return `data结构=${DATA[scene].replace(/\?"\s*:/g, '":')}。可选字段（含嵌套字段）：${optional.length ? optional.join("、") : "无"}`;
 };
 
+/** Slot planner guide has no competing legacy cards/actions/reply protocol. */
+export const buildSceneSlotGuide = (): string => `
+generate 的 slots 结构为 {"scene_id":"下表分类名","data":{}}。分类名不是实例编号，绝不加日期或随机后缀。不要输出 card_type、展示组件、HTML或代码。
+${SCENES.map(scene => `${scene.id}：${INTENT[scene.id]}。${dataGuide(scene.id)}`).join("\n")}
+表里的空串、数字与枚举只说明类型，不是事实。真实键名不带问号；枚举选择一个值；无来源的可选字段省略，不填空串、null、默认数字或今天。
+数字、日期、年份、星期、链接、DOI、作者、出处、书名、图片只能来自本次用户原话、澄清、已有画布或 page。相对日期按 today/timeZone 推算，缺少必要信息先用上下文，否则 clarify。摘要与要点只能依据原文或 page；普通知识回答使用 answer 契约，不受新闻原文条件限制。
+选择规则：用户明确指定且数据兼容时服从；今天要完成什么用todo_list、几点做什么用weekly_schedule、整月事项用monthly_calendar、推进阶段用project_roadmap、目标完成比例用goal_progress、重复打卡用habit_tracking、过去事件用historical_timeline。保存网站或仓库用web_bookmark，明确学术论文才用academic_paper。纯计时与提醒用 countdown 契约，便笺原文用 note。写作整理可保存为 note，数值图表不能编造数据。
+一个独立对象对应一个计划项，最多6项。不能放进所选结构则 clarify，不能遗漏或随机选场景。`;
+
 export const buildScenePrompt = (): string => `
 场景卡片（重点）：用户想把内容整理、记录、展示成卡片时，优先输出 {"cards":[{"scene_id":"表内固定分类名","data":{…}}],"spokenText":"40字内说明"}，省略冗余card_type。scene_id是固定分类名，不是实例id；同类的多张卡也用相同scene_id，绝不加日期、时间戳或随机编号。若填写card_type，必须是表中箭头右侧的精确类型，不能填左侧场景名。程序负责实例id、布局、时间戳、校验和渲染；禁止输出 HTML、JSX、组件名、样式或卡片模板之外的字段。
 下面是结构说明，不是可以照抄的内容：真实键名不带问号；空串占位要换成有意义的文字，必填标题不能空。可选字段无来源时直接省略，不用空串、null、默认数字或今天补齐。数字是类型示例，只能填写本次用户给出的数值。带竖线的枚举必须选择其中一个实际值，不能整串输出。

@@ -4,6 +4,14 @@ import { ROUTES } from "@vivic/contracts";
 import type { IntentRequest, IntentResult, PipelineDeps } from "../intent/pipeline.js";
 import { splitClauses } from "./split.js";
 import { resolveTarget } from "./target.js";
+import type { TargetResult } from "./target.js";
+import type { RouteResult } from "./router.js";
+
+/** The planner shares the observer's first RPC and target lookup. */
+export interface PlannerRouteHint {
+  result: RouteResult | null;
+  target: Promise<TargetResult | undefined>;
+}
 
 const route = z.enum(Object.keys(ROUTES) as [keyof typeof ROUTES, ...Array<keyof typeof ROUTES>]);
 const target = z.union([z.strictObject({ targetId: z.string().max(128) }),
@@ -28,7 +36,7 @@ export type DecisionTrace = z.infer<typeof DecisionTraceSchema>;
 
 /** Advisory only. The old execution path remains authoritative in shadow mode. */
 export async function observeDecision(req: IntentRequest, deps: PipelineDeps, signal: AbortSignal | undefined,
-  legacy: () => Promise<IntentResult>): Promise<IntentResult> {
+  legacy: (hint?: Promise<PlannerRouteHint | null>) => Promise<IntentResult>): Promise<IntentResult> {
   if (deps.router?.mode !== "shadow" || req.task?.receipt || req.task?.cancel) return legacy();
   const router = deps.router, clauses = splitClauses(req.text), id = `decision_${randomUUID()}`;
   const start = performance.now(), controller = new AbortController();
@@ -37,6 +45,8 @@ export async function observeDecision(req: IntentRequest, deps: PipelineDeps, si
   if (signal?.aborted) controller.abort();
   let rows: DecisionTrace["decisions"] | undefined;
   let decisionElapsedMs: number | undefined;
+  let publishHint!: (hint: PlannerRouteHint | null) => void;
+  const hint = new Promise<PlannerRouteHint | null>(resolve => { publishHint = resolve; });
   const pending = (async () => {
     const output: DecisionTrace["decisions"] = [];
     let shadowContext = req.canvasContext;
@@ -44,13 +54,16 @@ export async function observeDecision(req: IntentRequest, deps: PipelineDeps, si
       const clauseStarted = performance.now();
       try {
         const value = await router.routeUtterance(text, shadowContext, controller.signal);
-        const selected = value?.route ? await resolveTarget(text, shadowContext, value.route, router, controller.signal) : undefined;
+        const targetPromise = value?.route ? resolveTarget(text, shadowContext, value.route, router, controller.signal) : Promise.resolve(undefined);
+        if (!output.length) publishHint({ result: value, target: targetPromise });
+        const selected = await targetPromise;
         output.push(value ? { text, ...value, failed: false, ...(selected ? { target: selected } : {}) }
           : { text, route: null, probability: 0, probabilities: {}, none: true, latencyMs: Math.round(performance.now() - clauseStarted), failed: true });
         if (value?.route === "focus" && value.probability >= .8 && selected && "targetId" in selected) {
           shadowContext = { ...shadowContext, focusHistory: [...shadowContext.focusHistory, selected.targetId].slice(-20) };
         }
       } catch {
+        if (!output.length) publishHint(null);
         output.push({ text, route: null, probability: 0, probabilities: {}, none: true, latencyMs: Math.round(performance.now() - clauseStarted), failed: true });
       }
     }
@@ -59,7 +72,7 @@ export async function observeDecision(req: IntentRequest, deps: PipelineDeps, si
     return output;
   })();
   let result: IntentResult;
-  try { result = await legacy(); }
+  try { result = await legacy(hint); }
   catch (error) {
     controller.abort(); signal?.removeEventListener("abort", abort);
     throw error;

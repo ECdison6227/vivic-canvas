@@ -621,17 +621,19 @@ export const createApp = (deps: AppDeps) => {
     const execute = (signal: AbortSignal, onStage = observeStage) => {
       const pipeline: PipelineDeps = { credentials, stepfun, search, data, decision, onStage, travel: deps.travel,
       router: deps.router, onDecisionTrace: deps.onDecisionTrace,
+      slotPlanning: deps.router?.mode === "shadow" || deps.router?.mode === "on",
       isSessionCurrent: () => version === providerRevision,
       ...(activeProvider === "gpt" ? { planner: { provider: "gpt" as const, connected: gpt.status().connected,
         generate: (messages, signal) => gpt.generate(messages, signal), isCurrent: () => gpt.isCurrent(gptVersion) } } : {}),
       };
-      const intent = { ...parsed.data, tracePath: c.req.header("x-vivic-trace-path") === "task" ? "task" as const : "browser" as const };
+      const intent = { ...parsed.data, tracePath: c.req.header("x-vivic-trace-path") === "task" ? "task" as const : "browser" as const,
+        ...(online && c.req.header("x-vivic-intent-image-ref") ? { trustedImageRef: c.req.header("x-vivic-intent-image-ref") } : {}) };
       if (!nativeV2 && !parsed.data.task) return runIntent(intent, pipeline, signal);
-      return observeDecision(intent, pipeline, signal, () => decisionTasks.run(intent, {
+      return observeDecision(intent, pipeline, signal, routeHint => decisionTasks.run(intent, {
         legacy: (request, taskSignal, plannerOnly) => runIntent({ ...request,
           offlineReferenceCompatibility: request.offlineReferenceCompatibility === true
             && (online || !configuredProvider && !deps.decision && !decision.status().enabled),
-        }, { ...pipeline, router: undefined, onDecisionTrace: undefined }, taskSignal, false, plannerOnly),
+        }, { ...pipeline, routeHint, router: undefined, onDecisionTrace: undefined }, taskSignal, false, plannerOnly),
         isCurrent: () => version === providerRevision,
         tools: {
           weather: (city, canvasContext, taskSignal) => runIntent({ text: `${city}天气`, canvasContext, deviceLocation: parsed.data.deviceLocation }, { ...pipeline, decision: undefined }, taskSignal, true),
