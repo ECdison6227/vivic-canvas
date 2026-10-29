@@ -1,8 +1,9 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
-import { resumeReminderSource, type CardRecord, type HostedSpaceSnapshot, type HostOperation } from "@vivic/contracts";
+import { resumeReminderSource, type CardRecord, type DecisionTaskStatus, type HostedSpaceSnapshot, type HostOperation } from "@vivic/contracts";
 import { IntentResponseSchema, type CanvasContext, type IntentResponse } from "../schemas.js";
 import { hostOperationIssue } from "../decision/hostOperations.js";
+import { createBudget } from "../intent/budget.js";
 import { SpaceError } from "../space/errors.js";
 import type { HostedSpaceStore, SpaceIdentity } from "../space/store.js";
 import { hostedBody, hostedJson } from "./http.js";
@@ -12,11 +13,27 @@ export interface HostedTaskRecord {
   status: "accepted" | "running" | "awaiting_clarification" | "succeeded" | "failed" | "cancelled" | "unknown";
   message: string; text: string; fingerprint: string; expectedVersion: number; createdAt: number;
   createdCardIds: string[]; focusCardId?: string; executions: string[];
+  turns?: Array<{ text: string; question?: string; candidates?: NonNullable<DecisionTaskStatus["clarification"]>["candidates"] }>;
+  clarification?: DecisionTaskStatus["clarification"];
+  completedSteps?: string[]; executionSignatures?: string[]; conflictRetries?: number;
 }
 export type HostedInvoke = (accountId: string, route: string, body: unknown, signal?: AbortSignal) => Promise<Response>;
 const TaskInput = z.strictObject({ requestId: z.string().min(1).max(128), text: z.string().trim().min(1).max(500),
   expectedVersion: z.int().min(0), continuationTaskId: z.string().min(1).max(128).optional() });
 const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
+const executionSignature = (value: unknown) => digest(JSON.stringify(value, (_key, item) =>
+  item && typeof item === "object" && !Array.isArray(item) ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item));
+function createdContent(card: CardRecord) {
+  let sourceData: Record<string, unknown> = card.sourceData;
+  let displayProps: Record<string, unknown> = card.displayProps;
+  if (card.type === "TodoCard") displayProps = { ...card.displayProps, items: card.displayProps.items.map(({ id: _id, ...item }) => item) };
+  if (card.type === "CountdownCard" && !sourceData.event && typeof sourceData.startedAt === "string" && typeof sourceData.targetAt === "string") {
+    const { startedAt, targetAt, ...rest } = sourceData;
+    sourceData = { ...rest, durationMs: Date.parse(targetAt) - Date.parse(startedAt) };
+  }
+  // Ignore program-generated todo row IDs and relative timer start times, retaining business IDs.
+  return { type: "card.create", cardType: card.type, displayProps, sourceData };
+}
 const taskKey = (spaceId: string, id: string) => `task:${spaceId}:${id}`;
 const publicTask = (task: HostedTaskRecord) => ({ id: task.id, status: task.status, message: task.message,
   ...(task.createdCardIds.length ? { createdCardIds: task.createdCardIds } : {}), ...(task.focusCardId ? { focusCardId: task.focusCardId } : {}) });
@@ -44,7 +61,7 @@ export function hostedCanvasContext(snapshot: HostedSpaceSnapshot): CanvasContex
   for (const card of selected) {
     const display = summarize(card.displayProps), source = summarize(card.sourceData);
     const value: CanvasContext["cards"][number] = { id: card.id, type: card.type,
-      ...("aliases" in card && Array.isArray(card.aliases) ? { aliases: card.aliases.filter((value): value is string => typeof value === "string").slice(0, 12) } : {}), displayProps: display.value,
+      ...(card.metadata.aliases ? { aliases: card.metadata.aliases.slice(0, 12) } : {}), displayProps: display.value,
       sourceDataSummary: source.value, layout: { x: card.layout.x, y: card.layout.y, width: card.layout.width,
         height: card.layout.height, pinned: card.layout.pinned }, surface: "display",
       ...(display.truncatedFields.length ? { contextSummary: { truncatedFields: display.truncatedFields } } : {}) };
@@ -105,51 +122,112 @@ export function createHostedTaskService(options: { store: HostedSpaceStore; invo
     throw new SpaceError(409, "unsupported-operation", "此操作暂不支持，未更改Space。");
   }
   async function run(task: HostedTaskRecord, signal: AbortSignal) {
-    const traceIds = new Set<string>();
+    const budget = createBudget(90_000, [signal]); signal = budget.signal;
+    const traces = new Map<string, { taskId: string; outcome?: string }>();
     let continuation: { id: string; receipt?: { executionId: string; status: "succeeded"; createdCardIds: string[] } } = { id: task.businessTaskId };
+    let planningText = task.text;
+    const invokeIntent = (body: unknown) => budget.run(async () => {
+      current(task, signal);
+      const response = await invoke(task.accountId, "/api/intent", body, signal);
+      const raw: unknown = await response.json();
+      if (!response.ok) {
+        if (response.status === 409 && raw && typeof raw === "object" && "code" in raw && raw.code === "version-conflict")
+          throw new SpaceError(409, "version-conflict", "空间在规划期间已更新，旧提案未应用。");
+        throw new SpaceError(503, "planner-unavailable", "模型请求暂未完成，请检查连接或稍后重试。");
+      }
+      return IntentResponseSchema.parse(raw);
+    });
+    const mark = (taskId: string, outcome: string) => {
+      for (const [traceId, trace] of traces) if (trace.taskId === taskId && !trace.outcome) {
+        trace.outcome = outcome;
+        try { store.setDecisionOutcome(task.accountId, traceId, outcome); } catch { /* advisory */ }
+      }
+      // Covers traces delivered asynchronously by the hosted observer as well.
+      try { store.setDecisionTaskOutcome(task.accountId, taskId, outcome === "succeeded" ? "succeeded" : "failed"); } catch { /* advisory */ }
+    };
+    const replan = async () => {
+      current(task, signal);
+      const oldId = continuation.id;
+      mark(oldId, "conflict");
+      const cancelled = await invokeIntent({ text: planningText, canvasContext: hostedCanvasContext(store.getSnapshot(task.accountId, task.spaceId)), task: { id: oldId, cancel: true } });
+      current(task, signal);
+      if (cancelled.task?.status !== "cancelled" || cancelled.task.id !== oldId)
+        throw new SpaceError(409, "proposal-cancel-failed", "旧提案未确认取消，已停止自动重试；请核对Space。");
+      if ((task.conflictRetries ?? 0) >= 2)
+        throw new SpaceError(409, "version-conflict", "空间连续变化，两次重新规划后仍有版本冲突；已停止后续操作，已保存步骤保留。");
+      const turns = task.turns ?? [{ text: task.text }];
+      planningText = turns.length === 1 && !task.completedSteps?.length ? turns[0].text
+        : ["原请求及补充（以最新答复为准）：", ...turns.map(turn => `${turn.question ? `问题：${turn.question}\n${turn.candidates?.length ? `当时编号：${turn.candidates.map(candidate => `${candidate.number}=${candidate.id}（${candidate.label}）`).join("、")}\n` : ""}答复：` : ""}${turn.text}`),
+          ...(task.completedSteps?.length ? ["以下步骤已真实提交，仅完成剩余要求，禁止重复：", ...task.completedSteps] : [])].join("\n");
+      // Never silently truncate a goal, a numbered answer, or the real execution history.
+      if (planningText.length > 500) throw new SpaceError(409, "replan-context-limit", "原目标和已保存步骤较长，无法安全自动重规划；请核对Space后仅重发剩余要求。");
+      task.businessTaskId = `retry_${randomUUID()}`;
+      task.conflictRetries = (task.conflictRetries ?? 0) + 1;
+      task.expectedVersion = store.getSnapshot(task.accountId, task.spaceId).space.version;
+      continuation = { id: task.businessTaskId }; save(task);
+    };
     try {
       task.status = "running"; task.message = "正在处理…"; save(task);
       for (let step = 0; step < 12; step++) {
         current(task, signal);
         const snapshot = store.getSnapshot(task.accountId, task.spaceId);
-        if (step === 0 && snapshot.space.version !== task.expectedVersion) throw new SpaceError(409, "version-conflict", "空间已更新，请查看最新内容后再发起操作。");
-        const response = await invoke(task.accountId, "/api/intent", { text: task.text, canvasContext: hostedCanvasContext(snapshot), task: continuation }, signal);
-        if (!response.ok) throw new SpaceError(503, "planner-unavailable", "模型请求暂未完成，请检查连接或稍后重试。");
-        const result: IntentResponse = IntentResponseSchema.parse(await response.json());
+        if (step === 0 && snapshot.space.version !== task.expectedVersion) { task.expectedVersion = snapshot.space.version; save(task); }
+        let result: IntentResponse;
+        try { result = await invokeIntent({ text: planningText, canvasContext: hostedCanvasContext(snapshot), task: continuation }); }
+        catch (error) {
+          if (!(error instanceof SpaceError) || error.code !== "version-conflict" || error.status !== 409) throw error;
+          await replan(); step--; continue;
+        }
         if (result.trace) {
-          traceIds.add(result.trace.id);
+          traces.set(result.trace.id, { taskId: continuation.id });
           try { store.recordDecisionLog(task.accountId, { spaceId: task.spaceId, path: "task", text: task.text, trace: result.trace, outcome: "pending" }); }
           catch { /* logging does not affect task execution */ }
         }
         current(task, signal);
         if (result.kind === "clarify" || result.task?.status === "awaiting_clarification") {
-          task.status = "awaiting_clarification"; task.message = result.message ?? "请补充这次操作的具体要求。"; save(task); return;
+          task.status = "awaiting_clarification"; task.message = result.message ?? "请补充这次操作的具体要求。";
+          task.clarification = result.task?.clarification; save(task); return;
         }
+        if (result.task?.status === "cancelled") { task.status = "cancelled"; task.message = result.message ?? "已取消尚未执行的操作。"; save(task); return; }
         if (result.kind === "error" || result.kind === "unknown" || result.task?.status === "failed") {
           task.status = "failed"; task.message = result.message ?? "未执行这次操作，请补充要求。"; save(task); return;
         }
         if (result.envelope || result.hostOperation) {
-          const executionId = result.task?.executionId ?? `step_${digest({ task: task.id, step })}`;
+          const executionId = result.task?.executionId ?? `step_${digest({ task: task.id, step, proposal: continuation.id })}`;
           const commandId = `exec_${digest({ task: task.id, executionId })}`;
-          store.transaction(() => {
+          const mutation = result.envelope?.actions.filter(action => !["card.focus", "card.highlight", "canvas.fit", "canvas.restore", "stage.awaken", "stage.sleep", "subtitle.show", "subtitle.hide"].includes(action.type)) ?? [];
+          const operations = result.hostOperation ? [result.hostOperation] : mutation.map(action => action.type === "card.create"
+            ? createdContent(action.card) : action);
+          const signatures = operations.map(executionSignature);
+          const next = structuredClone(task);
+          try { store.transaction(() => {
             current(task, signal);
             if (store.getSnapshot(task.accountId, task.spaceId).space.version !== snapshot.space.version) throw new SpaceError(409, "version-conflict", "空间在处理期间已更新，旧提案未应用。");
             if (task.executions.includes(executionId)) throw new SpaceError(409, "repeated-step", "服务返回了重复步骤，已停止后续执行。");
+            if (task.conflictRetries && signatures.some(signature => task.executionSignatures?.includes(signature)))
+              throw new SpaceError(409, "repeated-step", "重新规划包含已保存的步骤，已停止以免重复执行；请仅重发剩余要求。");
             if (result.envelope) {
               const actions = result.envelope.actions;
               const focus = actions.findLast(action => action.type === "card.focus");
-              if (focus?.type === "card.focus") task.focusCardId = focus.targetId;
-              const mutation = actions.filter(action => !["card.focus", "card.highlight", "canvas.fit", "canvas.restore", "stage.awaken", "stage.sleep", "subtitle.show", "subtitle.hide"].includes(action.type));
+              if (focus?.type === "card.focus") next.focusCardId = focus.targetId;
               if (mutation.length) {
                 store.applyEnvelope(task.accountId, task.spaceId, { requestId: commandId, expectedVersion: snapshot.space.version,
                   envelope: { ...result.envelope, requestId: commandId, actions: mutation } }, task.deviceId);
-                task.createdCardIds.push(...mutation.flatMap(action => action.type === "card.create" ? [action.card.id] : []));
+                next.createdCardIds.push(...mutation.flatMap(action => action.type === "card.create" ? [action.card.id] : []));
               }
-            } else runOperation(task, result.hostOperation!, commandId, snapshot.space.version);
-            task.executions.push(executionId); task.message = task.focusCardId ? "已找到卡片，打开Space查看。" : result.envelope?.spokenText ?? "已执行并保存。"; save(task);
-          });
+            } else runOperation(next, result.hostOperation!, commandId, snapshot.space.version);
+            next.executions.push(executionId); next.executionSignatures = [...next.executionSignatures ?? [], ...signatures];
+            next.completedSteps = [...next.completedSteps ?? [], ...(result.hostOperation ? [JSON.stringify(result.hostOperation)] : mutation.map((action, index) =>
+              JSON.stringify(action.type === "card.create" ? { ...operations[index], cardId: action.card.id } : operations[index])))];
+            next.message = next.focusCardId ? "已找到卡片，打开Space查看。" : result.envelope?.spokenText ?? "已执行并保存。"; save(next);
+          }); } catch (error) {
+            if (!(error instanceof SpaceError) || error.code !== "version-conflict" || error.status !== 409) throw error;
+            await replan(); step--; continue;
+          }
+          Object.assign(task, next);
+          mark(continuation.id, "succeeded");
           if (!result.task) { task.status = "succeeded"; save(task); return; }
-          continuation = { id: task.businessTaskId, receipt: { executionId, status: "succeeded", createdCardIds: task.createdCardIds } };
+          continuation = { id: task.businessTaskId, receipt: { executionId, status: "succeeded", createdCardIds: [...task.createdCardIds] } };
           continue;
         }
         task.status = "succeeded"; task.message = task.focusCardId ? "已找到卡片，打开Space查看。" : result.message ?? "已完成。"; save(task); return;
@@ -165,10 +243,11 @@ export function createHostedTaskService(options: { store: HostedSpaceStore; invo
     } finally {
       const outcome = task.status === "awaiting_clarification" ? "clarify"
         : task.status === "succeeded" ? "succeeded" : task.status === "running" ? "pending" : "failed";
-      for (const traceId of traceIds) {
+      for (const [traceId, trace] of traces) if (!trace.outcome) {
         try { store.setDecisionOutcome(task.accountId, traceId, outcome); }
         catch { /* telemetry does not change the task outcome */ }
       }
+      budget.dispose();
     }
   }
   async function handle(request: Request, identity: SpaceIdentity): Promise<Response | null> {
@@ -207,11 +286,14 @@ export function createHostedTaskService(options: { store: HostedSpaceStore; invo
     if (input.continuationTaskId && previous?.status !== "awaiting_clarification") throw new SpaceError(409, "stale-clarification", "原问题已结束或失效，请重新发送完整要求。");
     const task: HostedTaskRecord = { ...input, id: input.requestId, spaceId: spaceId!, accountId: identity.accountId, deviceId: identity.device.id,
       businessTaskId: previous?.businessTaskId ?? input.requestId, status: "accepted", message: "已接受，正在等待处理。", fingerprint,
-      createdAt: now(), createdCardIds: [], executions: [] };
+      createdAt: now(), createdCardIds: [...previous?.createdCardIds ?? []], executions: [...previous?.executions ?? []],
+      turns: [...previous?.turns ?? (previous ? [{ text: previous.text }] : []), { text: input.text,
+        ...(previous ? { question: previous.clarification?.question ?? previous.message, candidates: previous.clarification?.candidates } : {}) }],
+      completedSteps: [...previous?.completedSteps ?? []], executionSignatures: [...previous?.executionSignatures ?? []], conflictRetries: previous?.conflictRetries ?? 0 };
     store.transaction(() => { store.assertDeviceActive(identity.accountId, identity.device.id); save(task);
       if (previous) { previous.status = "cancelled"; previous.message = "已通过后续答复继续此问题。"; save(previous); } });
     const controller = new AbortController(), job = { controller, task, done: Promise.resolve() };
-    const deadline = setTimeout(() => controller.abort(new DOMException("Task budget exceeded", "TimeoutError")), 180_000); deadline.unref();
+    const deadline = setTimeout(() => controller.abort(new DOMException("Task budget exceeded", "TimeoutError")), 90_000); deadline.unref();
     active.set(scope, job);
     job.done = Promise.resolve().then(() => run(task, controller.signal)).finally(() => { clearTimeout(deadline); if (active.get(scope) === job) active.delete(scope); });
     return responseFor(task, 202);
