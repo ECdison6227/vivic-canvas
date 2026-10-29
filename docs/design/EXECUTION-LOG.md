@@ -4,12 +4,12 @@
 
 ## 当前线上状态
 
-- 后端：容器 `vivic-preview-20261027`，镜像 `vivic-api:4971be43678577e44038c7507f2f5820bd69a5f0`，运行源码来自 Git `4971be4`。
+- 后端：容器 `vivic-preview-20261027`，镜像 `vivic-api:3b91986a93bc9c89c7907dbb8247d5fdb8663396`，运行源码来自 Git `3b91986`。
 - 决策模式：on（仅显式批准名单，未开启旧native-v2执行门控）
 - 已放开的类别：countdown、todo、note、overview、restore
 - 前端：`frontend-current` → 同事维护，执行模型不改
-- 当前阶段：E功能已部署并做隔离线上验收，继续F卡片包；2026-11-06的一周撤销率复核尚待真实数据。D首轮纠错与复杂创作质量仍按真实报告保留，不误称全部达标。
-- 磁盘：`df -h` 当前可用约 9.9G；root 密码按用户要求未改。
+- 当前阶段：F1–F4后端已部署且真实验收通过；F5指南与包已准备，等待前端v0.2对接和用户亲试，停在检查点4，未进入G。2026-11-06的一周撤销率复核尚待真实数据。D首轮纠错与复杂创作质量仍按真实报告保留，不误称全部达标。
+- 磁盘：当前可用约9.78GiB；root密码按用户要求未改。
 - 序号定位安全修复 `a6bdcbf` 已随 D 发布；C5 完整集指标仍对应 6c7e3e3，不混充为 D 的真实模型生成指标。
 
 ## 基线失败
@@ -191,9 +191,9 @@ tests/helpers.ts(8,23): TS2322: modelApiBaseUrl is string | undefined, but Local
 
 - [x] F1 manifest v0.2
 - [x] F2 安装接口
-- [x] F3 动态类别（本地通过，线上验收待部署）
-- [x] F4 扩展卡参数（本地通过，线上验收待部署）
-- [ ] F5 做卡指南（🛑 检查点 4）
+- [x] F3 动态类别（已部署，真实路由通过）
+- [x] F4 扩展卡参数（已部署，真实填参与提交通过）
+- [ ] F5 做卡指南（文档与示例完成；🛑 检查点4待前端升级和用户亲试）
 
 ## F1 实施（2026-10-30，Codex + Kuhn）
 
@@ -222,6 +222,24 @@ tests/helpers.ts(8,23): TS2322: modelApiBaseUrl is string | undefined, but Local
 - 同时校验manifest.slots、dataSchema及完整实例。data的数字、日期、HTTP链接必须来自本次用户事实；config/state可使用自身显式默认值，其数字不成为data的事实依据。URL先规范化，不能用大小写或空白绕过来源校验。
 - 旧generate/场景别名入口采用相同校验。超大参数表明确追问并建议精简，不截断。单卡新建缺少镜头动作时补card.focus，未增加focus分类直执授权。
 - 扩展路由32项与填参15项定向通过；包含于最终2019项全量通过结果。真实模型与正常owner提交将在部署后单独报告，不以模拟测试代替。
+
+## E后续观察工具（2026-10-30，Codex + Kuhn）
+
+- 报告脚本识别answer的NewsCard或字幕、合法ext.ID与ExtensionCard，扩展类别单独统计；增加conflict，撤销率分母仅使用succeeded，保留所有记录数，不把行为代理当真实准确率。
+- 新增--mode、--routes、--exclude-evaluation，参数绑定；SQL仅提取聚合元数据，不读取用户原话、完整画布或图片。序列化远端执行程序也用独立fake DB验证。
+- `node --test scripts/decision-report.test.mjs`为49/49通过。供2026-11-06手动执行`node scripts/decision-report.mjs --hours 168 --mode on --exclude-evaluation`；尚无一周数据，未运行该窗口报告、未创建定时任务。
+
+## F5与线上验收（2026-10-30，Codex + Boyle + Leibniz）
+
+- 后端3b91986已集中部署，依赖导入、暂存/生产SQLite及健康检查通过。前端补丁同步无新增，指针保持同事unified-background-20261029-1/web，未修改静态文件；Mac决策服务loaded、pending=0。
+- v0.2健身包和独立v0.1兼容包已打包，目录/ZIP均通过检查。做卡指南覆盖五个核心文件、九种组件、bind、examples、Schema子集、config/data/state、打包及账号服务器接口。根脚本在本机缺pnpm shim会失败；已补充验证通过的corepack直接调用备用命令。
+- 正常API在独立evaluation账号连接StepFun step-3.7-flash，真实5/5通过。40分钟原话生成当天/背/40，4328ms；非例句35分钟表达正确且保留前卡，8280ms；缺时长追问3011ms，900越界追问24210ms；停用后不选扩展卡，但普通note流程耗时36270ms。路由P50/P95=1716/1961ms；主模型共6次，ext直执0。
+- 包安装/列表、真实ZIP导出相同canonical hash、启停均通过；两张真实卡正常owner持久化并收到2次完成回执，引用版本卸载返回409。脚本finally恢复空Space、空资产和原包目录，未制造成功回执。
+- 线上浏览器实际加载的运行时SHA256为624a638c8815df2758d2b195958be3f6a53c48ab06d9ef3bce55bad6100bbdfb，仍只支持0.1。真实v0.2卡显示暂不可用；相同事实换独立v0.1引用可显示日期/背/40。两次页面0个pageerror，测试后再次清空。兼容显示测试不算v0.2 UI通过或v0.1自然语言验收。
+- 托管设置无.vivicard上传控件，旧ExtensionManager仅本地IndexedDB。具体运行时升级、同源服务器包管理、定义刷新与用户验收写入FRONTEND-REQUESTS.md，按手册不自行覆盖同事前端。
+- 最终健康ok、主页200、on名单仍为5类、磁盘9.78GiB。评测模型已断开，临时服务器/容器/本机会话凭据均已移除，原评测账号私有凭据保留。
+- 报告docs/design/F-卡片包验收-20261030.md；原始真实结果和网页证据在evals/decision/live/f-*.json，截图在docs/design/evidence/f-20261030。24秒/36秒长尾如实保留，不宣称日常低延迟达标。
+- 按F5检查点4停下：前端对接完成后请用户亲试，再明确继续进入G；飞书消息、后训练继续暂缓，root密码不改。
 
 ## 阶段 G
 
