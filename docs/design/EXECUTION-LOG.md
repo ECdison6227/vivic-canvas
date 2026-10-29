@@ -8,7 +8,7 @@
 - 决策模式：off（尚未接入）
 - 已放开的类别：无
 - 前端：`frontend-current` → 同事维护，执行模型不改
-- 当前检查点：用户已授权清理后继续，最新版已完整备份并完成历史清理；进入 B1。
+- 当前检查点：用户已授权清理后继续；A 与 B 已完成，进入 C 的影子接入准备。现有用户指令仍走原流程，决策模式未打开。
 - 磁盘：当前可用约 9.78GiB；root 密码按用户要求未改。
 
 ## 基线失败
@@ -52,7 +52,7 @@ tests/helpers.ts(8,23): TS2322: modelApiBaseUrl is string | undefined, but Local
 
 - [x] B1 Mac 常驻 vivic-decision
 - [x] B2 worker 转发
-- [ ] B3 网关放行 + 专用密钥
+- [x] B3 网关放行 + 专用密钥
 
 ## 阶段 C
 
@@ -202,3 +202,14 @@ DEPLOY_OK sha=ff981e1ee401c5d3b4e6554d3f40366d64fc4179
 - 通过原 worker 端口请求原生 4B 成功，端到端 1673.3ms；原 ASR 请求成功且有文字，原 laya 分类请求仍成功。
 - ASR、legacy 分类前后独立 4B 模型 PID/generation 保持一致，确认没有进入旧的单模型替换调度。
 - Mac 验收：`decision-service/acceptance-B2.json`。下一项 B3：网关登记模型及最小权限专用 key。
+
+## B3 执行记录（2026-10-29，Codex）
+
+- 新增 `deploy/decision/wire_gateway.py`、`provision_key.py`；网关与权限列表备份后登记 `startlux-decision-4b`，原生 state/questions 已由既有 JSON 转发机制支持，无须改动其他接口。
+- Node 语法检查、网关重启与健康检查成功，HTTPS 证书校验成功。
+- 使用管理员正常登录接口建立 `vivic-backend-decision`，明确限制为 `permissions:['decisions']`；凭据仅通过 SSH stdin 传送，未进入命令行参数、Git 或对话输出。
+- 专用 key、URL、模型名写入服务器 `backend/env.list`（权限 600）；原有其他环境项保留，创建前留了私有备份。
+- 通过公网 HTTPS 网关发送原生 4B 请求返回 200，测试判为 countdown；两分类示例端到端 478.4ms（不作为 16 分类基准）。
+- 同一个 key 请求语音合成返回 403；模型列表只包含 4 个分类模型，包含 4B，不包含 TTS 模型。
+- 验收文件：服务器 `backend/acceptance-B3-20261029.json`，不含任何 key 原文。
+- 当前助手应用尚未接入新路由，下一阶段先影子运行，不改变原指令执行结果。
