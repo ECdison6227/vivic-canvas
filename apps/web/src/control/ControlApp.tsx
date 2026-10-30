@@ -46,6 +46,7 @@ import { hostedClient } from "@/hosted/client";
 import { OwnerDevices } from "@/hosted/OwnerDevices";
 import { ConnectionPanel } from "@/connections/ConnectionPanel";
 import { HostedCardPackages } from "@/hosted/HostedCardPackages";
+import { canPublishTaskFeedback, canPreviewLocalChoice, canReuseLegacyLocalChoice } from "./legacyChoicePolicy";
 
 export const INTENT_TIMEOUT_MS = 100_000;
 
@@ -499,13 +500,17 @@ export const ControlApp = () => {
           setBackendOnline(true);
           // In explicit legacy fallback, retain the old exact target chooser.
           // Only its clarification UI is reused; never bypass a rejected task by executing its envelope.
-          if (!result.executed && !attachments?.length && result.task?.decision === "legacy-fallback" && ["unknown", "clarify", "error"].includes(result.kind)) {
+          if (!result.executed && !attachments?.length && result.task?.decision === "legacy-fallback" && ["unknown", "error"].includes(result.kind)) {
             const choice = parseCommand(trimmed, { state: canvasStore.getState(), canvasId: activeCanvasId });
-            if (choice.kind === "clarify") { void cancelDecisionTask(host, result.task.id); applyResult(host, choice); return; }
+            if (choice.kind === "clarify" && canReuseLegacyLocalChoice(result, choice.action)) { void cancelDecisionTask(host, result.task.id); applyResult(host, choice); return; }
           }
           if (result.task || result.executed || result.handled) {
             const message = result.message ?? (result.task?.status === "completed" ? "已完成并保存。" : "操作未完成，请重试。");
-            setFeedback(message); publishFeedback(host, message); setSuggestions(result.suggestions ?? []);
+            setFeedback(message);
+            // A question freezes the canvas version. Persisting its subtitle
+            // would invalidate the very confirmation it asks the user to send.
+            if (canPublishTaskFeedback(result)) publishFeedback(host, message);
+            setSuggestions(result.suggestions ?? []);
             if (result.kind === "clarify" && result.task?.status === "awaiting_clarification") previousQuestion.current = {
               canvasId: activeCanvasId, utterance: continuation?.utterance ?? trimmed,
               question: message.slice(0, 180), at: Date.now(), taskId: result.task.id,
@@ -715,6 +720,8 @@ const ControlShell = (props: ShellProps) => {
         onSubmit={props.onSubmit}
         onPickClarify={props.onPickClarify}
         onPreviewClarify={candidate => {
+          // A server-owned choice freezes the canvas version until its reply.
+          if (!canPreviewLocalChoice(props.clarify)) return;
           const current = props.host.getSnapshot();
           if (current.ownerMode === "owner" && current.activeCanvasId === props.clarify?.canvasId) {
             props.host.dispatch({ schemaVersion: "0.6", requestId: newId("preview"), canvasId: current.activeCanvasId,

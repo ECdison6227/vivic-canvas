@@ -1,4 +1,9 @@
 /* News card. A cover (when present) runs edge to edge; the text column keeps the shell rhythm. */
+.vivic-display-root .vivic-card[data-scene-type="NewsCard"] {
+  --surface-fill: var(--hark-solid, rgba(255, 255, 255, .96));
+  /* Display's lazy-loaded legacy chunk also declares a transparent surface. */
+  background: var(--hark-solid, rgba(255, 255, 255, .96)) !important;
+}
 .vivic-news-layout { display: flex; flex-direction: column; min-width: 0; }
 .vivic-scene[data-fixed] .vivic-news-layout { flex: 1 1 0; min-height: 0; contain: size; overflow: hidden; }
 .vivic-news-cover { position: relative; flex: none; overflow: hidden; background: var(--vivic-subtle); }

@@ -1,5 +1,11 @@
 # 当前线上前端的完整恢复备份
 
+2026-10-30最终版本：`clarification-guard-20261030-2`，基于同事最新voice-v4并保留新语音/背景/传送，含对比度与完整删除确认修复。完整包`frontend-clarification-guard-20261030-2.zip`，28,453,662字节，2308文件/528对象，SHA256 `edcebce1956a9eb5f9a152b5c421dd2f6c7533423ba58e285d0b7e9813c0094f`；全部对象校验通过。
+
+发布前voice-v4完整包`frontend-voice-v4-20261030-1.zip`，27,588,746字节、2100文件/503对象，SHA256 `fb5a703f0842b4320a93ca93463cddd9c4a5b2b1e7bdcee122a9ac6c57221dd4`。当前回滚入口为`python scripts/publish-current-question-flow.py --rollback`，操作前核对当前仍为最终补丁；旧版回滚命令不适用于新版。
+
+以下保留F5与中间修复版本的快照。最新验收见`docs/design/G-演示与交接验收-20261030.md`。
+
 2026-10-30最新版：`card-packages-20261030-1`，文件 `frontend-card-packages-20261030-1.zip`（26,208,695字节，1866文件/456对象），SHA256 `2315e0ebe4ad011aa16601a12ce1fd315b748cadef6daaac32b077428239d887`。同样使用下列snapshot.py verify/restore命令，替换ZIP文件名即可，无需前端依赖。
 
 发布前原页面的当日完整备份 `frontend-before-card-packages-20261030.zip`（24,786,943字节，1673文件/423对象），SHA256 `58d69d7057aea202e8b2953a1e04f515a0db63499726758d65983b32108376f2`。保留了10月30日在原发布目录内新增的v54入口、v57样式等资源。当前版本的部署和边界见 `docs/design/F5-网页卡包接入验收-20261030.md`。

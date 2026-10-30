@@ -6,6 +6,7 @@ import { createRequire } from 'node:module';
 import { randomUUID } from 'node:crypto';
 import assert from 'node:assert/strict';
 import { contextFor } from './replay-eval.mjs';
+import { confirmedOwnerWrite } from './eval-owner-write.mjs';
 const argv=process.argv.slice(2),arg=key=>argv[argv.indexOf(key)+1];
 for(const key of ['--credentials','--output','--image','--package'])assert(argv.includes(key),'Missing '+key);
 const c=JSON.parse(readFileSync(arg('--credentials'),'utf8'));assert(c.evaluation&&c.username.startsWith('decision-eval-'));
@@ -17,7 +18,7 @@ const owner=`/api/space/owner/canvases/${c.spaceId}`,run=randomUUID().replaceAll
 const report={at:new Date().toISOString(),realModel:true,cases:[],visualSamples:[],complete:false,cleanup:{}};
 let entry,original,installed,initialAssets=[];
 async function api(path,method='GET',data){const response=await fetch(new URL(path,c.origin),{method,headers:{Cookie:c.cookie,Origin:c.origin,...(data===undefined?{}:{'Content-Type':'application/json'})},...(data===undefined?{}:{body:JSON.stringify(data)}),signal:AbortSignal.timeout(110000)});assert(response.ok,`Demo API ${response.status} ${path}`);return response.json();}
-async function save(record,label){entry=await api(owner);entry=await api(owner,'PUT',{record:{...record,version:entry.record.version+1,updatedAt:new Date().toISOString()},expectedVersion:entry.serverVersion,requestId:`g_demo_${run}_${label}_${randomUUID().slice(0,6)}`});}
+async function save(record,label){entry=await api(owner);const saved=await confirmedOwnerWrite(api,c.spaceId,{record:{...record,version:entry.record.version+1,updatedAt:new Date().toISOString()},expectedVersion:entry.serverVersion,requestId:`g_demo_${run}_${label}_${randomUUID().slice(0,6)}`});entry=saved.entry;return saved;}
 async function invoke(id,text,attachments){
   const taskId=`g_demo_${run}_${id}`,started=performance.now(),result=await api('/api/intent','POST',{text,canvasContext:contextFor(entry.record,entry.serverVersion),task:{id:taskId},...(attachments?{attachments}:{})});
   const row={id,text,elapsedMs:Math.round(performance.now()-started),kind:result.kind,trace:result.trace||null,checks:{}};report.cases.push(row);
@@ -40,6 +41,9 @@ try{
   image.checks.retainedImage=/^media:image_[a-f0-9]{64}$/.test(news.displayProps.image||'');assert(image.checks.retainedImage);
   const asset=await api(`/api/space/spaces/${c.spaceId}/assets/${news.displayProps.image.slice(6)}`);assert.equal(asset.asset.kind,'image');image.checks.assetStored=true;
   await save(original,'clear-image');
+  const multi=await invoke('multi','帮我记个便签出门带钥匙，再设个10分钟倒计时');
+  multi.checks.bothRequestsPresent=multi.created.some(card=>card.type==='NoteCard'&&card.displayProps.text.includes('钥匙'))&&multi.created.some(card=>card.type==='CountdownCard'&&Date.parse(card.sourceData.targetAt)-Date.parse(card.sourceData.startedAt)===600000);assert(multi.checks.bothRequestsPresent);
+  await save(original,'clear-multi');
   const form=new FormData();form.set('file',new Blob([readFileSync(arg('--package'))],{type:'application/zip'}),'fitness-log-v02.vivicard');
   const uploaded=await fetch(new URL('/api/space/cards',c.origin),{method:'POST',headers:{Cookie:c.cookie,Origin:c.origin},body:form});assert(uploaded.ok);installed=(await uploaded.json()).record;
   const fitness=await invoke('extension','今天练了40分钟背');const card=fitness.created.find(card=>card.type==='ExtensionCard');assert(card);
