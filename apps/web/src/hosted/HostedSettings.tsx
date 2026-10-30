@@ -8,6 +8,7 @@ import { DecisionModelSettings, type HostedDecisionProbe } from "./DecisionModel
 import type { DecisionConnectionStatus, DecisionModelId } from "./decisionModelStatus";
 import { useHostedAssets } from "@/hostedAssets/HostedAssets";
 import { useRefreshHostedDefinitions } from "./HostedDefinitions";
+import { HostedCardPackages } from "./HostedCardPackages";
 
 interface Providers { activeProvider?: string; providers: { name: string; connected: boolean; defaultModel?: string }[] }
 interface HostedModels { configured: boolean; message?: string; decision?: DecisionConnectionStatus }
@@ -76,6 +77,7 @@ export function HostedSettings({ session, snapshot, theme, palette, onTheme, onP
           }); }} />
       </details>
     </section>
+    <HostedCardPackages />
     <section><h3>数据</h3><div className="hosted-setting-row"><span>原件</span><button className="hosted-quiet" onClick={() => { onClose(); setTimeout(() => assets.manageAssets(), 0); }}>管理</button></div><div className="hosted-setting-row"><span>旧浏览器数据</span><button className="hosted-quiet" onClick={() => { onClose(); setTimeout(onImport, 0); }}>导入此浏览器旧 Space</button></div><div className="hosted-setting-row"><span>当前 Space</span><button className="hosted-quiet" disabled={!snapshot} onClick={() => {
       if (!snapshot) return; const url = URL.createObjectURL(new Blob([JSON.stringify(snapshot.space, null, 2)], { type: "application/json" })); const anchor = document.createElement("a"); anchor.href = url; anchor.download = "vivic-space.json"; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
     }}><HarkIcon name="download" />导出</button></div></section>

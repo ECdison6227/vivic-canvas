@@ -45,6 +45,7 @@ import { ONLINE_BUILD, OWNER_ONLINE_BUILD } from "@/online/mode";
 import { hostedClient } from "@/hosted/client";
 import { OwnerDevices } from "@/hosted/OwnerDevices";
 import { ConnectionPanel } from "@/connections/ConnectionPanel";
+import { HostedCardPackages } from "@/hosted/HostedCardPackages";
 
 export const INTENT_TIMEOUT_MS = 100_000;
 
@@ -741,7 +742,7 @@ const ControlShell = (props: ShellProps) => {
           ? <OnlineMobileControlSettings host={props.host} disabled={readonly || !snap.ready} desktopBusy={props.desktopBusy} />
           : <MobileControlSettings host={props.host} disabled={readonly || !snap.ready} desktopBusy={props.desktopBusy} />}
         permissions={<LocationSettings disabled={readonly} compact />}
-        data={<>{OWNER_ONLINE_BUILD && <section className="se-data"><h3>账号</h3><button type="button" className="se-button" onClick={() => { props.onCancel(); void hostedClient.logout().then(() => window.location.assign("/")); }}>退出登录</button></section>}<DataActions host={props.host} readonly={readonly || !snap.ready} onBeforeClear={props.onCancel} compact /></>}
+        data={<>{OWNER_ONLINE_BUILD && <><section className="se-data"><h3>账号</h3><button type="button" className="se-button" onClick={() => { props.onCancel(); void hostedClient.logout().then(() => window.location.assign("/")); }}>退出登录</button></section><HostedCardPackages /></>}<DataActions host={props.host} readonly={readonly || !snap.ready} onBeforeClear={props.onCancel} compact /></>}
       />} />
     </div>
   );

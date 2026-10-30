@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import type { CardDefinition } from "@vivic/card-runtime";
 import { HostedDefinitionContext } from "@/extensions/HostedDefinitionScope";
 import { hostedRequest } from "./client";
+import { announceDefinitionChange, DEFINITION_CHANGE_CHANNEL, DEFINITION_CHANGE_EVENT } from "./definitionChanges";
 
 const RefreshContext = createContext<() => void>(() => {});
 export const useRefreshHostedDefinitions = () => useContext(RefreshContext);
@@ -12,6 +13,12 @@ interface DefinitionState { loading: boolean; definitions: Map<string, CardDefin
 export function HostedDefinitions({ enabled, children }: { enabled: boolean; children: ReactNode }) {
   const [revision, setRevision] = useState(0), [state, setState] = useState<DefinitionState>(() => ({ loading: enabled, definitions: new Map() }));
   const refresh = useCallback(() => setRevision(value => value + 1), []);
+  useEffect(() => {
+    window.addEventListener(DEFINITION_CHANGE_EVENT, refresh);
+    const channel = typeof BroadcastChannel === "undefined" ? null : new BroadcastChannel(DEFINITION_CHANGE_CHANNEL);
+    if (channel) channel.onmessage = event => { if (event.data === "changed") refresh(); };
+    return () => { window.removeEventListener(DEFINITION_CHANGE_EVENT, refresh); channel?.close(); };
+  }, [refresh]);
   useEffect(() => {
     if (!enabled) { setState({ loading: false, definitions: new Map() }); return; }
     const controller = new AbortController(); setState({ loading: true, definitions: new Map() });
@@ -32,5 +39,5 @@ export function HostedDefinitions({ enabled, children }: { enabled: boolean; chi
     return () => controller.abort();
   }, [enabled, revision]);
   const scope = useMemo(() => ({ loading: state.loading, error: state.error, get: (reference: { id: string; version: string; hash: string }) => state.definitions.get(referenceKey(reference)) }), [state]);
-  return <RefreshContext value={refresh}><HostedDefinitionContext value={scope}>{children}</HostedDefinitionContext></RefreshContext>;
+  return <RefreshContext value={announceDefinitionChange}><HostedDefinitionContext value={scope}>{children}</HostedDefinitionContext></RefreshContext>;
 }
