@@ -29,6 +29,10 @@ bundle="$DIR/bundles/$sha"
 mkdir -p "$bundle"
 tar -xf "$DIR/uploads/$sha.tar" -C "$bundle" --no-same-owner
 base=$(docker inspect --format '{{.Config.Image}}' "$CURRENT")
+baseline_image=$(docker inspect --format '{{.Image}}' "$CURRENT")
+if [[ -n ${VIVIC_EXPECTED_IMAGE_ID:-} && "$baseline_image" != "$VIVIC_EXPECTED_IMAGE_ID" ]]; then
+  echo 'Production backend changed; refresh and merge before deployment' >&2; exit 1
+fi
 [[ $(docker image inspect --format '{{.Id}}' "$base") == $(docker inspect --format '{{.Image}}' "$CURRENT") ]]
 image="vivic-api:$sha"
 docker build --build-arg "BASE=$base" --build-arg "REVISION=$sha" \
@@ -101,6 +105,7 @@ docker exec "$STAGE" node --no-warnings --input-type=module -e \
 if docker inspect "$PREVIOUS" >/dev/null 2>&1; then
   docker rm "$PREVIOUS" >/dev/null
 fi
+[[ $(docker inspect --format '{{.Image}}' "$CURRENT") == "$baseline_image" ]] || { echo 'Production changed during staging' >&2; exit 1; }
 docker stop --time 15 "$CURRENT" >/dev/null
 old_stopped=1
 backup="/opt/vivic-preview-20261025/backups/db-$(date +%Y%m%dT%H%M%S)-$$"

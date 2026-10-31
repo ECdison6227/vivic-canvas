@@ -61,3 +61,6 @@ export function createOwnerDB(): VivicDB {
 }
 
 export function invalidateOwnerDB() { loadedAt = 0; }
+
+/** Read-only synchronization hint. It never advances an editor's expected version. */
+export function getOwnerServerVersion(id: string): number | undefined { return saved.get(id)?.serverVersion; }

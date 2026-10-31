@@ -3,10 +3,35 @@ import fs from "node:fs";
 import path from "node:path";
 
 export const STEPFUN_PLAN_BASE_URL = "https://api.stepfun.com/step_plan/v1";
+export const DEEPSEEK_BASE_URL = "https://api.deepseek.com";
+export const DEFAULT_DEEPSEEK_MODEL = "deepseek-flash";
 export const INFERENCE_TIMEOUT_MS = 60_000;
 export const CONNECTION_TIMEOUT_MS = 30_000;
 export const SPEECH_TIMEOUT_MS = 15_000;
 export const INTENT_BUDGET_MS = 90_000;
+
+/** Main planning provider. Unset or unrecognized keeps today's StepFun path. */
+export type MainProvider = "stepfun" | "deepseek";
+
+export const parseMainProvider = (value: string | undefined): MainProvider =>
+  value?.trim().toLowerCase() === "deepseek" ? "deepseek" : "stepfun";
+
+/** Planner output cap: 1024–8192, default 4096 (the old 8192 amplified latency). */
+export const PLAN_MAX_TOKENS = 4096;
+export const MIN_PLAN_MAX_TOKENS = 1024;
+export const MAX_PLAN_MAX_TOKENS = 8192;
+
+export const parsePlanMaxTokens = (value: unknown): number => {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= MIN_PLAN_MAX_TOKENS && parsed <= MAX_PLAN_MAX_TOKENS
+    ? parsed : PLAN_MAX_TOKENS;
+};
+
+/** A fixed model id: no /models discovery on the official DeepSeek fast path. */
+export const parseDeepseekModel = (value: string | undefined): string => {
+  const model = value?.trim();
+  return model && /^[a-zA-Z0-9_.-]{1,128}$/.test(model) ? model : DEFAULT_DEEPSEEK_MODEL;
+};
 
 /** Invalid overrides fall back; no individual request may exceed a turn. */
 export const boundedTimeout = (value: unknown, fallback: number): number => {
@@ -14,6 +39,32 @@ export const boundedTimeout = (value: unknown, fallback: number): number => {
   return Number.isFinite(parsed) && parsed >= 1
     ? Math.min(Math.floor(parsed), INTENT_BUDGET_MS) : fallback;
 };
+
+/**
+ * Same-turn first-sentence feedback on the authenticated SSE route is ON by
+ * default, matching today's behavior. Only an explicit `off` (case/whitespace
+ * insensitive) turns it off; unset, `on` and unrecognized values keep the
+ * default so a typo cannot silently change what production clients receive.
+ */
+export const streamFeedbackEnabled = (value: string | undefined): boolean =>
+  value?.trim().toLowerCase() !== "off";
+
+/**
+ * Online provider settings persist next to the hosted Space data by default.
+ * Only an explicit `off` keeps them in process memory (the pre-PR3 online
+ * behaviour); a typo must not silently stop persistence.
+ */
+export const providerPersistEnabled = (value: string | undefined): boolean =>
+  value?.trim().toLowerCase() !== "off";
+
+/**
+ * Directory that owns `providers.json` and the local `.secret-key`. Online
+ * deployments already keep durable state under VIVIC_SPACE_DATA_DIR; a
+ * dedicated VIVIC_PROVIDER_DATA_DIR wins when an operator wants settings on a
+ * separate volume. Forgetting both keeps the old in-memory behaviour.
+ */
+export const providerDataDirFromEnv = (env: NodeJS.ProcessEnv = process.env): string | undefined =>
+  env.VIVIC_PROVIDER_DATA_DIR?.trim() || env.VIVIC_SPACE_DATA_DIR?.trim() || undefined;
 
 /**
  * Local session auth: a random bearer token lives ONLY in
@@ -30,6 +81,16 @@ export interface LocalApiConfig {
   tokenGenerated: boolean;
   allowedOrigins: string[];
   stepfunBaseUrl: string;
+  /** `stepfun` (default, today's behavior) or the official DeepSeek fast path. */
+  mainProvider?: MainProvider;
+  /** Official DeepSeek base; only used when `mainProvider` is `deepseek`. */
+  deepseekBaseUrl?: string;
+  /** Fixed planner model for DeepSeek; no `/models` discovery. */
+  deepseekModel?: string;
+  /** `DEEPSEEK_API_KEY`, memory only: never persisted, logged or serialized. */
+  deepseekApiKey?: string;
+  /** Planner max_tokens (1024–8192); default 4096. Reminders stay at 4096. */
+  planMaxTokens?: number;
   /** User's own model platform. Key is supplied later and kept only in memory. */
   modelApiBaseUrl: string;
   requestTimeoutMs: number;
@@ -38,6 +99,8 @@ export interface LocalApiConfig {
   asrTimeoutMs?: number;
   searchEnabled?: boolean;
   publicDnsFallback?: boolean;
+  /** SSE-only same-turn first sentence; `VIVIC_STREAM_FEEDBACK=off` disables. Default on. */
+  streamFeedback?: boolean;
   /** Keyless search egress: `auto` (env > OS proxy), `direct`, or a proxy URL. Unset = direct. */
   searchProxy?: string;
   /** Optional independent DEC-01 provider; unset preserves Kev-only behavior. */
@@ -104,12 +167,18 @@ export const loadConfig = (
       .map((s) => s.trim())
       .filter(Boolean),
     stepfunBaseUrl: (env.STEPFUN_BASE_URL ?? STEPFUN_PLAN_BASE_URL).replace(/\/+$/, ""),
+    mainProvider: parseMainProvider(env.VIVIC_MAIN_PROVIDER),
+    deepseekBaseUrl: (env.VIVIC_DEEPSEEK_BASE_URL?.trim() || DEEPSEEK_BASE_URL).replace(/\/+$/, ""),
+    deepseekModel: parseDeepseekModel(env.VIVIC_DEEPSEEK_MODEL),
+    deepseekApiKey: env.DEEPSEEK_API_KEY?.trim() || undefined,
+    planMaxTokens: parsePlanMaxTokens(env.VIVIC_PLAN_MAX_TOKENS),
     modelApiBaseUrl: (env.VIVIC_MODEL_API_BASE_URL ?? "https://edsionc.top/api/v1").replace(/\/+$/, ""),
     requestTimeoutMs: boundedTimeout(env.VIVIC_REQUEST_TIMEOUT_MS, INFERENCE_TIMEOUT_MS),
     connectionTimeoutMs: boundedTimeout(env.VIVIC_CONNECTION_TIMEOUT_MS, CONNECTION_TIMEOUT_MS),
     speechTimeoutMs: boundedTimeout(env.VIVIC_SPEECH_TIMEOUT_MS, SPEECH_TIMEOUT_MS),
     asrTimeoutMs: boundedTimeout(env.VIVIC_ASR_TIMEOUT_MS, 30000),
     searchEnabled: env.VIVIC_SEARCH_ENABLED !== "false",
+    streamFeedback: streamFeedbackEnabled(env.VIVIC_STREAM_FEEDBACK),
     searchProxy: env.VIVIC_SEARCH_PROXY?.trim() || "auto",
     decisionProviderUrl: env.VIVIC_DECISION_PROVIDER_URL?.trim() || undefined,
     decisionProviderFallbackUrl: env.VIVIC_DECISION_PROVIDER_FALLBACK_URL?.trim() || undefined,

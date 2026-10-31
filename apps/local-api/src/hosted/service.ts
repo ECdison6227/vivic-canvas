@@ -1,14 +1,18 @@
 import { createHash, randomBytes } from "node:crypto";
+import path from "node:path";
+import { existsSync } from "node:fs";
+import { ProviderStore } from "../providers/store.js";
 import { z } from "zod";
 import { createSpaceHandler, SpaceError, type SpaceIdentity } from "../space/index.js";
 import { createOnlineSessionApp } from "../online/appFactory.js";
 import { createModelApiClient, type ModelApiClient, type ModelApiDecisionModel } from "../modelApi/index.js";
 import { createHostedAssetService } from "./assets.js";
+import { createHostedEvents } from "./events.js";
 import { createHostedTaskService } from "./tasks.js";
 import { createHostedReminderScheduler } from "./reminders.js";
 import { createHostedMigrationService } from "./migration.js";
 import { boundedBytes, hostedBody, hostedFailure, hostedForm, hostedJson } from "./http.js";
-import { ownerRoute } from "./owner.js";
+import { ownerCanvas, ownerRoute } from "./owner.js";
 import { createIntentRouter, type IntentRouter } from "../decision/router.js";
 import { decisionOutcome } from "../decision/logging.js";
 import type { PipelineDeps } from "../intent/pipeline.js";
@@ -28,12 +32,16 @@ export interface HostedServiceOptions {
 }
 const IDLE = 30 * 60_000, MAX_AGE = 8 * 60 * 60_000;
 const DECISION_TEST_INPUT = "请把所有卡片显示在一屏里";
+const DECISION_MODELS = ["startlux-decision-2b", "startlux-decision-4b", "gliner2.5-multi-decide"] as const;
+const DecisionModelSchema = z.enum(DECISION_MODELS);
+const wireProtocol = (model: ModelApiDecisionModel) => model === "startlux-decision-4b" ? "native" as const : "legacy" as const;
 const DECISION_LABELS = {
   fit: "在一屏显示全部卡片", restore: "恢复之前的画布视图", focus: "聚焦一张卡片", delete: "删除卡片",
   expand: "展开便笺并查看全文", collapse: "收起便笺只显示摘要", other: "不明确、否定、复合或其他要求",
 };
-const proxyGet = new Set(["/api/providers/status", "/api/speech/voices", "/api/decision/status", "/api/connections/status"]);
-const proxyPost = new Set(["/api/credentials/stepfun/validate", "/api/credentials/stepfun/disconnect", "/api/credentials/platform/validate", "/api/credentials/platform/disconnect", "/api/providers/select", "/api/providers/model", "/api/intent", "/api/intent/stream", "/api/speech", "/api/files/read", "/api/weather/here", "/api/travel/refresh", "/api/locale", "/api/search", "/api/connections/connect", "/api/connections/disconnect", "/api/connections/query"]);
+const proxyGet = new Set(["/api/providers/status", "/api/speech/voices", "/api/decision/status", "/api/connections/status", "/api/connections/authorization/capabilities"]);
+const proxyPost = new Set(["/api/credentials/stepfun/validate", "/api/credentials/stepfun/disconnect", "/api/credentials/deepseek/validate", "/api/credentials/deepseek/disconnect", "/api/credentials/platform/validate", "/api/credentials/platform/disconnect", "/api/providers/select", "/api/providers/model", "/api/intent", "/api/intent/stream", "/api/speech", "/api/files/read", "/api/weather/here", "/api/travel/refresh", "/api/locale", "/api/search", "/api/connections/connect", "/api/connections/disconnect", "/api/connections/query"]);
+for (const route of ["configure", "test", "ask", "authorization/start", "authorization/poll", "authorization/cancel"]) proxyPost.add(`/api/connections/${route}`);
 
 /** Durable domain data and short-lived model credentials have deliberately separate lifetimes. */
 export function createHostedService(options: HostedServiceOptions) {
@@ -73,7 +81,20 @@ export function createHostedService(options: HostedServiceOptions) {
     }
     if (!value) {
       const token = randomBytes(32).toString("base64url");
-      value = { token, app: createOnlineSessionApp({ token, origin: options.origin }, sessionOptions(accountId)), created: now(), touched: now() };
+      const providerDataDir = path.join(options.dataDir, "account-providers", accountId);
+      // Existing deployment settings were intentionally shared operator defaults.
+      // Copy them once, through their encrypted stores, before account-local edits.
+      // Never use another account's private directory as a template.
+      if (!existsSync(path.join(providerDataDir, "providers.json")) && existsSync(path.join(options.dataDir, "providers.json"))) {
+        const defaults = new ProviderStore({ dataDir: options.dataDir });
+        const scoped = new ProviderStore({ dataDir: providerDataDir });
+        for (const entry of defaults.list()) scoped.create({ name: entry.name, protocol: entry.protocol, baseUrl: entry.baseUrl,
+          apiKey: entry.apiKey, model: entry.model, headers: entry.headers, roles: entry.roles, presetId: entry.presetId, enabled: entry.enabled });
+      }
+      // Provider settings share the deployment's durable data root, so a saved
+      // main/decision provider survives session turnover and process restarts.
+      value = { token, app: createOnlineSessionApp({ token, origin: options.origin },
+        { ...sessionOptions(accountId), providerDataDir }), created: now(), touched: now() };
       apps.set(accountId, value);
     }
     if (activity) value.touched = now(); return value;
@@ -85,8 +106,15 @@ export function createHostedService(options: HostedServiceOptions) {
         ...(trustedImageRef ? { "x-vivic-intent-image-ref": trustedImageRef } : {}) },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }) }));
   }
+  async function invokeMethod(accountId: string, route: string, method: string, body: unknown, signal?: AbortSignal): Promise<Response> {
+    const value = appFor(accountId, true);
+    return value.app.fetch(new Request(`${options.origin}${route}`, { method, signal,
+      headers: { authorization: `Bearer ${value.token}`, origin: options.origin, "content-type": "application/json" },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }) }));
+  }
   const tasks = createHostedTaskService({ store: space.store,
     invoke: (accountId, route, body, signal) => invoke(accountId, route, body, signal, "task"), now });
+  const events = createHostedEvents(space.store, now);
   const migration = createHostedMigrationService({ store: space.store, assetService: assets });
   function modelFor(accountId: string) {
     let session = models.get(accountId);
@@ -127,20 +155,34 @@ export function createHostedService(options: HostedServiceOptions) {
     if (route === "/api/space/models/status" && request.method === "GET") return hostedJson({ configured: Boolean(model?.key),
       capabilities: ["speech", "transcribe", "classification"], inference: "not-tested", quality: "not-tested",
       decision: { configured: Boolean(model?.key && model.decision), model: model?.decision?.model ?? null,
+        wireProtocol: model?.decision ? wireProtocol(model.decision.model) : null,
         executionEnabled: false, protocol: "classification-only", quality: "not-tested", connectedAt: model?.decision?.connectedAt ?? null } });
     if (!model?.key) throw new SpaceError(503, "model-not-connected", "请在连接设置中填写语音与小模型API Key。");
     model.touched = now();
     const signal = AbortSignal.any([request.signal, model.controller.signal]);
     if (route === "/api/space/models/decision/connect" && request.method === "POST") {
-      const input = z.strictObject({ model: z.enum(["startlux-decision-2b", "gliner2.5-multi-decide"]) }).parse(await hostedBody(request));
+      const input = z.strictObject({ model: DecisionModelSchema }).parse(await hostedBody(request));
       const result = await model.client.classify(DECISION_TEST_INPUT, { model: input.model, labels: DECISION_LABELS, signal });
-      if (!result.ok) return hostedJson({ ok: false, code: result.error.code, message: result.error.message }, result.error.status ?? 503);
+      if (!result.ok) {
+        if (result.error.code === "protocol-mismatch") {
+          const native = input.model === "startlux-decision-4b";
+          return hostedJson({ ok: false, code: native ? "decision-native-protocol-unsupported" : "decision-protocol-mismatch",
+            message: native ? "平台返回了旧协议格式，未接受 4B 原生 state/questions；本次未连接，也不会静默改用旧协议。"
+              : "平台返回了 4B 原生格式，但所选模型使用旧 input/labels 协议；本次未连接，也不会静默改用 4B。" }, 502);
+        }
+        // A 4B-native body rejected by the platform means the gateway still speaks only the legacy protocol.
+        if (input.model === "startlux-decision-4b" && result.error.code === "invalid-input") {
+          return hostedJson({ ok: false, code: "decision-native-protocol-unsupported",
+            message: "平台拒绝了 4B 原生 state/questions 请求；请确认平台已支持 startlux-decision-4b。本次未连接，也不会静默改用旧协议。" }, 422);
+        }
+        return hostedJson({ ok: false, code: result.error.code, message: result.error.message }, result.error.status ?? 503);
+      }
       request.signal.throwIfAborted();
       space.store.assertDeviceActive(accountId, identity.device.id);
       if (models.get(accountId) !== model || !model.key) throw new SpaceError(409, "model-connection-changed", "模型连接已改变，请重新连接后再试。");
       model.decision = { model: input.model, connectedAt: new Date(now()).toISOString() };
       return hostedJson({ configured: true, model: input.model, connectedAt: model.decision.connectedAt,
-        executionEnabled: false, protocol: "classification-only", quality: "not-tested",
+        executionEnabled: false, protocol: "classification-only", wireProtocol: wireProtocol(input.model), quality: "not-tested",
         probe: { choice: result.value.choice, score: result.value.score, needsReview: result.value.needs_review } });
     }
     if (route === "/api/space/models/decision/disconnect" && request.method === "POST") {
@@ -160,7 +202,7 @@ export function createHostedService(options: HostedServiceOptions) {
           return model.client.transcribe(file, { filename: file.name, signal });
         })()
           : route === "/api/space/models/classify" && request.method === "POST" ? await (async () => {
-            const data = z.strictObject({ input: z.string().min(1).max(2000), model: z.enum(["startlux-decision-2b", "gliner2.5-multi-decide"]),
+            const data = z.strictObject({ input: z.string().min(1).max(2000), model: DecisionModelSchema,
               labels: z.record(z.string(), z.string()) }).parse(await hostedBody(request));
             if (!model.decision) throw new SpaceError(503, "decision-model-not-connected", "请先连接并测试决策模型。");
             if (data.model !== model.decision.model) throw new SpaceError(409, "decision-model-mismatch", "请求的决策模型与当前连接不一致。");
@@ -169,7 +211,15 @@ export function createHostedService(options: HostedServiceOptions) {
             : undefined;
     if (!result) throw new SpaceError(404, "not-found", "没有此模型接口。");
     space.store.assertDeviceActive(accountId, identity.device.id);
-    if (!result.ok) return hostedJson({ ok: false, code: result.error.code, message: result.error.message }, result.error.status ?? 503);
+    if (!result.ok) {
+      if (result.error.code === "protocol-mismatch") {
+        const native = model.decision?.model === "startlux-decision-4b";
+        return hostedJson({ ok: false, code: native ? "decision-native-protocol-unsupported" : "decision-protocol-mismatch",
+          message: native ? "平台返回了旧协议格式，未接受 4B 原生 state/questions；本次未执行分类，也不会静默改用旧协议。"
+            : "平台返回了 4B 原生格式，但当前模型使用旧 input/labels 协议；本次未执行分类，也不会静默改用 4B。" }, 502);
+      }
+      return hostedJson({ ok: false, code: result.error.code, message: result.error.message }, result.error.status ?? 503);
+    }
     if ("segments" in result.value) return hostedJson({ segments: result.value.segments.map(segment => ({ ...segment, audio: Buffer.from(segment.audio).toString("base64") })) });
     return hostedJson(result.value);
   }
@@ -187,13 +237,21 @@ export function createHostedService(options: HostedServiceOptions) {
       if (!identity) throw new SpaceError(401, "login-required", "请先登录或连接此设备。");
       const { accountId } = identity;
       if (!space.store.takeRateLimit(`hosted:${accountId}`, 180)) throw new SpaceError(429, "rate-limit", "请求较多，请稍后重试。");
+      const event = await events.handle(request, identity); if (event) return event;
+      const nativeSnapshot = /^\/api\/space\/native\/spaces\/([A-Za-z0-9_-]{1,128})$/.exec(route);
+      if (nativeSnapshot && request.method === "GET") {
+        const snapshot = space.store.getSnapshot(accountId, nativeSnapshot[1]!);
+        const projected = ownerCanvas(space.store, accountId, nativeSnapshot[1]!).record;
+        return hostedJson({ ...snapshot, space: { ...snapshot.space,
+          cards: projected.cardOrder.map(id => projected.cardsById[id]!) } });
+      }
       if (route === "/api/space/decision-log" && request.method === "GET") {
         const raw = url.searchParams.get("limit") ?? "200";
         if (!/^\d{1,3}$/.test(raw) || Number(raw) < 1 || Number(raw) > 200) throw new SpaceError(400, "invalid-limit", "limit 需要为1–200。");
         return hostedJson({ entries: space.store.listDecisionLogs(accountId, Number(raw)) });
       }
       const packages = await cardPackageRoute(space.store, request, identity); if (packages) return packages;
-      const owner = await ownerRoute(space.store, request, identity); if (owner) { if (request.method !== "GET") reminders.check(); return owner; }
+      const owner = await ownerRoute(space.store, request, identity); if (owner) { if (request.method !== "GET") { events.changed(accountId, identity.device.id, owner); reminders.check(); } return owner; }
       if (route === "/api/transcribe" && request.method === "POST") {
         const value = appFor(accountId, true), bytes = await boundedBytes(request, 22 * 1024 * 1024);
         return await value.app.fetch(new Request(`${options.origin}${route}`, { method: "POST", signal: request.signal,
@@ -212,21 +270,29 @@ export function createHostedService(options: HostedServiceOptions) {
         const response = await invoke(accountId, "/api/files/read", { name: asset.name, text: asset.text, partial: asset.parseStatus === "partial", question: data.question }, request.signal);
         space.store.assertDeviceActive(accountId, identity.device.id); return response;
       }
+      // PR3 provider settings: the online owner panel is the same app as the
+      // local one, so CRUD/list/presets/preview/test must reach the session
+      // app instead of 404 at the hosted boundary. Settings are deployment
+      // scoped to the authenticated account, including encrypted persistence.
+      const providerCrud = route === "/api/providers" || route === "/api/providers/presets"
+        || route.startsWith("/api/providers/preview/")
+        || /^\/api\/providers\/(?!status$|select$|model$)[^/]+(?:\/(?:test|models))?$/.test(route);
+      if (providerCrud) {
+        const accountHint = request.headers.get("x-vivic-account");
+        if (accountHint && accountHint !== accountId) throw new SpaceError(409, "account-changed", "账号已切换，请重新打开模型设置。");
+        if (!["GET", "POST", "PATCH", "DELETE"].includes(request.method)) throw new SpaceError(405, "method-not-allowed", "此接口不支持该请求方法。");
+        const body = request.method === "GET" ? undefined : await hostedBody(request, 128 * 1024);
+        const response = await invokeMethod(accountId, route, request.method, body, request.signal);
+        space.store.assertDeviceActive(accountId, identity.device.id);
+        return response;
+      }
       if (proxyGet.has(route) && request.method === "GET") return await invoke(accountId, route, undefined, request.signal);
       if (proxyPost.has(route) && request.method === "POST") {
-        if (route === "/api/credentials/stepfun/validate") {
-          const token = randomBytes(32).toString("base64url");
-          const candidate: AccountApp = { token, app: createOnlineSessionApp({ token, origin: options.origin }, sessionOptions(accountId)), created: now(), touched: now() };
-          try {
-            const body = await hostedBody(request);
-            const response = await candidate.app.fetch(new Request(`${options.origin}${route}`, { method: "POST", signal: request.signal,
-              headers: { authorization: `Bearer ${token}`, origin: options.origin, "content-type": "application/json" }, body: JSON.stringify(body) }));
-            request.signal.throwIfAborted(); space.store.assertDeviceActive(accountId, identity.device.id);
-            if (response.ok) { const previous = apps.get(accountId); apps.set(accountId, candidate); if (previous) void previous.app.dispose(); }
-            else await candidate.app.dispose();
-            return response;
-          } catch (error) { await candidate.app.dispose(); throw error; }
-        }
+        const accountHint = request.headers.get("x-vivic-account");
+        if (route.startsWith("/api/credentials/") && accountHint && accountHint !== accountId)
+          throw new SpaceError(409, "account-changed", "账号已切换，请重新打开连接设置。");
+        // Each provider validates atomically inside the account app. Replacing the
+        // whole app here would discard the other provider and break failover.
         const body = await hostedBody(request, route.startsWith("/api/intent") || route === "/api/files/read" ? 6 * 1024 * 1024 : 64 * 1024);
         let trustedImageRef: string | undefined;
         if (route.startsWith("/api/intent") && router.mode !== "off") {
@@ -247,7 +313,7 @@ export function createHostedService(options: HostedServiceOptions) {
       }
       if (route.startsWith("/api/space/")) {
         const response = await space.fetch(request);
-        if (response.ok && request.method !== "GET") reminders.check();
+        if (response.ok && request.method !== "GET") { events.changed(accountId, identity.device.id, response); reminders.check(); }
         return response;
       }
       throw new SpaceError(404, "not-found", "没有此接口。");
@@ -283,7 +349,7 @@ export function createHostedService(options: HostedServiceOptions) {
     }
   }
   return { fetch: boundedFetch, store: space.store, tasks, assets, reminders,
-    async dispose() { closed = true; clearInterval(expiry); reminders.dispose(); await tasks.dispose();
+    async dispose() { closed = true; clearInterval(expiry); events.dispose(); reminders.dispose(); await tasks.dispose();
       recentDecisionReceipts.clear();
       for (const model of models.values()) { model.key = undefined; model.controller.abort(); } models.clear();
       await Promise.allSettled([...apps.values()].map(record => Promise.resolve(record.app.dispose()))); apps.clear(); space.dispose(); } };

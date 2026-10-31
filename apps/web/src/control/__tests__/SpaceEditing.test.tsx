@@ -7,9 +7,9 @@ import { createMemoryDB } from "@/persistence/db";
 import { createControlHost, type ControlHost } from "@/sync/controlHost";
 import { createMemoryHub, flushChannel } from "@/sync/channel";
 import { createMemoryLockProvider } from "@/sync/testing";
-import { CanvasManager } from "../CanvasManager";
+import { SpaceNameEditor } from "../SpaceNameEditor";
 import { RemindersSection } from "../RemindersSection";
-import { SpaceTools } from "../SpaceTools";
+import { DataActions } from "../DataActions";
 
 // These tests exercise owner mutations and save results. Native dialog focus,
 // card rendering and the source surfaces are covered by browser verification.
@@ -43,7 +43,7 @@ describe("Space editors preserve explicit choices and confirmed outcomes", () =>
   it("cancels a rename with Escape and saves only a nonempty bounded title", async () => {
     const snapshot = host.getSnapshot(), id = snapshot.activeCanvasId!;
     const original = snapshot.canvases.find(canvas => canvas.id === id)!.title;
-    await act(async () => root.render(<CanvasManager host={host} canvases={snapshot.canvases} activeCanvasId={id} readonly={false} />));
+    await act(async () => root.render(<SpaceNameEditor host={host} canvasId={id} />));
     await click("重命名"); await input("画布名称", "   ");
     expect(button("保存").disabled).toBe(true);
     await input("画布名称", "未保存的名字");
@@ -86,8 +86,8 @@ describe("Space editors preserve explicit choices and confirmed outcomes", () =>
 
   it("does not clear another canvas if the active Space changes after confirmation opens", async () => {
     const clear = vi.spyOn(host, "clearActiveCanvas");
-    await act(async () => root.render(<SpaceTools host={host} onBeforeClear={() => {}} />));
-    await click("Space"); await click("清空此画布");
+    await act(async () => root.render(<DataActions host={host} readonly={false} onBeforeClear={() => {}} />));
+    await click("清空此画布");
     await act(async () => { host.switchCanvas(host.createCanvas("另一个 Space")); });
     await click("清空", document.querySelector('[role="alertdialog"]')!);
     expect(clear).not.toHaveBeenCalled();
@@ -103,8 +103,8 @@ describe("Space editors preserve explicit choices and confirmed outcomes", () =>
     });
     const before = host.getSnapshot(), id = before.activeCanvasId!;
     const version = before.canvases.find(canvas => canvas.id === id)!.version;
-    await act(async () => root.render(<SpaceTools host={host} onBeforeClear={() => {}} />));
-    await click("Space"); await click("清空此画布");
+    await act(async () => root.render(<DataActions host={host} readonly={false} onBeforeClear={() => {}} />));
+    await click("清空此画布");
     await click("清空", document.querySelector('[role="alertdialog"]')!);
     expect(flush).toHaveBeenCalledWith(id, expect.any(Number));
     expect(flush.mock.calls[0]![1]).toBeGreaterThan(version);

@@ -14,7 +14,7 @@ function StatefulPanel() {
 }
 const render = (hidden = false, suspended = false) => root.render(<OnlineWorkspaceSuspended.Provider value={suspended}>
   <SettingsExperience hidden={hidden} onBack={back} notice={null}
-    local={<StatefulPanel />} connections={<input aria-label="TEST key draft" defaultValue="" />}
+    services={<StatefulPanel />} reminders={<p>提醒</p>} connections={<input aria-label="TEST key draft" defaultValue="" />}
     appearance={<p>背景</p>} voice={<p>语音</p>} notifications={<p>通知</p>}
     mobile={<p>配对</p>} data={<p>备份</p>} permissions={<p>位置</p>} />
 </OnlineWorkspaceSuspended.Provider>);
@@ -36,10 +36,10 @@ describe("settings panel keeps live configuration", () => {
   it("keeps provider drafts and editor state through tabs, disclosure, close and reopen", async () => {
     await act(async () => render());
     expect(modal().open).toBe(true);
-    expect(container.querySelectorAll(".se-nav [data-settings-nav]")).toHaveLength(3);
+    expect(container.querySelectorAll(".se-nav [data-settings-nav]")).toHaveLength(6);
     const input = container.querySelector<HTMLInputElement>("input")!;
     input.value = "TEST unsaved configuration";
-    const detail = container.querySelector<HTMLDetailsElement>('[data-settings-extra="local"]')!;
+    const detail = container.querySelector<HTMLDetailsElement>('[data-settings-services]')!;
     detail.open = true;
     await act(async () => container.querySelector<HTMLButtonElement>("[data-test-panel]")!.click());
     detail.open = false;
@@ -48,6 +48,7 @@ describe("settings panel keeps live configuration", () => {
     await act(async () => nav("connections").click());
     expect(detail.open).toBe(false);
     await act(async () => render(true));
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 240)); });
     expect(modal().open).toBe(false);
     await act(async () => render(false));
     expect(modal().open).toBe(true);
@@ -73,6 +74,7 @@ describe("settings panel keeps live configuration", () => {
     const input = container.querySelector<HTMLInputElement>("input")!;
     input.value = "TEST kept";
     await act(async () => render(false, true));
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 240)); });
     expect(modal().open).toBe(false);
     await act(async () => render(false, false));
     expect(modal().open).toBe(true); expect(input.value).toBe("TEST kept");

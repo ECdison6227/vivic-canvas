@@ -22,7 +22,8 @@ const config = loadConfig();
 // overwrite the user's real connection choice.
 const preferences = process.env.VIVIC_PREFERENCES === "off" ? undefined
   : filePreferences(path.join(homedir(), ".vivic", "preferences.json"));
-const app = createApp({ config, preferences, onDiagnostic: writeDiagnostic });
+const app = createApp({ config, preferences, onDiagnostic: writeDiagnostic,
+  providerDataDir: path.join(homedir(), ".vivic") });
 
 /**
  * Production story (documented in README): after `pnpm --filter @vivic/web

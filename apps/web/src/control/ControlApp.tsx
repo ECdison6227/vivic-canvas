@@ -740,6 +740,7 @@ const ControlShell = (props: ShellProps) => {
         connections={connection}
         services={<ConnectionPanel active={props.view === "settings"} />}
         voice={voice}
+        reminders={<RemindersSection host={props.host} readonly={readonly || !snap.ready} hidePreferences />}
         appearance={<>
           <CanvasSettings host={props.host} disabled={readonly || !snap.ready} compact />
           <BackgroundSettings host={props.host} disabled={readonly || !snap.ready} resolvedTheme={theme} compact />
@@ -754,3 +755,4 @@ const ControlShell = (props: ShellProps) => {
     </div>
   );
 };
+import { RemindersSection } from "./RemindersSection";

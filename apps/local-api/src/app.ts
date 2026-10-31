@@ -4,14 +4,17 @@ import { streamSSE } from "hono/streaming";
 import { cors } from "hono/cors";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
-import type { LocalApiConfig } from "./config.js";
+import { DEEPSEEK_BASE_URL, DEFAULT_DEEPSEEK_MODEL, PLAN_MAX_TOKENS, type LocalApiConfig } from "./config.js";
 import { CredentialStore } from "./credentials.js";
+import { DeepseekCredentialStore, deepseekModel as normalizeDeepseekModel, validateDeepseek } from "./deepseek.js";
+import { accountPlanner } from "./modelFallback.js";
 import type { CardDefinition } from "@vivic/card-runtime";
 import { currentCardDefinitions } from "./cards/catalog.js";
 import { PlatformCredentialStore } from "./platformCredential.js";
 import { createModelApiClient } from "./modelApi/index.js";
 import { runIntent, type PipelineDeps } from "./intent/pipeline.js";
-import { observeDecision } from "./decision/trace.js";
+import { observeDecision, type PlannerRouteHint } from "./decision/trace.js";
+import { splitClauses } from "./decision/split.js";
 import { safeDiagnostic, type DiagnosticSink } from "./diagnostics.js";
 import {
   IntentRequestSchema,
@@ -49,6 +52,9 @@ import { ConnectionManager } from "./connections/manager.js";
 import { createConnectionRoutes } from "./connections/routes.js";
 import { ConnectionError } from "./connections/types.js";
 import { createFileReadRoutes, FILE_READ_BODY_LIMIT } from "./files/routes.js";
+import {
+  ProviderStore, ProviderClient, createProviderRoutes, seedStepFunProvider, type ProviderProtocol,
+} from "./providers/index.js";
 
 /**
  * Vivic local decision API. Loopback only, bearer-guarded, zod on every
@@ -73,13 +79,26 @@ export interface AppDeps {
   router?: PipelineDeps["router"];
   getEnabledDefinitions?: () => Promise<CardDefinition[]>;
   onDecisionTrace?: PipelineDeps["onDecisionTrace"];
-  onDecisionReceipt?: (taskId: string, outcome: "succeeded" | "failed") => void;
+  /** `receiptMs` is the proposal→owner-receipt interval when the proposal was seen
+   * by this app; omitted for cancellations and for unknown task ids. */
+  onDecisionReceipt?: (taskId: string, outcome: "succeeded" | "failed", receiptMs?: number) => void;
   onDiagnostic?: DiagnosticSink;
   travel?: TravelProvider;
   /** Remembers the chosen connection across restarts; absent in tests. */
   preferences?: PreferenceStore;
   mobileBroker?: Pick<MobileSessionBroker, "status" | "create" | "dispose"> & Partial<Pick<MobileSessionBroker, "resume" | "end">>;
   localTts?: Pick<ManagedLocalTts, "status" | "prepare" | "enable" | "stop" | "clear" | "synthesize">;
+  /** Generic model-provider settings. Absent = store built from the fields below. */
+  providerStore?: ProviderStore;
+  /**
+   * Directory for `providers.json` and its `.secret-key`. Local mode defaults
+   * to `~/.vivic`; an online session must pass the deployment data directory,
+   * otherwise settings stay in memory (no host files are touched).
+   */
+  providerDataDir?: string;
+  /** `false` keeps provider settings in memory. Defaults to on when a directory exists. */
+  providerPersist?: boolean;
+  providerSeed?: boolean;
 }
 
 const tokenOk = (presented: string, expected: string): boolean => {
@@ -99,6 +118,9 @@ type AppContext = Context<{ Variables: { requestId: string } }>;
 export const createApp = (deps: AppDeps) => {
   const { config } = deps;
   const online = deps.mode === "online";
+  // Deployment switch for the SSE-only first sentence. Absent keeps today's
+  // behavior (on); ordinary JSON requests never take the streaming branch.
+  const sseStreamFeedback = config.streamFeedback !== false;
   const connections = new ConnectionManager({ fetchImpl: deps.fetchImpl });
   let localTts = online ? undefined : deps.localTts;
   const localTtsRuntime = () => online ? undefined : localTts ??= new ManagedLocalTts(path.join(homedir(), ".vivic", "runtime", "local-tts"));
@@ -106,6 +128,50 @@ export const createApp = (deps: AppDeps) => {
     create: async (): Promise<never> => { throw new Error("unavailable_online"); }, dispose: () => undefined }
     : deps.mobileBroker ?? new MobileSessionBroker(path.join(homedir(), ".vivic", "mobile-relay.json"));
   const credentials = deps.credentials ?? new CredentialStore();
+  // Generic provider settings. Local sessions persist to ~/.vivic/providers.json.
+  // Online sessions persist to the deployment data directory (providers.json +
+  // .secret-key, both 0600) so a saved provider survives restarts; without a
+  // supplied directory they stay in memory, so tests and stray callers still
+  // never read or write the host's home directory.
+  const providerDataDir = deps.providerDataDir;
+  const providerStore = deps.providerStore ?? new ProviderStore({
+    dataDir: providerDataDir ?? path.join(homedir(), ".vivic"),
+    persist: deps.providerPersist ?? Boolean(providerDataDir),
+  });
+  // Deployment seed (online only): VIVIC_STEPFUN_API_KEY becomes a normal
+  // encrypted "main" provider exactly once. An existing main provider wins,
+  // and local mode keeps its previous behaviour byte for byte.
+  if (online && deps.providerSeed !== false) seedStepFunProvider(providerStore);
+  // Settings win over env in both modes. An empty store leaves today's
+  // StepFun/DeepSeek environment path untouched.
+  const savedMain = providerStore.findForRole("main");
+  const savedMainKey = savedMain ? providerStore.getApiKey(savedMain.id) : undefined;
+  const savedDecision = providerStore.findForRole("decision");
+  // `VIVIC_MAIN_PROVIDER=deepseek` only changes the main planner transport. A
+  // separate in-memory store keeps speech/ASR on their StepFun credential, and
+  // the key comes from DEEPSEEK_API_KEY without touching disk or logs.
+  const mainProvider = config.mainProvider ?? "stepfun";
+  const mainCredentials = mainProvider === "deepseek" ? deps.credentials ?? new CredentialStore() : credentials;
+  const deepseekModel = config.deepseekModel ?? DEFAULT_DEEPSEEK_MODEL;
+  if (mainProvider === "deepseek" && !mainCredentials.getSecret()) {
+    const deepseekKey = config.deepseekApiKey?.trim();
+    if (deepseekKey) mainCredentials.set({ apiKey: deepseekKey, models: [deepseekModel], defaultModel: deepseekModel, checkedAt: new Date().toISOString() });
+    else mainCredentials.recordError("未配置 DEEPSEEK_API_KEY，DeepSeek 官方快路径不可用；不会回退 StepFun。");
+  }
+  // Settings win over env: an explicitly configured "main" provider replaces
+  // the env-seeded key and model. With no saved provider, nothing changes.
+  // A provider without its own model falls back to the already selected one;
+  // a provider without a key (local Ollama-style endpoints) leaves the old
+  // in-memory connection alone.
+  const savedMainModel = savedMain?.model ?? mainCredentials.getSecret()?.defaultModel;
+  if (savedMain && savedMainKey && savedMainModel) {
+    mainCredentials.set({
+      apiKey: savedMainKey,
+      models: [savedMainModel],
+      defaultModel: savedMainModel,
+      checkedAt: new Date().toISOString(),
+    });
+  }
   const platform = new PlatformCredentialStore();
   let platformRevision = 0;
   let platformAttempt: AbortController | undefined;
@@ -113,9 +179,40 @@ export const createApp = (deps: AppDeps) => {
   const data = deps.data ?? createDataClient({ fetchImpl: deps.fetchImpl,
     ...(online ? { config: { deviceLocation: true, networkRegionFallback: false } } : {}) });
   let decisionConfigurationError: string | undefined;
-  // Even status() on the legacy manager inspects its cache. A disabled,
-  // non-local provider avoids all filesystem/process work for cloud sessions.
-  const configuredProvider: DecisionProvider | undefined = online ? { decide: async () => ({ state: "disabled" }) } : deps.decisionProvider ?? (() => {
+  let decisionProviderFromSettings = false;
+  // Even status() on the legacy manager inspects its cache. An online session
+  // without a usable decision provider therefore gets a disabled, non-local
+  // provider and never touches the filesystem or spawns a runtime.
+  const disabledDecisionProvider: DecisionProvider = { decide: async () => ({ state: "disabled" }) };
+  // A programmatic provider (tests, embeds) keeps its previous precedence in
+  // local mode; online sessions only ever run an explicitly saved provider.
+  const configuredProvider: DecisionProvider | undefined = (!online ? deps.decisionProvider : undefined) ?? (() => {
+    // A saved decision provider (settings) wins over the env-configured one in
+    // both modes; the protocol mapping is unchanged (4B native → startlux,
+    // 2B legacy → adapter, other endpoints → local chat).
+    const decisionProtocol = (protocol: ProviderProtocol) => protocol === "startlux-native" ? "startlux" as const
+      : protocol === "legacy-2b" ? "adapter" as const : "local-chat" as const;
+    if (savedDecision) {
+      try {
+        const protocol = decisionProtocol(savedDecision.protocol);
+        const provider = new HttpDecisionProvider(savedDecision.baseUrl, {
+          name: protocol === "local-chat" ? "local" : "api",
+          timeoutMs: config.decisionProviderTimeoutMs,
+          fetchImpl: deps.fetchImpl,
+          protocol,
+          model: savedDecision.model,
+          getToken: () => providerStore.getApiKey(savedDecision.id),
+        });
+        decisionProviderFromSettings = true;
+        return provider;
+      } catch {
+        decisionConfigurationError = "已保存的决策服务配置无效，已回退到原有指令流程。请检查地址、协议和模型名称。";
+        console.warn(JSON.stringify({ event: "decision.configuration_invalid", source: "settings" }));
+        safeDiagnostic(deps.onDiagnostic, { event: "decision.configuration_invalid" });
+        return online ? disabledDecisionProvider : undefined;
+      }
+    }
+    if (online) return disabledDecisionProvider;
     if (deps.decision || !config.decisionProviderUrl) return undefined;
     try {
     const primary = new HttpDecisionProvider(config.decisionProviderUrl, {
@@ -139,9 +236,14 @@ export const createApp = (deps: AppDeps) => {
   const managed = !online && !deps.decision && !configuredProvider && !decisionConfigurationError && config.managedDecisionEnabled === true
     ? new ManagedStartluxRuntime(config.managedDecisionRoot ?? path.join(homedir(), ".vivic", "runtime", "startlux-decision")) : undefined;
   const decision = (!online && deps.decision) || new DecisionManager(undefined, configuredProvider ?? managed, {
-    enabled: !online && config.decisionProviderEnabled !== false,
+    // Online, only an explicit saved decision provider may run: the hosted
+    // deployment keeps the env-driven DecisionManager opt-in off. Local mode
+    // keeps the existing env switch unchanged.
+    enabled: online ? decisionProviderFromSettings : config.decisionProviderEnabled !== false,
     timeoutMs: 2 * decisionTimeout(config.decisionProviderTimeoutMs),
-    modelLabel: online ? "在线决策未配置" : config.decisionProviderProtocol === "startlux" ? "StartLux · 服务端选型" : undefined,
+    modelLabel: online
+      ? decisionProviderFromSettings ? savedDecision?.model ?? "已保存的决策服务" : "在线决策未配置"
+      : config.decisionProviderProtocol === "startlux" ? "StartLux · 服务端选型" : undefined,
   });
   let nativeV2 = deps.decisionV2Provider;
   if (!nativeV2 && config.decisionV2Url) {
@@ -160,7 +262,13 @@ export const createApp = (deps: AppDeps) => {
   let providerRevision = 0;
   let connectionRevision = 0;
   let connectionAttempt: AbortController | undefined;
+  const deepseek = new DeepseekCredentialStore();
+  let deepseekRevision = 0;
+  let deepseekAttempt: AbortController | undefined;
   let disposed = false;
+  // Proposal→owner-receipt latency is transport telemetry: the receipt request
+  // carries no trace, so the proposal time is remembered by task id here.
+  const receiptTimes = new Map<string, number>();
   // Lets the page tell "the backend restarted and dropped the in-memory key"
   // apart from a key that stopped working.
   const instance = randomUUID();
@@ -188,9 +296,75 @@ export const createApp = (deps: AppDeps) => {
     fetchImpl: deps.fetchImpl,
     timeoutMs: config.requestTimeoutMs,
   };
+  // Only the planner uses the DeepSeek fast path; speech/ASR/readers keep the
+  // StepFun deps and credential above. A saved main provider overrides both.
+  let mainModel = savedMain && savedMainKey && savedMainModel
+    ? { baseUrl: savedMain.baseUrl, fetchImpl: deps.fetchImpl, timeoutMs: config.requestTimeoutMs,
+        ...(savedMain.presetId === "deepseek" ? { provider: "deepseek" as const } : {}) }
+    : mainProvider === "deepseek"
+    ? { baseUrl: config.deepseekBaseUrl ?? DEEPSEEK_BASE_URL, provider: "deepseek" as const,
+      fetchImpl: deps.fetchImpl, timeoutMs: config.requestTimeoutMs }
+    : stepfun;
+  const isDeepseek = (value: ReturnType<ProviderStore["list"]>[number]) => value.presetId === "deepseek"
+    || /^https:\/\/api\.deepseek\.com(?:\/v1)?\/?$/.test(value.baseUrl);
+  const registryRevision = () => JSON.stringify(providerStore.list().filter(value => value.roles.includes("main")));
+  let loadedRegistry: string | undefined;
+  const syncRegistry = () => {
+    const next = registryRevision();
+    if (loadedRegistry === next) return;
+    const previous = loadedRegistry; loadedRegistry = next;
+    const entries = providerStore.list().filter(value => value.enabled && value.roles.includes("main"))
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    const primary = entries.find(value => value.protocol.startsWith("stepfun")) ?? entries.find(value => !isDeepseek(value));
+    const secondary = entries.find(isDeepseek);
+    if (primary?.apiKey && primary.model) {
+      const current = mainCredentials.getSecret();
+      if (current?.apiKey !== primary.apiKey || current.defaultModel !== primary.model)
+        mainCredentials.set({ apiKey: primary.apiKey, models: [primary.model], defaultModel: primary.model, checkedAt: primary.updatedAt });
+      mainModel = { baseUrl: primary.baseUrl, fetchImpl: deps.fetchImpl, timeoutMs: config.requestTimeoutMs };
+    } else if (previous !== undefined && mainProvider !== "deepseek") { mainCredentials.clear(); mainModel = stepfun; }
+    else if (secondary && mainProvider !== "deepseek") mainCredentials.clear();
+    const model = secondary && normalizeDeepseekModel(secondary.model);
+    if (secondary?.apiKey && model) {
+      const current = deepseek.getSecret();
+      if (current?.apiKey !== secondary.apiKey || current.defaultModel !== model)
+        deepseek.set({ apiKey: secondary.apiKey, defaultModel: model, checkedAt: secondary.updatedAt });
+    } else if (previous !== undefined) deepseek.clear();
+    if (previous !== undefined) providerRevision++;
+  };
+  const rememberConnection = (brand: "stepfun" | "deepseek", apiKey?: string, model?: string) => {
+    const existing = providerStore.list().find(value => brand === "deepseek" ? isDeepseek(value) : value.protocol === "stepfun-plan");
+    if (!apiKey || !model) {
+      for (const entry of providerStore.list()) if (brand === "deepseek" ? isDeepseek(entry) : entry.protocol.startsWith("stepfun"))
+        providerStore.update(entry.id, { enabled: false });
+      return;
+    }
+    const input = { name: brand === "stepfun" ? "StepFun" : "DeepSeek", apiKey, model, roles: ["main" as const], enabled: true,
+      presetId: brand, protocol: brand === "stepfun" ? "stepfun-plan" as const : "openai-compatible" as const,
+      baseUrl: brand === "stepfun" ? config.stepfunBaseUrl : "https://api.deepseek.com" };
+    if (existing) providerStore.update(existing.id, input); else providerStore.create(input);
+  };
+  syncRegistry();
+  const makePlanner = (): NonNullable<PipelineDeps["planner"]> => {
+    syncRegistry();
+    const revision = providerRevision, generation = gpt.generation(), registry = registryRevision();
+    const current = () => !disposed && providerRevision === revision && registryRevision() === registry;
+    if (activeProvider === "gpt") return { provider: "gpt" as const, connected: gpt.status().connected,
+      generate: (messages, signal, _maxTokens, onTextDelta) => gpt.generate(messages, signal, onTextDelta),
+      isCurrent: () => current() && gpt.isCurrent(generation) };
+    if (mainProvider === "deepseek") {
+      const credential = mainCredentials.getSecret();
+      return { provider: "deepseek", connected: Boolean(credential), isCurrent: () => current() && credential === mainCredentials.getSecret(),
+        generate: (messages, signal, maxTokens, onTextDelta) => credential
+          ? chatJson(credential, messages, { ...mainModel, signal }, { maxTokens, onTextDelta })
+          : Promise.resolve({ ok: false, code: "provider", error: "DeepSeek 未连接" }) };
+    }
+    return accountPlanner({ credentials: mainCredentials, deepseek, stepfun: mainModel, selected: "stepfun", isCurrent: current });
+  };
 
   const app = new Hono<{ Variables: { requestId: string } }>();
   app.use("*", async (c, next) => {
+    syncRegistry();
     const requestId = randomUUID(), started = performance.now();
     c.set("requestId", requestId);
     c.header("X-Request-Id", requestId);
@@ -261,25 +435,27 @@ export const createApp = (deps: AppDeps) => {
 
   app.route("/api/connections", createConnectionRoutes(connections, async (messages, signal) => {
     if (restoringGpt && activeProvider === "gpt") await restoringGpt;
-    const version = providerRevision, selected = activeProvider, credential = credentials.getSecret(), gptVersion = gpt.generation();
-    const result = selected === "gpt" ? await gpt.generate(messages, signal)
-      : credential ? await chatJson(credential, messages, { ...stepfun, signal }, { maxTokens: 2048 }) : undefined;
-    if (disposed || version !== providerRevision || selected === "gpt" && !gpt.isCurrent(gptVersion) || selected !== "gpt" && credentials.getSecret() !== credential) throw new ConnectionError("model-changed", "模型连接已改变，请重新查询。", 409);
+    const planner = makePlanner();
+    const result = planner.connected ? await planner.generate(messages, signal, 2048) : undefined;
+    if (!planner.isCurrent()) throw new ConnectionError("model-changed", "模型连接已改变，请重新查询。", 409);
     if (!result?.ok) throw new ConnectionError("planner-unavailable", "语言模型暂不可用，请检查连接或使用指定查询。", 409);
     return result.value;
   }));
   app.route("/api/files", createFileReadRoutes(async () => {
     if (restoringGpt && activeProvider === "gpt") await restoringGpt;
-    const version = providerRevision, selected = activeProvider, credential = credentials.getSecret(), gptVersion = gpt.generation();
+    const planner = makePlanner();
     return {
-      isCurrent: () => !disposed && version === providerRevision && (selected === "gpt" ? gpt.isCurrent(gptVersion) : credentials.getSecret() === credential),
-      generate: (messages, signal) => selected === "gpt" ? gpt.generate(messages, signal)
-        : credential ? chatJson(credential, messages, { ...stepfun, signal }, { maxTokens: 4096 })
+      isCurrent: planner.isCurrent,
+      generate: (messages, signal) => planner.connected ? planner.generate(messages, signal, 4096)
           : Promise.resolve({ ok: false as const, code: "provider" as const, error: "模型未连接" }),
     };
   }));
 
   app.post("/api/credentials/stepfun/validate", async (c) => {
+    if (mainProvider === "deepseek") {
+      return c.json({ ok: false, connected: false,
+        error: "当前使用 DeepSeek 官方快路径（VIVIC_MAIN_PROVIDER=deepseek），模型由 DEEPSEEK_API_KEY 和 VIVIC_DEEPSEEK_MODEL 配置，不接受 StepFun Key。" }, 400);
+    }
     let raw: unknown;
     try {
       raw = await c.req.json();
@@ -307,12 +483,14 @@ export const createApp = (deps: AppDeps) => {
     if (!result.ok) {
       // A failed key must not leave stale credentials around (fail closed).
       credentials.clear();
+      rememberConnection("stepfun");
       const error = `${result.error}。${providerRecoveryHint(result.status)}`;
       credentials.recordError(error);
       return c.json({ ok: false, connected: false, error });
     }
     // Replace credentials atomically; the key object never leaves this scope.
     credentials.set({ apiKey: parsed.data.apiKey, ...result.value });
+    rememberConnection("stepfun", parsed.data.apiKey, result.value.defaultModel);
     return c.json({ ok: true, ...credentials.status() });
   });
 
@@ -320,6 +498,34 @@ export const createApp = (deps: AppDeps) => {
     connectionRevision++; providerRevision++;
     connectionAttempt?.abort(); connectionAttempt = undefined;
     credentials.clear();
+    rememberConnection("stepfun");
+    if (mainCredentials !== credentials) mainCredentials.clear();
+    return c.json({ ok: true, connected: false });
+  });
+
+  app.post("/api/credentials/deepseek/validate", async c => {
+    let raw: unknown;
+    try { raw = await c.req.json(); } catch { return c.json({ ok: false, connected: false, error: "请输入有效的 DeepSeek Key。" }, 400); }
+    const input = z.strictObject({ apiKey: z.string().min(8).max(512).regex(/^\S+$/),
+      model: z.enum(["deepseek-flash", "deepseek-v4-flash", "deepseek-v4-pro"]).optional() }).safeParse(raw);
+    if (!input.success) return c.json({ ok: false, connected: false, error: "请输入有效的 DeepSeek Key 和模型。" }, 400);
+    const revision = ++deepseekRevision; deepseekAttempt?.abort();
+    const controller = new AbortController(); deepseekAttempt = controller;
+    const result = await validateDeepseek(input.data.apiKey, normalizeDeepseekModel(input.data.model)!, {
+      fetchImpl: deps.fetchImpl, timeoutMs: config.connectionTimeoutMs ?? 12_000,
+      signal: AbortSignal.any([c.req.raw.signal, controller.signal]),
+    }).finally(() => { if (deepseekAttempt === controller) deepseekAttempt = undefined; });
+    if (disposed || revision !== deepseekRevision || c.req.raw.signal.aborted)
+      return c.json({ ok: false, connected: false, error: "连接已取消或已被新的连接替代。" }, 409);
+    providerRevision++;
+    if (!result.ok) { deepseek.clear(); rememberConnection("deepseek"); deepseek.recordError(result.error); return c.json({ ok: false, connected: false, error: result.error }); }
+    deepseek.set({ apiKey: input.data.apiKey, ...result.value });
+    rememberConnection("deepseek", input.data.apiKey, result.value.defaultModel);
+    return c.json({ ok: true, ...deepseek.status() });
+  });
+  app.post("/api/credentials/deepseek/disconnect", c => {
+    deepseekRevision++; providerRevision++; deepseekAttempt?.abort(); deepseekAttempt = undefined; deepseek.clear();
+    rememberConnection("deepseek");
     return c.json({ ok: true, connected: false });
   });
 
@@ -362,20 +568,28 @@ export const createApp = (deps: AppDeps) => {
 
   app.get("/api/providers/status", (c) => {
     c.header("Cache-Control", "no-store");
-    const status = credentials.status();
+    // The "stepfun" slot is the main planner slot: in DeepSeek mode it reports
+    // the env-keyed fixed model so existing clients keep working unchanged.
+    const status = mainCredentials.status();
     rememberGpt();
     if (activeProvider === "gpt") gpt.keepWarm();
     return c.json({
       activeProvider, instance,
       ...(restoringGpt ? { restoring: "gpt" } : {}),
+      // Keep the established provider array shape for deployed clients. New
+      // clients discover the additive DeepSeek connection through this field.
       providers: online ? [status] : [status, gpt.status()],
+      deepseek: deepseek.status(),
+      fallback: { preferred: "stepfun", secondary: "deepseek", configured: deepseek.status().connected },
       platform: platform.status(),
-      degradations: (activeProvider === "stepfun" ? status.connected : gpt.status().connected)
+      degradations: (activeProvider === "stepfun" ? status.connected || deepseek.status().connected : gpt.status().connected)
         ? []
         : [
             {
-              code: "stepfun-disconnected",
-              message: "所选模型未连接，/api/intent 只做本地规则，复杂指令暂不可用。",
+              code: mainProvider === "deepseek" ? "deepseek-disconnected" : "stepfun-disconnected",
+              message: mainProvider === "deepseek"
+                ? "DeepSeek 官方快路径未连接：未配置 DEEPSEEK_API_KEY。不会回退 StepFun，复杂指令暂不可用。"
+                : "所选模型未连接，/api/intent 只做本地规则，复杂指令暂不可用。",
             },
           ],
     });
@@ -400,6 +614,9 @@ export const createApp = (deps: AppDeps) => {
       const ok = await gpt.connect(source, body.data.model); providerRevision++; rememberGpt();
       return c.json({ ok, ...gpt.status() });
     }
+    if (mainProvider === "deepseek") {
+      return c.json({ ok: false, error: "当前使用 DeepSeek 官方快路径，模型由 VIVIC_DEEPSEEK_MODEL 固定配置。" }, 400);
+    }
     const credential = credentials.getSecret();
     if (!credential || !credential.models.includes(body.data.model) || !PLAN_CHAT_MODELS.includes(body.data.model)) return c.json({ ok: false, error: "请选择已连接套餐中的推理模型。" }, 400);
     const candidate = { ...credential, defaultModel: body.data.model };
@@ -407,6 +624,7 @@ export const createApp = (deps: AppDeps) => {
     if (disposed || c.req.raw.signal.aborted || credentials.getSecret() !== credential) return c.json({ ok: false, error: "连接已变更，请重新选择。" }, 409);
     if (!probe.ok && !probeAnswered(probe)) return c.json({ ok: false, error: probe.error });
     credentials.set({ ...candidate, checkedAt: new Date().toISOString() }); providerRevision++;
+    rememberConnection("stepfun", candidate.apiKey, candidate.defaultModel);
     return c.json({ ok: true, ...credentials.status() });
   });
   app.post("/api/gpt/connect", async c => {
@@ -433,6 +651,13 @@ export const createApp = (deps: AppDeps) => {
     preferences?.update({ gptSource: undefined, gptModel: undefined });
     return c.json({ ok: true });
   });
+
+  // Generic model-provider management. Registered AFTER the legacy
+  // /api/providers/status|select|model handlers so those keep winning.
+  app.route("/api/providers", createProviderRoutes({
+    store: providerStore,
+    ...(deps.fetchImpl ? { client: new ProviderClient({ fetchImpl: deps.fetchImpl }) } : {}),
+  }));
 
   app.get("/api/speech/voices", (c) => {
     c.header("Cache-Control", "no-store");
@@ -607,16 +832,17 @@ export const createApp = (deps: AppDeps) => {
     if (restoringGpt && activeProvider === "gpt") await restoringGpt;
     const version = providerRevision;
     const gptVersion = gpt.generation();
-    const imageCredential = credentials.getSecret();
+    const imageCredential = mainCredentials.getSecret();
     if (parsed.data.attachments?.length) {
       const vision = activeProvider === "gpt" ? gpt.status().connected && gpt.status().capabilities.includes("vision")
-        : credentials.status().connected && credentials.status().capabilities.includes("vision");
+        : credentials.status().connected && credentials.status().capabilities.includes("vision")
+          || deepseek.status().connected && deepseek.status().capabilities.includes("vision");
       if (!vision) return c.json({ kind: "error", message: "当前所选模型没有可用的视觉能力。请选择支持图片的模型，或移除图片后发送文字。" });
       try {
         for (const attachment of parsed.data.attachments) await validateImageAttachment(attachment, deps.imageDecoder ?? decodeImage);
       } catch (error) { return c.json({ kind: "error", message: imageInputErrorMessage(error) }); }
       if (c.req.raw.signal.aborted) return c.json({ kind: "error", message: "图片请求已取消。" });
-      if (version !== providerRevision || (activeProvider === "gpt" ? !gpt.isCurrent(gptVersion) : imageCredential !== credentials.getSecret())) {
+      if (version !== providerRevision || (activeProvider === "gpt" ? !gpt.isCurrent(gptVersion) : imageCredential !== mainCredentials.getSecret())) {
         return c.json({ kind: "error", message: "模型连接已变更，图片请求已取消。" });
       }
     }
@@ -633,38 +859,97 @@ export const createApp = (deps: AppDeps) => {
       event: "intent.stage", requestId, stage: event.stage, state: event.status,
       ...(event.elapsedMs !== undefined ? { elapsedMs: Math.round(event.elapsedMs) } : {}),
     });
-    const execute = (signal: AbortSignal, onStage = observeStage) => {
-      const pipeline: PipelineDeps = { credentials, stepfun, search, data, decision, onStage, travel: deps.travel,
+    const execute = (signal: AbortSignal, onStage = observeStage, streamFeedback = false) => {
+      const pipeline: PipelineDeps = { credentials: mainCredentials, stepfun: mainModel, mainProvider,
+      planMaxTokens: config.planMaxTokens ?? PLAN_MAX_TOKENS, search, data, decision, onStage, streamFeedback, travel: deps.travel,
       router: requestRouter, onDecisionTrace: deps.onDecisionTrace,
       decisionTelemetry: { plannerCalls: 0, directClauses: 0 },
       slotPlanning: requestRouter?.mode === "shadow" || requestRouter?.mode === "on",
       isSessionCurrent: () => version === providerRevision,
-      ...(activeProvider === "gpt" ? { planner: { provider: "gpt" as const, connected: gpt.status().connected,
-        generate: (messages, signal) => gpt.generate(messages, signal), isCurrent: () => gpt.isCurrent(gptVersion) } } : {}),
+      planner: makePlanner(),
       };
-      const intent = { ...parsed.data, tracePath: c.req.header("x-vivic-trace-path") === "task" ? "task" as const : "browser" as const,
+      const intent = { ...parsed.data, requestId,
+        tracePath: c.req.header("x-vivic-trace-path") === "task" ? "task" as const : "browser" as const,
         ...(installedDefinitions ? { installedDefinitions, extensionDefinitions: undefined } : {}),
         ...(online && c.req.header("x-vivic-intent-image-ref") ? { trustedImageRef: c.req.header("x-vivic-intent-image-ref") } : {}) };
+      // Paths that deliberately get no single route hint still need a safe line:
+      // multi-clause, attachments, follow-up answers and task receipts are the
+      // longest waits, and leaving them neutral for seconds reads as a stall.
+      // This frame carries no business data and no route claim.
+      const scene = !streamFeedback ? undefined
+        : parsed.data.attachments?.length ? "attachment" as const
+          : parsed.data.continuation ? "continuation" as const
+            : parsed.data.task ? "task" as const
+              : splitClauses(intent.text).length > 1 ? "multi" as const : undefined;
+      if (scene) {
+        try { onStage({ stage: "decision", status: "started", scene }); } catch { /* progress is advisory */ }
+      }
+      // The on-mode router hint already exists for every clause. Publish it on the
+      // existing progress channel as optional fields instead of opening a second
+      // message chain; older clients strip the unknown keys and see today's label.
+      const publishRouteHint = (hint: Promise<PlannerRouteHint | null> | undefined) => {
+        if (!streamFeedback || !hint || requestRouter?.mode !== "on" || parsed.data.attachments?.length
+          || parsed.data.continuation || parsed.data.task) return;
+        void hint.then(value => {
+          if (signal.aborted || !value?.result) return;
+          const { route, probability, none } = value.result;
+          if (!route || none || probability < 0.8 || splitClauses(intent.text).length !== 1) return;
+          // "decision" is an existing stage, so old clients keep their old label.
+          const progress = { stage: "decision" as const, status: "started" as const,
+            route: route.slice(0, 90), feedbackSource: "preset" as const };
+          try { onStage(progress); } catch { /* progress is advisory */ }
+          // The route is known before the target is; only a later frame unlocks
+          // an action sentence for focus/edit/highlight. Delete stays confirmation.
+          if (["focus", "edit", "delete", "highlight"].includes(route)) {
+            void value.target.then(target => {
+              if (signal.aborted) return;
+              const targetState = !target ? "unresolved" as const
+                : "targetId" in target ? "resolved" as const
+                  : "missing" in target ? "missing" as const : "ambiguous" as const;
+              try { onStage({ ...progress, targetState }); } catch { /* progress is advisory */ }
+            }).catch(() => { /* a target frame never fails the request */ });
+          }
+        }).catch(() => { /* a route hint never fails the request */ });
+      };
       if (requestRouter?.mode !== "on" && !nativeV2 && !parsed.data.task) return runIntent(intent, pipeline, signal);
-      return observeDecision(intent, pipeline, signal, routeHint => decisionTasks.run(intent, {
-        safetyMode: requestRouter?.mode === "on", routeHint,
-        legacy: (request, taskSignal, plannerOnly) => runIntent({ ...request,
-          offlineReferenceCompatibility: request.offlineReferenceCompatibility === true
-            && (online || !configuredProvider && !deps.decision && !decision.status().enabled),
-        }, { ...pipeline, routeHint, executionRouter: requestRouter, router: undefined, onDecisionTrace: undefined }, taskSignal, false, plannerOnly),
-        isCurrent: () => version === providerRevision,
-        tools: {
-          weather: (city, canvasContext, taskSignal) => runIntent({ text: `${city}天气`, canvasContext, deviceLocation: parsed.data.deviceLocation }, { ...pipeline, decision: undefined }, taskSignal, true),
-          ...(search ? { search: (query: string, canvasContext: typeof parsed.data.canvasContext, taskSignal: AbortSignal) => runIntent({ text: `搜索 ${query}`, canvasContext }, { ...pipeline, decision: undefined }, taskSignal, true) } : {}),
-        },
-      }, signal).then(result => {
-        if (intent.task && (intent.task.receipt || intent.task.cancel)) {
-          const outcome = result.task?.status === "completed" ? "succeeded"
-            : result.task?.status === "failed" || result.task?.status === "cancelled" ? "failed" : undefined;
-          if (outcome) { try { deps.onDecisionReceipt?.(intent.task.id, outcome); } catch { /* telemetry is advisory */ } }
-        }
-        return result;
-      }));
+      return observeDecision(intent, pipeline, signal, routeHint => {
+        publishRouteHint(routeHint);
+        return decisionTasks.run(intent, {
+          safetyMode: requestRouter?.mode === "on", routeHint,
+          legacy: (request, taskSignal, plannerOnly) => runIntent({ ...request,
+            offlineReferenceCompatibility: request.offlineReferenceCompatibility === true
+              && (online || !configuredProvider && !deps.decision && !decision.status().enabled),
+          }, { ...pipeline, routeHint, executionRouter: requestRouter, router: undefined, onDecisionTrace: undefined }, taskSignal, false, plannerOnly),
+          isCurrent: () => version === providerRevision,
+          tools: {
+            weather: (city, canvasContext, taskSignal) => runIntent({ text: `${city}天气`, canvasContext, deviceLocation: parsed.data.deviceLocation }, { ...pipeline, decision: undefined }, taskSignal, true),
+            ...(search ? { search: (query: string, canvasContext: typeof parsed.data.canvasContext, taskSignal: AbortSignal) => runIntent({ text: `搜索 ${query}`, canvasContext }, { ...pipeline, decision: undefined }, taskSignal, true) } : {}),
+          },
+        }, signal).then(result => {
+          if (intent.task && (intent.task.receipt || intent.task.cancel)) {
+            const outcome = result.task?.status === "completed" ? "succeeded"
+              : result.task?.status === "failed" || result.task?.status === "cancelled" ? "failed" : undefined;
+            if (outcome) {
+              const proposedAt = receiptTimes.get(intent.task.id);
+              receiptTimes.delete(intent.task.id);
+              // A cancellation is not an owner receipt, so it has no receipt wait.
+              const receiptMs = intent.task.receipt && proposedAt !== undefined
+                ? Math.max(0, Math.round(performance.now() - proposedAt)) : undefined;
+              try { deps.onDecisionReceipt?.(intent.task.id, outcome, receiptMs); } catch { /* telemetry is advisory */ }
+            }
+          } else if (result.task?.status === "awaiting_execution") {
+            // A taskless proposal still returns its generated task id, which is what
+            // the later receipt carries; remember when this app handed it to the owner.
+            receiptTimes.set(result.task.id, performance.now());
+            while (receiptTimes.size > 256) {
+              const oldest = receiptTimes.keys().next().value;
+              if (oldest === undefined) break;
+              receiptTimes.delete(oldest);
+            }
+          }
+          return result;
+        });
+      });
     };
     if (c.req.path.endsWith("/stream") || c.req.header("accept")?.includes("text/event-stream")) {
       c.header("X-Accel-Buffering", "no");
@@ -681,7 +966,7 @@ export const createApp = (deps: AppDeps) => {
             delivery = delivery.then(async () => {
               if (!signal.aborted && !stream.closed) await stream.writeSSE({ event: "progress", data: JSON.stringify({ requestId, ...event }) });
             }).catch(() => controller.abort());
-          });
+          }, sseStreamFeedback);
           const wire = IntentResponseSchema.safeParse(result);
           await delivery;
           if (!signal.aborted && !stream.closed) await stream.writeSSE({ event: "result", data: JSON.stringify(wire.success
@@ -714,8 +999,11 @@ export const createApp = (deps: AppDeps) => {
     if (disposed) return;
     disposed = true; connectionRevision++; providerRevision++; platformRevision++;
     connectionAttempt?.abort(); connectionAttempt = undefined;
+    deepseekRevision++; deepseekAttempt?.abort(); deepseekAttempt = undefined; deepseek.clear();
     platformAttempt?.abort(); platformAttempt = undefined;
     connections.dispose();
-    credentials.clear(); platform.clear(); gpt.dispose(); mobileBroker.dispose(); decision.stop(); decisionTasks.dispose(); localTts?.stop();
+    credentials.clear(); if (mainCredentials !== credentials) mainCredentials.clear();
+    platform.clear(); gpt.dispose(); mobileBroker.dispose(); decision.stop(); decisionTasks.dispose(); localTts?.stop();
+    receiptTimes.clear();
   } });
 };

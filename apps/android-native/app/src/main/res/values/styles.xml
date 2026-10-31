@@ -7,4 +7,9 @@
         <item name="android:windowNoTitle">true</item>
         <item name="android:colorAccent">#2B729E</item>
     </style>
+    <style name="Theme.Vivic.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/icon_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_orb</item>
+        <item name="postSplashScreenTheme">@style/Theme.Vivic</item>
+    </style>
 </resources>

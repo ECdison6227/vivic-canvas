@@ -171,10 +171,6 @@ const applyAction = (
       if (state.stage !== "STANDBY") return state;
       return { ...state, stage: "AWAKENING", awakenedAt: Date.now() };
     }
-    case "stage.sleep": {
-      if (state.stage === "STANDBY") return state;
-      return { ...state, stage: "STANDBY", focus: null, awakenedAt: null };
-    }
     case "card.create": {
       // A visible new card must not remain hidden behind standby just because a
       // provider omitted a presentation-only wake action. Hidden reminders stay quiet.

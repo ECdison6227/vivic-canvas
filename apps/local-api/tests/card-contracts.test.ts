@@ -85,6 +85,9 @@ describe("builtin card contract registry and slot boundaries", () => {
 });
 
 describe("deterministic extraction preserves all literal content", () => {
+  it("preserves every enumerated reminder at one literal duration", () => {
+    expect(getCardContract("countdown")!.parse!("十分钟后提醒我喝水、伸展", context())).toEqual({reminders:[{afterSeconds:600,text:"喝水"},{afterSeconds:600,text:"伸展"}]});
+  });
   it.each([
     ["倒计时五十分钟", { seconds: 3000 }],
     ["设一个1小时20分钟30秒倒计时", { seconds: 4830 }],
@@ -97,7 +100,7 @@ describe("deterministic extraction preserves all literal content", () => {
   });
 
   it.each([
-    "十分钟后提醒我喝水、伸展", "十分钟后提醒我喝水，二十分钟后提醒我开会",
+    "十分钟后提醒我喝水，二十分钟后提醒我开会",
     "倒计时5分钟然后显示全部", "创建5分钟和10分钟倒计时", "倒计时5分钟，添加待办买牛奶",
     "每天十分钟后提醒我喝水", "不要倒计时5分钟", "倒计时5分钟5分钟", "倒计时0秒", "倒计时25小时",
   ])("defers the entire unsupported reminder rather than losing content: %s", text => {

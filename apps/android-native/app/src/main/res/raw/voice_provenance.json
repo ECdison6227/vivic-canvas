@@ -1,0 +1,26 @@
+[
+  {
+    "name": "wait_one",
+    "text": "好的，稍等。",
+    "model": "qwen3-tts-1.7b",
+    "durationSeconds": 1.6,
+    "sha256": "37e49c944dc844e22cd8664dd8f35f41ac889008454c645fb4a4ded6d094756b",
+    "bytes": 76844
+  },
+  {
+    "name": "wait_two",
+    "text": "马上帮你看看。",
+    "model": "qwen3-tts-1.7b",
+    "durationSeconds": 1.28,
+    "sha256": "377cff9cecf85427c2703e61ef259f3a1e13c1a239b8ce499522098275f1a08e",
+    "bytes": 61484
+  },
+  {
+    "name": "wait_three",
+    "text": "收到。",
+    "model": "qwen3-tts-1.7b",
+    "durationSeconds": 0.96,
+    "sha256": "58eccb2993717fb390c62277c080bf27a24cb42d9cfed20031b1de3526e93679",
+    "bytes": 46124
+  }
+]

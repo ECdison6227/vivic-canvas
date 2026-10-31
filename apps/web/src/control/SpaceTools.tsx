@@ -3,6 +3,7 @@ import { Popover } from "radix-ui";
 import { HarkIcon, HarkSurface } from "@/components/hark/HarkPrimitives";
 import { Button } from "@/components/ui/button";
 import type { ControlHost } from "@/sync/controlHost";
+import { SpaceNameEditor } from "./SpaceNameEditor";
 
 export function SpaceTools({ host, onOpenDisplay }: { host: ControlHost; onOpenDisplay: (canvasId?: string) => void }) {
   const snapshot = useSyncExternalStore(host.subscribe, host.getSnapshot);
@@ -49,6 +50,7 @@ export function SpaceTools({ host, onOpenDisplay }: { host: ControlHost; onOpenD
             </li>;
           })}
         </ul>
+        {snapshot.activeCanvasId && <SpaceNameEditor host={host} canvasId={snapshot.activeCanvasId} />}
       </HarkSurface>
     </Popover.Content>
   </Popover.Root>;

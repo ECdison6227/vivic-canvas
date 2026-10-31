@@ -13,6 +13,7 @@ export const testConfig = (
   tokenGenerated: false,
   allowedOrigins: ["http://localhost:5173"],
   stepfunBaseUrl: "https://unit.test/v1",
+  modelApiBaseUrl: "https://unit.test/model-api/v1",
   requestTimeoutMs: 60,
   bodyLimitBytes: 64 * 1024,
   ...overrides,

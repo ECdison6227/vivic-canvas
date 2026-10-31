@@ -112,7 +112,7 @@ describe("shadow observer", () => {
     });
     const model = router(query);
     const result = await observeDecision({ text: "聚焦左边的待办，高亮第二条", canvasContext: context }, deps(model), undefined, async () => output);
-    expect(result.trace?.decisions.map(x => x.target)).toEqual([{ targetId: "left" }, { targetId: "left" }]);
+    expect(result.trace?.decisions.map(x => x.target)).toEqual([{ targetId: "left", source: "spatial" }, { targetId: "left", source: "ordinal" }]);
     expect(context.focusHistory).toEqual([]);
     expect(model.chooseTarget).not.toHaveBeenCalled();
   });

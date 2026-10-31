@@ -18,8 +18,25 @@ export const DataActions = ({ host, readonly, onBeforeClear, compact = false }: 
   const [message, setMessage] = useState<string | null>(null);
   const [clearing, setClearing] = useState(false), [deletingSpace, setDeletingSpace] = useState(false);
   const deleteTarget = useRef<{ canvasId: string; ownerId: string | null } | null>(null);
+  const clearTarget = useRef<{ canvasId: string; ownerId: string | null } | null>(null);
   const disabled = readonly || clearing || deletingSpace;
   const DangerGroup = compact ? "details" : "div";
+  const clearCanvas = async () => {
+    const target = clearTarget.current; clearTarget.current = null;
+    const current = host.getSnapshot();
+    if (!target || current.activeCanvasId !== target.canvasId || current.ownerId !== target.ownerId || current.ownerMode !== "owner") {
+      setMessage("画布或控制权已变化，未清空。请重新操作。"); return;
+    }
+    setClearing(true); onBeforeClear(); setMessage(null);
+    try {
+      host.clearActiveCanvas();
+      const version = host.getSnapshot().canvases.find(canvas => canvas.id === target.canvasId)?.version;
+      if (version === undefined) throw Error("canvas-changed");
+      await host.flush(target.canvasId, version);
+      setMessage("已清空并保存当前画布");
+    } catch { setMessage("清空结果待确认，请检查连接后重试。"); }
+    finally { setClearing(false); }
+  };
 
   const clearLocalData = async () => {
     if (disabled) return;
@@ -74,13 +91,12 @@ export const DataActions = ({ host, readonly, onBeforeClear, compact = false }: 
           description="当前画布上的全部卡片将被删除。"
           confirmLabel="清空"
           disabled={disabled}
-          onConfirm={() => {
-            host.clearActiveCanvas();
-            setMessage("已清空当前画布");
-          }}
+          onConfirm={() => void clearCanvas()}
           trigger={
-            <Button variant="secondary" size="sm" disabled={disabled} data-vivic-clear-canvas>
-              清空此画布
+            <Button variant="secondary" size="sm" disabled={disabled} data-vivic-clear-canvas onClick={() => {
+              if (snapshot.activeCanvasId) clearTarget.current = { canvasId: snapshot.activeCanvasId, ownerId: snapshot.ownerId };
+            }}>
+              {clearing ? "正在清空…" : "清空此画布"}
             </Button>
           }
         />
