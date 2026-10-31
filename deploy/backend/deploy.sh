@@ -9,8 +9,10 @@ PREVIOUS=vivic-api-prev
 STAGE=vivic-api-staging
 sha=${1:?Usage: deploy.sh git-sha}
 [[ $sha =~ ^[a-f0-9]{40}$ ]] || { echo 'Expected full Git SHA' >&2; exit 1; }
-exec 9>"$DIR/deploy.lock"
-flock -n 9 || { echo 'Another deployment is running' >&2; exit 1; }
+if [[ ${VIVIC_DEPLOY_LOCK_HELD:-0} != 1 ]]; then
+  exec 9>"$DIR/deploy.lock"
+  flock -n 9 || { echo 'Another deployment is running' >&2; exit 1; }
+fi
 available=$(df -B1 --output=avail / | tail -n1 | tr -d ' ')
 (( available >= 2147483648 )) || { echo 'Less than 2 GiB available' >&2; exit 1; }
 [[ $(realpath "$DATA") == "$DATA" && -f "$DATA/space.sqlite" ]]
