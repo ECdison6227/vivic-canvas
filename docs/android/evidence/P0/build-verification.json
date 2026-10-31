@@ -1,0 +1,90 @@
+{
+  "date": "2026-10-31T09:02:16.568641+00:00",
+  "command": ".\\gradlew.bat :app:assembleDebug :app:lintDebug --write-locks --no-daemon --console=plain",
+  "result": "BUILD SUCCESSFUL",
+  "durationSeconds": 65,
+  "jdk": "21.0.12.1",
+  "gradle": "9.8.2",
+  "agp": "9.5.0",
+  "kotlin": "2.4.21",
+  "composeBom": "2026.06.01",
+  "activity": "1.10.1",
+  "lifecycleRuntimeCompose": "2.10.0",
+  "compileSdk": 35,
+  "targetSdk": 35,
+  "minSdk": 26,
+  "buildTools": "36.0.0",
+  "apk": {
+    "relativePath": "apps/android-native/app/build/outputs/apk/debug/app-debug.apk",
+    "bytes": 11517407,
+    "sha256": "d7295d3babaccc3ba467cce083b1c85acd8e9fae29fa226f2d77fb988ec40484",
+    "signing": "local debug certificate; not the approved 0.2.0 release certificate"
+  },
+  "lint": {
+    "errors": 0,
+    "warnings": 10,
+    "issues": [
+      {
+        "id": "OldTargetApi",
+        "severity": "Warning",
+        "message": "Not targeting the latest versions of Android; compatibility modes apply. Consider testing and updating this version. Consult the `android.os.Build.VERSION_CODES` javadoc for details."
+      },
+      {
+        "id": "UnusedAttribute",
+        "severity": "Warning",
+        "message": "Attribute `enableOnBackInvokedCallback` is only used in API level 33 and higher (current min is 26)"
+      },
+      {
+        "id": "GradleDependency",
+        "severity": "Warning",
+        "message": "A newer version of `compileSdk` than 35 is available: 37"
+      },
+      {
+        "id": "GradleDependency",
+        "severity": "Warning",
+        "message": "A newer version of androidx.compose:compose-bom than 2026.06.01 is available: 2026.09.00"
+      },
+      {
+        "id": "GradleDependency",
+        "severity": "Warning",
+        "message": "A newer version of androidx.activity:activity-compose than 1.10.1 is available: 1.13.0"
+      },
+      {
+        "id": "GradleDependency",
+        "severity": "Warning",
+        "message": "A newer version of androidx.lifecycle:lifecycle-runtime-compose than 2.10.0 is available: 2.11.0"
+      },
+      {
+        "id": "LockedOrientationActivity",
+        "severity": "Warning",
+        "message": "Expecting `android:screenOrientation=\"unspecified\"` or `\"fullSensor\"` for this activity so the user can use the application in any orientation and provide a great experience on Chrome OS devices"
+      },
+      {
+        "id": "DiscouragedApi",
+        "severity": "Warning",
+        "message": "Fixed screen orientations will be ignored in most cases, starting from Android 16. Android is moving toward a model where apps are expected to adapt to various orientations, display sizes, and aspect ratios."
+      },
+      {
+        "id": "DataExtractionRules",
+        "severity": "Warning",
+        "message": "The attribute `android:allowBackup` is deprecated from Android 12 and higher and may be removed in future versions. Consider adding the attribute `android:dataExtractionRules` specifying an `@xml` resource which configures cloud backups and device transfers on Android 12 and higher."
+      },
+      {
+        "id": "MissingApplicationIcon",
+        "severity": "Warning",
+        "message": "Should explicitly set `android:icon`, there is no default"
+      }
+    ]
+  },
+  "runtime": {
+    "firstRunDisplayedMs": 45860,
+    "secondLaunchWait": "timeout after 19920ms",
+    "steadyStateFps": "not measured",
+    "coldStartTargetMet": false,
+    "otherAppsModified": false,
+    "finalDependencySetInstalled": true,
+    "finalLaunchWaitTimeoutMs": 21722,
+    "finalFirstFrameDurationMs": 29437,
+    "nativeScreenVisuallyConfirmed": true
+  }
+}

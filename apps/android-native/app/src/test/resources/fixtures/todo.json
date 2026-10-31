@@ -1,0 +1,54 @@
+{
+  "space": {
+    "id": "space_fixture",
+    "title": "接口核验示例空间",
+    "version": 1257,
+    "updatedAt": "2026-10-31T08:52:29.790Z",
+    "cards": [
+      {
+        "id": "card_2",
+        "variant": "expanded",
+        "sources": [],
+        "layout": {
+          "x": 368,
+          "y": 0,
+          "width": 320,
+          "height": 149,
+          "pinned": false,
+          "surface": "display"
+        },
+        "metadata": {
+          "createdAt": "2026-10-31T08:52:29.687Z",
+          "updatedAt": "2026-10-31T08:52:29.790Z"
+        },
+        "type": "TodoCard",
+        "displayProps": {
+          "title": "P0接口待办",
+          "items": [
+            {
+              "id": "item_3",
+              "text": "核验原生接口",
+              "done": true
+            },
+            {
+              "id": "item_4",
+              "text": "核验同步",
+              "done": false
+            }
+          ]
+        },
+        "sourceData": {}
+      }
+    ]
+  },
+  "spaces": [
+    {
+      "id": "space_fixture",
+      "title": "接口核验示例空间",
+      "version": 1257,
+      "updatedAt": "2026-10-31T08:52:29.790Z"
+    }
+  ],
+  "cursor": 0,
+  "reminders": []
+}

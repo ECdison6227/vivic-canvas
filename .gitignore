@@ -6,3 +6,4 @@ dist-online/
 .DS_Store
 *.log
 .vite/
+.cache/

@@ -1,0 +1,6 @@
+Starting: Intent { cmp=app.vivic.remote/.MainActivity }
+Status: timeout
+LaunchState: UNKNOWN (-1)
+Activity: app.vivic.remote/.MainActivity
+WaitTime: 21722
+Complete

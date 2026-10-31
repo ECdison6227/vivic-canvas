@@ -1,0 +1,27 @@
+10-31 08:54:58.549 23853 23853 I Choreographer: Skipped 49 frames!  The application may be doing too much work on its main thread.
+10-31 08:55:03.985 23853 23853 W HWUI    : Unknown dataspace 0
+10-31 08:55:22.418 23853 23898 I EGL_emulation: Opening libGLESv1_CM_emulation.so
+10-31 08:55:22.418 23853 23898 I EGL_emulation: Opening libGLESv2_emulation.so
+10-31 08:55:22.642 23853 23898 W HWUI    : Failed to choose config with EGL_SWAP_BEHAVIOR_PRESERVED, retrying without...
+10-31 08:55:22.643 23853 23898 W HWUI    : Failed to initialize 101010-2 format, error = EGL_SUCCESS
+10-31 08:55:23.129 23853 23936 I HWUI    : Davey! duration=19081ms; Flags=1, FrameTimelineVsyncId=15799949, IntendedVsync=79048357554274, Vsync=79048390887606, InputEventId=0, HandleInputStart=79048396576718, AnimationStart=79048396673218, PerformTraversalsStart=79048412498918, DrawStart=79067206423218, FrameDeadline=79048374220940, FrameInterval=79048396546218, FrameStartTime=16666666, SyncQueued=79067329783418, SyncStart=79067332991518, IssueDrawCommandsStart=79067333802418, SwapBuffers=79067400462718, FrameCompleted=79067442240318, DequeueBufferDuration=11403100, QueueBufferDuration=332700, GpuCompleted=79067442240318, SwapBuffersCompleted=79067425820918, DisplayPresentTime=0, CommandSubmissionCompleted=79067400462718,
+10-31 08:55:23.235 23853 23853 I Choreographer: Skipped 874 frames!  The application may be doing too much work on its main thread.
+
+Second launch:
+10-31 08:57:10.566 24035 24035 W HWUI    : Unknown dataspace 0
+10-31 08:57:10.638 24035 24035 I Choreographer: Skipped 92 frames!  The application may be doing too much work on its main thread.
+10-31 08:57:17.196 24035 24081 I EGL_emulation: Opening libGLESv1_CM_emulation.so
+10-31 08:57:17.246 24035 24081 I EGL_emulation: Opening libGLESv2_emulation.so
+10-31 08:57:17.411 24035 24081 W HWUI    : Failed to choose config with EGL_SWAP_BEHAVIOR_PRESERVED, retrying without...
+10-31 08:57:17.411 24035 24081 W HWUI    : Failed to initialize 101010-2 format, error = EGL_SUCCESS
+10-31 08:57:18.018 24035 24067 I HWUI    : Davey! duration=8837ms; Flags=1, FrameTimelineVsyncId=15800731, IntendedVsync=79173424215938, Vsync=79174957549210, InputEventId=0, HandleInputStart=79174974483518, AnimationStart=79174974522418, PerformTraversalsStart=79175009305818, DrawStart=79182023095918, FrameDeadline=79173440882604, FrameInterval=79174973276918, FrameStartTime=16666666, SyncQueued=79182155152818, SyncStart=79182162516218, IssueDrawCommandsStart=79182163761018, SwapBuffers=79182233887518, FrameCompleted=79182269507018, DequeueBufferDuration=37100, QueueBufferDuration=8813800, GpuCompleted=79182267003518, SwapBuffersCompleted=79182269507018, DisplayPresentTime=-8970943610471366533, CommandSubmissionCompleted=79182233887518,
+10-31 08:57:18.097 24035 24035 I Choreographer: Skipped 356 frames!  The application may be doing too much work on its main thread.
+
+Final dependency set launch:
+10-31 09:02:49.369 24585 24585 W HWUI    : Unknown dataspace 0
+10-31 09:03:17.961 24585 24619 I EGL_emulation: Opening libGLESv1_CM_emulation.so
+10-31 09:03:17.972 24585 24619 I EGL_emulation: Opening libGLESv2_emulation.so
+10-31 09:03:18.064 24585 24619 W HWUI    : Failed to choose config with EGL_SWAP_BEHAVIOR_PRESERVED, retrying without...
+10-31 09:03:18.064 24585 24619 W HWUI    : Failed to initialize 101010-2 format, error = EGL_SUCCESS
+10-31 09:03:18.899 24585 24602 I HWUI    : Davey! duration=29437ms; Flags=1, FrameTimelineVsyncId=15802174, IntendedVsync=79513724202326, Vsync=79513790868990, InputEventId=0, HandleInputStart=79513803299118, AnimationStart=79513803328418, PerformTraversalsStart=79513803398718, DrawStart=79542840401418, FrameDeadline=79513740868992, FrameInterval=79513803271318, FrameStartTime=16666666, SyncQueued=79542984698118, SyncStart=79543000831218, IssueDrawCommandsStart=79543016494418, SwapBuffers=79543153426718, FrameCompleted=79543177528818, DequeueBufferDuration=41900, QueueBufferDuration=667000, GpuCompleted=79543177213418, SwapBuffersCompleted=79543177528818, DisplayPresentTime=0, CommandSubmissionCompleted=79543153426718,
+10-31 09:03:19.218 24585 24585 I Choreographer: Skipped 1594 frames!  The application may be doing too much work on its main thread.
