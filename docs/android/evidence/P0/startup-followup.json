@@ -1,0 +1,60 @@
+{
+  "releaseBuild": {
+    "command": ".\\gradlew.bat :app:assembleRelease --write-locks --no-daemon --console=plain",
+    "result": "BUILD SUCCESSFUL",
+    "durationSeconds": 75,
+    "r8": true,
+    "resourceShrinking": true,
+    "signedApkBytes": 765874,
+    "signedApkSha256": "d46e8a1b0228d37a9f92a506ded37676411e33877187df9c3187afdf590bb2be",
+    "signing": "Local debug certificate for comparison only, not the approved 0.2.0 release key",
+    "libraryProfiles": [
+      "assets/dexopt/baseline.prof",
+      "assets/dexopt/baseline.profm"
+    ]
+  },
+  "launches": [
+    {
+      "variant": "initial debug",
+      "displayedMs": 45860,
+      "source": "ActivityTaskManager Displayed log, earlier P0 run"
+    },
+    {
+      "variant": "release before forced AOT",
+      "totalTimeMs": 10849,
+      "waitTimeMs": 10855,
+      "state": "COLD"
+    },
+    {
+      "variant": "release after cmd package compile -m speed -f app.vivic.remote",
+      "totalTimeMs": 9990,
+      "waitTimeMs": 10437,
+      "state": "COLD",
+      "artificialWarmup": true
+    }
+  ],
+  "environment": {
+    "device": "emulator-5560",
+    "cpuAbi": "x86_64",
+    "jit": true,
+    "graphics": "skiagl, host GPU",
+    "acceleration": "WHPX installed and usable",
+    "guestLoadAverage": [
+      7.7,
+      6.44,
+      4.31
+    ],
+    "guestCpuCores": 4,
+    "hostTotalMemoryKiB": 33325280,
+    "hostFreeMemoryKiBObserved": 2150424,
+    "observation": "Other guest processes, including Chrome and system services, were consuming CPU. Their state was left untouched."
+  },
+  "assessment": {
+    "startupImproved": true,
+    "coldStart1200msPassed": false,
+    "fps60Passed": "not measured",
+    "newEmulatorStarted": false,
+    "reason": "Existing host memory pressure and other work; a second emulator would consume more resources."
+  },
+  "productionCodeOrDeploymentChanged": false
+}

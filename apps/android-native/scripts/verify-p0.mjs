@@ -6,9 +6,12 @@ import { dirname, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 
 const args = process.argv.slice(2);
-assert(args.length === 4 && args[0] === '--credentials' && args[2] === '--output',
-  'Usage: node verify-p0.mjs --credentials PRIVATE.json --output REPORT.json');
+assert([4, 6, 8].includes(args.length) && args[0] === '--credentials' && args[2] === '--output'
+  && (args.length === 4 || args[4] === '--audio') && (args.length < 8 || args[6] === '--expected-phrase'),
+  'Usage: node verify-p0.mjs --credentials PRIVATE.json --output REPORT.json [--audio SAMPLE.m4a [--expected-phrase TEXT]]');
 const credentialsPath = resolve(args[1]), outputPath = resolve(args[3]);
+const audioPath = args.length >= 6 ? resolve(args[5]) : null;
+const expectedPhrase = args.length === 8 ? args[7] : null;
 assert.notEqual(outputPath, credentialsPath, 'Report must not overwrite the private session');
 assert.notEqual(outputPath, resolve(import.meta.filename), 'Report must not overwrite the runner');
 const credential = JSON.parse(await readFile(credentialsPath, 'utf8'));
@@ -26,11 +29,11 @@ const record = (name, status, details) => {
   report.checks.push({ name, status, details });
   console.log(JSON.stringify({ name, status, details }));
 };
-async function api(path, { method = 'GET', data, cookie = credential.cookie, withOrigin = true, headers = {}, body } = {}) {
+async function api(path, { method = 'GET', data, cookie = credential.cookie, withOrigin = true, headers = {}, body, timeoutMs = 30000 } = {}) {
   const response = await fetch(origin + path, { method, redirect: 'error',
     headers: { ...(cookie ? { Cookie: cookie } : {}), ...(withOrigin ? { Origin: origin } : {}),
       ...(data === undefined ? {} : { 'Content-Type': 'application/json' }), ...headers },
-    body: data === undefined ? body : JSON.stringify(data), signal: AbortSignal.timeout(30000) });
+    body: data === undefined ? body : JSON.stringify(data), signal: AbortSignal.timeout(timeoutMs) });
   const value = await response.json();
   return { status: response.status, value, headers: response.headers };
 }
@@ -45,9 +48,9 @@ const command = async value => {
   return result.value.snapshot;
 };
 const tasks = new Set();
-async function task(text, expectedVersion) {
+async function task(text, expectedVersion, continuationTaskId) {
   const requestId = randomUUID(), started = Date.now();
-  const input = { requestId, text, expectedVersion };
+  const input = { requestId, text, expectedVersion, ...(continuationTaskId ? { continuationTaskId } : {}) };
   const accepted = await api(root + '/tasks', { method: 'POST', data: input });
   if (accepted.status !== 202) return { input, accepted: accepted.status, error: accepted.value.code, states: [] };
   tasks.add(requestId);
@@ -149,12 +152,24 @@ try {
     });
 
   const models = await api('/api/space/models/status');
-  const speech = await api('/api/space/models/speech', { method: 'POST', data: { text: '收到' } });
+  const speech = await api('/api/space/models/speech', { method: 'POST', data: { text: '收到' }, timeoutMs: 185000 });
   const form = new FormData();
-  form.set('file', new Blob([], { type: 'audio/mp4' }), 'mime-probe.m4a');
-  const transcribe = await api('/api/space/models/transcribe', { method: 'POST', body: form });
-  record('e_transcribe_m4a', 'blocked', { configured: models.value.configured, status: transcribe.status, code: transcribe.value.code,
-    note: 'Empty MIME probe only; no microphone capture. Source accepts audio/mp4, but a valid recording cannot be verified until the evaluation voice model is connected.' });
+  const audio = audioPath ? await readFile(audioPath) : new Uint8Array();
+  assert(audio.byteLength <= 20 * 1024 * 1024, 'Voice fixture exceeds the API audio limit');
+  form.set('file', new Blob([audio], { type: 'audio/mp4' }), audioPath ? 'speech-sample.m4a' : 'mime-probe.m4a');
+  const transcribe = await api('/api/space/models/transcribe', { method: 'POST', body: form, timeoutMs: 185000 });
+  const transcribed = audio.byteLength > 0 && transcribe.status === 200 && typeof transcribe.value.text === 'string'
+    && transcribe.value.text.trim().length > 0;
+  const normalizeSpeech = text => text.replace(/[零一二三四五六七八九]/g, char => String('零一二三四五六七八九'.indexOf(char)))
+    .replace(/[\p{P}\p{Z}\s]/gu, '');
+  const phraseMatched = expectedPhrase && transcribed
+    ? normalizeSpeech(transcribe.value.text).includes(normalizeSpeech(expectedPhrase)) : null;
+  record('e_transcribe_m4a', transcribed && phraseMatched !== false ? 'pass' : audioPath && models.value.configured ? 'fail' : 'blocked', {
+    configured: models.value.configured, status: transcribe.status, code: transcribe.value.code, inputBytes: audio.byteLength,
+    ...(transcribed ? { transcript: transcribe.value.text, durationValidation: transcribe.value.durationValidation } : {}),
+    ...(expectedPhrase ? { expectedPhrase, phraseMatched } : {}),
+    note: audioPath ? 'Prerecorded synthetic speech in AAC/MPEG_4, 16kHz mono 64kbps; no microphone capture.'
+      : 'Empty MIME probe only; no microphone capture. A valid recording is required to verify inference.' });
   record('f_speech_response', Array.isArray(speech.value.segments) && speech.value.segments.length ? 'pass' : 'blocked', {
     status: speech.status, code: speech.value.code,
     ...(speech.value.segments ? { segmentCount: speech.value.segments.length,
@@ -164,16 +179,20 @@ try {
 
   await command({ type: 'note.create', title: 'P0引用便笺', text: 'P0接口核验合成内容' });
   const beforeReference = await snapshot();
-  const reference = await task('关于「P0引用便笺」：改成明天', beforeReference.space.version);
+  let reference = await task('关于「P0引用便笺」：改成明天', beforeReference.space.version);
+  const initialReference = { states: reference.states, status: reference.result?.task.status, message: reference.result?.task.message };
+  if (reference.result?.task.status === 'awaiting_clarification') {
+    reference = await task('把这张便笺的正文改为“明天”', (await snapshot()).space.version, reference.input.requestId);
+  }
   const afterReference = await snapshot();
   const targetBefore = beforeReference.space.cards.find(card => card.sourceData.title === 'P0引用便笺');
   const targetAfter = afterReference.space.cards.find(card => card.id === targetBefore?.id);
   const matched = targetBefore && targetAfter && JSON.stringify(targetBefore.displayProps) !== JSON.stringify(targetAfter.displayProps)
     && afterReference.space.cards.length === beforeReference.space.cards.length;
-  record('h_reference_target', matched ? 'pass' : 'blocked', { states: reference.states,
+  record('h_reference_target', matched ? 'pass' : reference.result?.task.status === 'succeeded' ? 'fail' : 'blocked', { initialReference, states: reference.states,
     finalStatus: reference.result?.task.status, message: reference.result?.task.message, exactCardChanged: Boolean(matched),
     newlyCreatedCards: afterReference.space.cards.length - beforeReference.space.cards.length,
-    conclusion: matched ? 'The title targeted the existing card.' : 'Title concatenation has not established reliable targeting; keep reference sending gated pending a connected-model test.' });
+    conclusion: matched ? 'The title targeted the existing card.' : 'Title concatenation has not established reliable targeting; keep reference sending gated until explicit targeting is verified.' });
   await fixture('mixed', afterReference);
 
   const ownerAfter = await api(ownerPath);

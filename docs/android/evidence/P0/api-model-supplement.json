@@ -1,0 +1,232 @@
+{
+  "date": "2026-10-31T10:03:43.874Z",
+  "scope": "evaluation account; synthetic data; no deployment",
+  "checks": [
+    {
+      "name": "a_pair_claim_session",
+      "status": "pass",
+      "details": {
+        "issue": 200,
+        "claim": 200,
+        "session": 200,
+        "sameAccount": true,
+        "missingOrigin": 403,
+        "authorizationHeader": {
+          "status": 400,
+          "code": "browser-bearer-disabled"
+        },
+        "reusedCode": {
+          "status": 403,
+          "code": "pair-invalid"
+        },
+        "cookieAttributes": [
+          "Path=/",
+          "Max-Age=2591999",
+          "HttpOnly",
+          "Secure",
+          "SameSite=Strict"
+        ]
+      }
+    },
+    {
+      "name": "b_countdown_task",
+      "status": "pass",
+      "details": {
+        "accepted": 202,
+        "states": [
+          {
+            "status": "accepted",
+            "elapsedMs": 51
+          },
+          {
+            "status": "running",
+            "elapsedMs": 1103
+          },
+          {
+            "status": "succeeded",
+            "elapsedMs": 2164
+          }
+        ],
+        "elapsedMs": 2164,
+        "finalStatus": "succeeded",
+        "message": "已找到卡片，打开Space查看。",
+        "createdTypes": [
+          "CountdownCard"
+        ]
+      }
+    },
+    {
+      "name": "d_todo_payload",
+      "status": "pass",
+      "details": {
+        "command": {
+          "type": "card.update",
+          "cardId": "<todo-id>",
+          "displayProps": {
+            "items": [
+              {
+                "id": "<existing-item-1>",
+                "text": "核验原生接口",
+                "done": true
+              },
+              {
+                "id": "<existing-item-2>",
+                "text": "核验同步",
+                "done": false
+              }
+            ]
+          }
+        },
+        "rule": "Send the complete items array with existing item IDs; patching one index is unsupported."
+      }
+    },
+    {
+      "name": "c_stale_version_and_409",
+      "status": "contract-change",
+      "details": {
+        "staleVersionSubmission": 202,
+        "states": [
+          {
+            "status": "accepted",
+            "elapsedMs": 51
+          },
+          {
+            "status": "running",
+            "elapsedMs": 1108
+          },
+          {
+            "status": "succeeded",
+            "elapsedMs": 5345
+          }
+        ],
+        "duplicateSamePayload": 200,
+        "conflictingPayload": {
+          "status": 409,
+          "code": "request-id-conflict"
+        },
+        "originalTaskStillExists": true,
+        "conclusion": "Stale expectedVersion is accepted and refreshed server-side. A 409 can refer to an existing task. Do not generate a new ID and replay after a generic 409."
+      }
+    },
+    {
+      "name": "e_transcribe_m4a",
+      "status": "pass",
+      "details": {
+        "configured": true,
+        "status": 200,
+        "inputBytes": 45511,
+        "transcript": "请帮我设置五分钟的倒计时。",
+        "durationValidation": "upstream-required",
+        "expectedPhrase": "五分钟",
+        "phraseMatched": true,
+        "note": "Prerecorded synthetic speech in AAC/MPEG_4, 16kHz mono 64kbps; no microphone capture."
+      }
+    },
+    {
+      "name": "f_speech_response",
+      "status": "pass",
+      "details": {
+        "status": 200,
+        "segmentCount": 1,
+        "firstSegment": {
+          "audio": "<base64 length 35900>",
+          "text": "收到",
+          "mime": "audio/wav",
+          "durationSeconds": 0.56,
+          "nonSilent": true
+        },
+        "sourceContract": "segments[{audio:base64 WAV,text,mime:\"audio/wav\",durationSeconds,nonSilent}]"
+      }
+    },
+    {
+      "name": "h_reference_target",
+      "status": "fail",
+      "details": {
+        "initialReference": {
+          "states": [
+            {
+              "status": "accepted",
+              "elapsedMs": 51
+            },
+            {
+              "status": "running",
+              "elapsedMs": 1099
+            },
+            {
+              "status": "awaiting_clarification",
+              "elapsedMs": 12687
+            }
+          ],
+          "status": "awaiting_clarification",
+          "message": "请说明「P0引用便笺」具体要改成什么内容？"
+        },
+        "states": [
+          {
+            "status": "accepted",
+            "elapsedMs": 51
+          },
+          {
+            "status": "running",
+            "elapsedMs": 1103
+          },
+          {
+            "status": "succeeded",
+            "elapsedMs": 39399
+          }
+        ],
+        "finalStatus": "succeeded",
+        "message": "已找到卡片，打开Space查看。",
+        "exactCardChanged": false,
+        "newlyCreatedCards": 1,
+        "conclusion": "With the model connected, title concatenation and clarification created a new card instead of modifying the existing card. Reference sending must stay gated until explicit targeting is verified."
+      }
+    },
+    {
+      "name": "g_reading_order",
+      "status": "pass",
+      "details": {
+        "snapshotOrderMatchesOwnerCardOrder": true,
+        "desktop": "Absolute x/y visual layout; owner cardOrder retains insertion/persistence order.",
+        "mobilePlan": "Pinned first, then updatedAt descending is a new mobile order, not the desktop visual order.",
+        "decisionRequired": "Checkpoint 0: choose pinned+updatedAt mobile order or geometric y/x order. No coordinates are written by this runner."
+      }
+    }
+  ],
+  "fixtures": [
+    {
+      "name": "countdown",
+      "cards": [
+        "CountdownCard"
+      ]
+    },
+    {
+      "name": "todo",
+      "cards": [
+        "TodoCard"
+      ]
+    },
+    {
+      "name": "mixed",
+      "cards": [
+        "CountdownCard",
+        "TodoCard",
+        "CountdownCard",
+        "NoteCard",
+        "NoteCard"
+      ]
+    }
+  ],
+  "cleanup": {
+    "emptySpaceRestored": true,
+    "claimedDeviceLoggedOut": true
+  },
+  "providers": {
+    "taskModel": "step-3.7-flash",
+    "speechModel": "qwen3-tts-1.7b",
+    "transcriptionModel": "qwen3-asr-1.7b",
+    "voiceKeyScope": [
+      "tts",
+      "asr"
+    ]
+  }
+}

@@ -2,8 +2,8 @@
   "space": {
     "id": "space_fixture",
     "title": "接口核验示例空间",
-    "version": 1255,
-    "updatedAt": "2026-10-31T08:52:28.586Z",
+    "version": 1266,
+    "updatedAt": "2026-10-31T10:03:46.046Z",
     "cards": [
       {
         "id": "card_1",
@@ -18,14 +18,14 @@
           "surface": "display"
         },
         "metadata": {
-          "createdAt": "2026-10-31T08:52:28.580Z",
-          "updatedAt": "2026-10-31T08:52:28.580Z"
+          "createdAt": "2026-10-31T10:03:46.039Z",
+          "updatedAt": "2026-10-31T10:03:46.039Z"
         },
         "type": "CountdownCard",
         "displayProps": {},
         "sourceData": {
-          "targetAt": "2026-10-31T08:57:28.580Z",
-          "startedAt": "2026-10-31T08:52:28.580Z"
+          "targetAt": "2026-10-31T10:08:46.039Z",
+          "startedAt": "2026-10-31T10:03:46.039Z"
         }
       }
     ]
@@ -34,8 +34,8 @@
     {
       "id": "space_fixture",
       "title": "接口核验示例空间",
-      "version": 1255,
-      "updatedAt": "2026-10-31T08:52:28.586Z"
+      "version": 1266,
+      "updatedAt": "2026-10-31T10:03:46.046Z"
     }
   ],
   "cursor": 0,

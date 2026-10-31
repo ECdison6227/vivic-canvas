@@ -27,3 +27,18 @@ with the Kotlin JVM plugin on the root classpath to select Kotlin 2.4.21.
 
 The P0 API runner accepts only a private, explicitly marked evaluation session.
 No credentials, cookies, signing keys, or live unredacted snapshots belong in Git.
+
+For a real voice check, first connect the evaluation account through the normal
+model APIs and prepare a synthetic AAC/MPEG_4 sample (16kHz mono, 64kbps).
+Run from the repository root, passing only a private session-file path:
+
+```powershell
+node apps/android-native/scripts/verify-p0.mjs --credentials .cache/android-p0/credentials-private.json --output docs/android/evidence/P0/api-model-supplement.json --audio .cache/android-p0/speech-sample.m4a --expected-phrase "五分钟"
+```
+
+The expected phrase is checked after punctuation and single-digit Chinese-number
+normalization. HTTP success alone does not establish transcription correctness.
+Reference checks follow a clarification when required and verify that the existing
+card changed without an extra card appearing. Failed targeting stays a failed check.
+When sending UTF-8 scripts through Windows PowerShell stdin, set `$OutputEncoding`
+to UTF-8 or run a UTF-8 source file directly; the default ASCII pipe corrupts Chinese.

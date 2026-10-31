@@ -1,0 +1,41 @@
+{
+  "deepseek": {
+    "status": 200,
+    "requestedModel": "deepseek-v4-flash",
+    "returnedModel": "deepseek-flash",
+    "jsonOk": true,
+    "finishReason": "stop"
+  },
+  "liveTaskProvider": {
+    "provider": "stepfun",
+    "model": "step-3.7-flash",
+    "reason": "The existing hosted backend only exposes its StepFun task provider; no production provider code was deployed."
+  },
+  "speechSample": {
+    "text": "请帮我设置五分钟的倒计时。",
+    "elapsedMs": 6309,
+    "segments": [
+      {
+        "text": "请帮我设置五分钟的倒计时。",
+        "mime": "audio/wav",
+        "durationSeconds": 4.96,
+        "nonSilent": true,
+        "audioBytes": 238124
+      }
+    ]
+  },
+  "voiceGateway": {
+    "publicBaseUrl": "https://edsionc.top/api/v1",
+    "models": [
+      "qwen3-tts-1.7b",
+      "qwen3-asr-1.7b"
+    ],
+    "taskKeyPermissions": [
+      "tts",
+      "asr"
+    ],
+    "productionCodeChanged": false,
+    "physicalMicrophoneUsed": false,
+    "audioPlayed": false
+  }
+}

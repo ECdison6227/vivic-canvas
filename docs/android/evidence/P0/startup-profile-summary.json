@@ -1,0 +1,140 @@
+{
+  "traceVersion": 3,
+  "clock": "dual",
+  "mainThreadCpuSeconds": 18.55,
+  "mainThreadWallSeconds": 88.919,
+  "unmatchedReturns": 0,
+  "topCpu": [
+    {
+      "method": "androidx.compose.ui.platform.Wrapper_androidKt.setContent",
+      "seconds": 1.004,
+      "wallSeconds": 4.904
+    },
+    {
+      "method": "dalvik.system.DexFile.openDexFileNative",
+      "seconds": 0.757,
+      "wallSeconds": 1.619
+    },
+    {
+      "method": "androidx.compose.ui.platform.AndroidComposeView.<init>",
+      "seconds": 0.647,
+      "wallSeconds": 2.495
+    },
+    {
+      "method": "androidx.compose.ui.text.android.TextLayout.<init>",
+      "seconds": 0.493,
+      "wallSeconds": 0.797
+    },
+    {
+      "method": "androidx.compose.runtime.snapshots.SnapshotKt.<clinit>",
+      "seconds": 0.431,
+      "wallSeconds": 2.474
+    },
+    {
+      "method": "androidx.compose.runtime.Recomposer.<init>",
+      "seconds": 0.384,
+      "wallSeconds": 3.082
+    },
+    {
+      "method": "android.os.BinderProxy.transactNative",
+      "seconds": 0.354,
+      "wallSeconds": 4.594
+    },
+    {
+      "method": "androidx.compose.ui.platform.WindowRecomposer_androidKt.createLifecycleAwareWindowRecomposer",
+      "seconds": 0.343,
+      "wallSeconds": 2.988
+    },
+    {
+      "method": "kotlin.collections.CollectionsKt__CollectionsKt.listOf",
+      "seconds": 0.247,
+      "wallSeconds": 2.384
+    },
+    {
+      "method": "androidx.activity.ComponentActivity.<init>",
+      "seconds": 0.239,
+      "wallSeconds": 1.229
+    },
+    {
+      "method": "androidx.compose.ui.platform.ComposeViewContext.<init>",
+      "seconds": 0.236,
+      "wallSeconds": 0.683
+    },
+    {
+      "method": "androidx.compose.runtime.internal.ComposableLambdaKt.composableLambdaInstance",
+      "seconds": 0.217,
+      "wallSeconds": 1.578
+    },
+    {
+      "method": "androidx.compose.ui.text.platform.extensions.SpannableExtensions_androidKt.setLineHeight-KmRG4DE",
+      "seconds": 0.212,
+      "wallSeconds": 0.408
+    },
+    {
+      "method": "androidx.compose.ui.semantics.SemanticsOwner.getUnmergedRootSemanticsNode",
+      "seconds": 0.205,
+      "wallSeconds": 0.355
+    },
+    {
+      "method": "androidx.compose.runtime.external.kotlinx.collections.immutable.implementations.immutableMap.PersistentHashMap.<clinit>",
+      "seconds": 0.2,
+      "wallSeconds": 1.309
+    },
+    {
+      "method": "androidx.lifecycle.SavedStateHandleSupport.getSavedStateHandlesVM",
+      "seconds": 0.186,
+      "wallSeconds": 1.36
+    }
+  ],
+  "topWall": [
+    {
+      "method": "androidx.compose.ui.platform.Wrapper_androidKt.setContent",
+      "seconds": 4.904
+    },
+    {
+      "method": "android.os.BinderProxy.transactNative",
+      "seconds": 4.594
+    },
+    {
+      "method": "androidx.compose.runtime.Recomposer.<init>",
+      "seconds": 3.082
+    },
+    {
+      "method": "android.content.res.Configuration.fixUpLocaleList",
+      "seconds": 3.019
+    },
+    {
+      "method": "androidx.compose.ui.platform.WindowRecomposer_androidKt.createLifecycleAwareWindowRecomposer",
+      "seconds": 2.988
+    },
+    {
+      "method": "androidx.compose.ui.platform.AndroidComposeView.<init>",
+      "seconds": 2.495
+    },
+    {
+      "method": "androidx.compose.runtime.snapshots.SnapshotKt.<clinit>",
+      "seconds": 2.474
+    },
+    {
+      "method": "kotlin.collections.CollectionsKt__CollectionsKt.listOf",
+      "seconds": 2.384
+    },
+    {
+      "method": "dalvik.system.DexFile.openDexFileNative",
+      "seconds": 1.619
+    },
+    {
+      "method": "androidx.compose.runtime.internal.ComposableLambdaKt.composableLambdaInstance",
+      "seconds": 1.578
+    },
+    {
+      "method": "app.vivic.remote.MainActivity.onCreate",
+      "seconds": 1.525
+    },
+    {
+      "method": "androidx.compose.ui.platform.AndroidUiDispatcher.<init>",
+      "seconds": 1.415
+    }
+  ],
+  "interpretation": "Sampling adds overhead; these durations are diagnostic hotspots, not cold-start acceptance numbers. Work is spread across Compose/runtime/class initialization and Binder. P0 has no network work in MainActivity."
+}

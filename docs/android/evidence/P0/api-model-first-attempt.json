@@ -1,0 +1,203 @@
+{
+  "date": "2026-10-31T09:59:55.691Z",
+  "scope": "evaluation account; synthetic data; no deployment",
+  "checks": [
+    {
+      "name": "a_pair_claim_session",
+      "status": "pass",
+      "details": {
+        "issue": 200,
+        "claim": 200,
+        "session": 200,
+        "sameAccount": true,
+        "missingOrigin": 403,
+        "authorizationHeader": {
+          "status": 400,
+          "code": "browser-bearer-disabled"
+        },
+        "reusedCode": {
+          "status": 403,
+          "code": "pair-invalid"
+        },
+        "cookieAttributes": [
+          "Path=/",
+          "Max-Age=2591999",
+          "HttpOnly",
+          "Secure",
+          "SameSite=Strict"
+        ]
+      }
+    },
+    {
+      "name": "b_countdown_task",
+      "status": "pass",
+      "details": {
+        "accepted": 202,
+        "states": [
+          {
+            "status": "accepted",
+            "elapsedMs": 57
+          },
+          {
+            "status": "running",
+            "elapsedMs": 1114
+          },
+          {
+            "status": "succeeded",
+            "elapsedMs": 2169
+          }
+        ],
+        "elapsedMs": 2169,
+        "finalStatus": "succeeded",
+        "message": "已找到卡片，打开Space查看。",
+        "createdTypes": [
+          "CountdownCard"
+        ]
+      }
+    },
+    {
+      "name": "d_todo_payload",
+      "status": "pass",
+      "details": {
+        "command": {
+          "type": "card.update",
+          "cardId": "<todo-id>",
+          "displayProps": {
+            "items": [
+              {
+                "id": "<existing-item-1>",
+                "text": "核验原生接口",
+                "done": true
+              },
+              {
+                "id": "<existing-item-2>",
+                "text": "核验同步",
+                "done": false
+              }
+            ]
+          }
+        },
+        "rule": "Send the complete items array with existing item IDs; patching one index is unsupported."
+      }
+    },
+    {
+      "name": "c_stale_version_and_409",
+      "status": "contract-change",
+      "details": {
+        "staleVersionSubmission": 202,
+        "states": [
+          {
+            "status": "accepted",
+            "elapsedMs": 53
+          },
+          {
+            "status": "running",
+            "elapsedMs": 1105
+          },
+          {
+            "status": "succeeded",
+            "elapsedMs": 5341
+          }
+        ],
+        "duplicateSamePayload": 200,
+        "conflictingPayload": {
+          "status": 409,
+          "code": "request-id-conflict"
+        },
+        "originalTaskStillExists": true,
+        "conclusion": "Stale expectedVersion is accepted and refreshed server-side. A 409 can refer to an existing task. Do not generate a new ID and replay after a generic 409."
+      }
+    },
+    {
+      "name": "e_transcribe_m4a",
+      "status": "pass",
+      "details": {
+        "configured": true,
+        "status": 200,
+        "inputBytes": 6301,
+        "transcript": "出包。",
+        "durationValidation": "upstream-required",
+        "note": "Prerecorded synthetic speech in AAC/MPEG_4, 16kHz mono 64kbps; no microphone capture."
+      }
+    },
+    {
+      "name": "f_speech_response",
+      "status": "pass",
+      "details": {
+        "status": 200,
+        "segmentCount": 1,
+        "firstSegment": {
+          "audio": "<base64 length 61500>",
+          "text": "收到",
+          "mime": "audio/wav",
+          "durationSeconds": 0.96,
+          "nonSilent": true
+        },
+        "sourceContract": "segments[{audio:base64 WAV,text,mime:\"audio/wav\",durationSeconds,nonSilent}]"
+      }
+    },
+    {
+      "name": "h_reference_target",
+      "status": "blocked",
+      "details": {
+        "states": [
+          {
+            "status": "accepted",
+            "elapsedMs": 52
+          },
+          {
+            "status": "running",
+            "elapsedMs": 1116
+          },
+          {
+            "status": "awaiting_clarification",
+            "elapsedMs": 9581
+          }
+        ],
+        "finalStatus": "awaiting_clarification",
+        "message": "请提供要改成什么具体内容",
+        "exactCardChanged": false,
+        "newlyCreatedCards": 0,
+        "conclusion": "Title concatenation has not established reliable targeting; keep reference sending gated pending a connected-model test."
+      }
+    },
+    {
+      "name": "g_reading_order",
+      "status": "pass",
+      "details": {
+        "snapshotOrderMatchesOwnerCardOrder": true,
+        "desktop": "Absolute x/y visual layout; owner cardOrder retains insertion/persistence order.",
+        "mobilePlan": "Pinned first, then updatedAt descending is a new mobile order, not the desktop visual order.",
+        "decisionRequired": "Checkpoint 0: choose pinned+updatedAt mobile order or geometric y/x order. No coordinates are written by this runner."
+      }
+    }
+  ],
+  "fixtures": [
+    {
+      "name": "countdown",
+      "cards": [
+        "CountdownCard"
+      ]
+    },
+    {
+      "name": "todo",
+      "cards": [
+        "TodoCard"
+      ]
+    },
+    {
+      "name": "mixed",
+      "cards": [
+        "CountdownCard",
+        "TodoCard",
+        "CountdownCard",
+        "NoteCard"
+      ]
+    }
+  ],
+  "cleanup": {
+    "emptySpaceRestored": true,
+    "claimedDeviceLoggedOut": true
+  },
+  "acceptanceNote": "Voice sample text was replaced by question marks by a Windows PowerShell ASCII stdin pipe. HTTP/MIME acceptance was observed, but this run is not speech-content acceptance. Superseded by api-model-supplement.json with UTF-8 input and an expected-phrase check."
+}

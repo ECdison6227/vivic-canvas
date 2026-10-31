@@ -2,8 +2,8 @@
   "space": {
     "id": "space_fixture",
     "title": "接口核验示例空间",
-    "version": 1258,
-    "updatedAt": "2026-10-31T08:52:32.356Z",
+    "version": 1271,
+    "updatedAt": "2026-10-31T10:04:49.113Z",
     "cards": [
       {
         "id": "card_1",
@@ -18,14 +18,14 @@
           "surface": "display"
         },
         "metadata": {
-          "createdAt": "2026-10-31T08:52:28.580Z",
-          "updatedAt": "2026-10-31T08:52:28.580Z"
+          "createdAt": "2026-10-31T10:03:46.039Z",
+          "updatedAt": "2026-10-31T10:03:46.039Z"
         },
         "type": "CountdownCard",
         "displayProps": {},
         "sourceData": {
-          "targetAt": "2026-10-31T08:57:28.580Z",
-          "startedAt": "2026-10-31T08:52:28.580Z"
+          "targetAt": "2026-10-31T10:08:46.039Z",
+          "startedAt": "2026-10-31T10:03:46.039Z"
         }
       },
       {
@@ -41,8 +41,8 @@
           "surface": "display"
         },
         "metadata": {
-          "createdAt": "2026-10-31T08:52:29.687Z",
-          "updatedAt": "2026-10-31T08:52:29.790Z"
+          "createdAt": "2026-10-31T10:03:47.087Z",
+          "updatedAt": "2026-10-31T10:03:47.185Z"
         },
         "type": "TodoCard",
         "displayProps": {
@@ -64,19 +64,42 @@
       },
       {
         "id": "card_5",
-        "variant": "expanded",
+        "variant": "minimal",
         "sources": [],
         "layout": {
           "x": 736,
           "y": 0,
+          "width": 264,
+          "height": 101,
+          "pinned": false,
+          "surface": "display"
+        },
+        "metadata": {
+          "createdAt": "2026-10-31T10:03:51.869Z",
+          "updatedAt": "2026-10-31T10:03:51.869Z"
+        },
+        "type": "CountdownCard",
+        "displayProps": {},
+        "sourceData": {
+          "targetAt": "2026-10-31T10:05:51.869Z",
+          "startedAt": "2026-10-31T10:03:51.869Z"
+        }
+      },
+      {
+        "id": "card_6",
+        "variant": "expanded",
+        "sources": [],
+        "layout": {
+          "x": 0,
+          "y": 189,
           "width": 320,
           "height": 120,
           "pinned": false,
           "surface": "display"
         },
         "metadata": {
-          "createdAt": "2026-10-31T08:52:32.356Z",
-          "updatedAt": "2026-10-31T08:52:32.356Z"
+          "createdAt": "2026-10-31T10:03:57.878Z",
+          "updatedAt": "2026-10-31T10:03:57.878Z"
         },
         "type": "NoteCard",
         "displayProps": {
@@ -85,6 +108,28 @@
         "sourceData": {
           "title": "P0引用便笺"
         }
+      },
+      {
+        "id": "card_7",
+        "variant": "minimal",
+        "sources": [],
+        "layout": {
+          "x": 368,
+          "y": 189,
+          "width": 320,
+          "height": 120,
+          "pinned": false,
+          "surface": "display"
+        },
+        "metadata": {
+          "createdAt": "2026-10-31T10:04:49.105Z",
+          "updatedAt": "2026-10-31T10:04:49.105Z"
+        },
+        "type": "NoteCard",
+        "displayProps": {
+          "text": "明天"
+        },
+        "sourceData": {}
       }
     ]
   },
@@ -92,8 +137,8 @@
     {
       "id": "space_fixture",
       "title": "接口核验示例空间",
-      "version": 1258,
-      "updatedAt": "2026-10-31T08:52:32.356Z"
+      "version": 1271,
+      "updatedAt": "2026-10-31T10:04:49.113Z"
     }
   ],
   "cursor": 0,

@@ -2,8 +2,8 @@
   "space": {
     "id": "space_fixture",
     "title": "接口核验示例空间",
-    "version": 1257,
-    "updatedAt": "2026-10-31T08:52:29.790Z",
+    "version": 1268,
+    "updatedAt": "2026-10-31T10:03:47.185Z",
     "cards": [
       {
         "id": "card_2",
@@ -18,8 +18,8 @@
           "surface": "display"
         },
         "metadata": {
-          "createdAt": "2026-10-31T08:52:29.687Z",
-          "updatedAt": "2026-10-31T08:52:29.790Z"
+          "createdAt": "2026-10-31T10:03:47.087Z",
+          "updatedAt": "2026-10-31T10:03:47.185Z"
         },
         "type": "TodoCard",
         "displayProps": {
@@ -45,8 +45,8 @@
     {
       "id": "space_fixture",
       "title": "接口核验示例空间",
-      "version": 1257,
-      "updatedAt": "2026-10-31T08:52:29.790Z"
+      "version": 1268,
+      "updatedAt": "2026-10-31T10:03:47.185Z"
     }
   ],
   "cursor": 0,
