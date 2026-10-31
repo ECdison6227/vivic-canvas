@@ -156,7 +156,8 @@ export class ProviderStore {
       if (stepfun) return stepfun;
     }
     // A provider explicitly configured for the role wins over a shared one.
-    return candidates.find((config) => config.roles.length === 1 && config.roles[0] === role) ?? candidates[0];
+    const newestFirst = [...candidates].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    return newestFirst.find((config) => config.roles.length === 1 && config.roles[0] === role) ?? newestFirst[0];
   }
 
   create(input: CreateProviderInput): ProviderConfig {

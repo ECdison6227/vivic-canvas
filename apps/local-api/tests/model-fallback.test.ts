@@ -93,9 +93,11 @@ describe("DeepSeek account API", () => {
       const cookieA = a.headers.get("set-cookie")!.split(";")[0], cookieB = b.headers.get("set-cookie")!.split(";")[0];
       expect((await (await request("/api/credentials/deepseek/validate", cookieA, { apiKey: DEEP_KEY })).json()).connected).toBe(true);
       expect((await (await request("/api/providers/status", cookieB)).json()).deepseek.connected).toBe(false);
+      await service.dispose(); service = open("TEST-invitation-reconnect");
       await request("/api/credentials/stepfun/validate", cookieA, { apiKey: STEP_KEY });
       const status = await (await request("/api/providers/status", cookieA)).json();
       expect(status.deepseek.connected).toBe(true); expect(status.providers[0].connected).toBe(true);
+      expect(status.activeProvider).toBe("stepfun"); expect(status.providers[0].name).toBe("stepfun");
       expect(JSON.stringify(status)).not.toContain(DEEP_KEY);
       const registryA = await (await request("/api/providers", cookieA)).json();
       const registryB = await (await request("/api/providers", cookieB)).json();

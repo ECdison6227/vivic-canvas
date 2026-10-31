@@ -8,6 +8,7 @@ import { DEEPSEEK_BASE_URL, DEFAULT_DEEPSEEK_MODEL, PLAN_MAX_TOKENS, type LocalA
 import { CredentialStore } from "./credentials.js";
 import { DeepseekCredentialStore, deepseekModel as normalizeDeepseekModel, validateDeepseek } from "./deepseek.js";
 import { accountPlanner } from "./modelFallback.js";
+import { resolveSavedMain } from "./providers/main.js";
 import type { CardDefinition } from "@vivic/card-runtime";
 import { currentCardDefinitions } from "./cards/catalog.js";
 import { PlatformCredentialStore } from "./platformCredential.js";
@@ -23,7 +24,7 @@ import {
   SpeechRequestSchema,
   ValidateKeyRequestSchema,
 } from "./schemas.js";
-import { validateConnection, chatJson, probeAnswered, PLAN_CHAT_MODELS } from "./stepfun.js";
+import { validateConnection, chatJson, probeAnswered, PLAN_CHAT_MODELS, type StepfunDeps } from "./stepfun.js";
 import { providerRecoveryHint } from "./providerError.js";
 import { SPEECH_MODEL, synthesizeSpeech } from "./speech.js";
 import { DEFAULT_SPEECH_SPEED, DEFAULT_SPEECH_VOICE, SPEECH_VOICES, SPEECH_VOICES_SOURCE } from "./voices.js";
@@ -144,33 +145,20 @@ export const createApp = (deps: AppDeps) => {
   if (online && deps.providerSeed !== false) seedStepFunProvider(providerStore);
   // Settings win over env in both modes. An empty store leaves today's
   // StepFun/DeepSeek environment path untouched.
-  const savedMain = providerStore.findForRole("main");
-  const savedMainKey = savedMain ? providerStore.getApiKey(savedMain.id) : undefined;
   const savedDecision = providerStore.findForRole("decision");
   // `VIVIC_MAIN_PROVIDER=deepseek` only changes the main planner transport. A
   // separate in-memory store keeps speech/ASR on their StepFun credential, and
   // the key comes from DEEPSEEK_API_KEY without touching disk or logs.
   const mainProvider = config.mainProvider ?? "stepfun";
-  const mainCredentials = mainProvider === "deepseek" ? deps.credentials ?? new CredentialStore() : credentials;
+  const envMainCredentials = mainProvider === "deepseek" ? deps.credentials ?? new CredentialStore() : credentials;
+  const settingsCredentials = new CredentialStore();
+  let mainCredentials = envMainCredentials;
+  let mainDirectDeepseek = mainProvider === "deepseek";
   const deepseekModel = config.deepseekModel ?? DEFAULT_DEEPSEEK_MODEL;
   if (mainProvider === "deepseek" && !mainCredentials.getSecret()) {
     const deepseekKey = config.deepseekApiKey?.trim();
     if (deepseekKey) mainCredentials.set({ apiKey: deepseekKey, models: [deepseekModel], defaultModel: deepseekModel, checkedAt: new Date().toISOString() });
     else mainCredentials.recordError("未配置 DEEPSEEK_API_KEY，DeepSeek 官方快路径不可用；不会回退 StepFun。");
-  }
-  // Settings win over env: an explicitly configured "main" provider replaces
-  // the env-seeded key and model. With no saved provider, nothing changes.
-  // A provider without its own model falls back to the already selected one;
-  // a provider without a key (local Ollama-style endpoints) leaves the old
-  // in-memory connection alone.
-  const savedMainModel = savedMain?.model ?? mainCredentials.getSecret()?.defaultModel;
-  if (savedMain && savedMainKey && savedMainModel) {
-    mainCredentials.set({
-      apiKey: savedMainKey,
-      models: [savedMainModel],
-      defaultModel: savedMainModel,
-      checkedAt: new Date().toISOString(),
-    });
   }
   const platform = new PlatformCredentialStore();
   let platformRevision = 0;
@@ -298,15 +286,11 @@ export const createApp = (deps: AppDeps) => {
   };
   // Only the planner uses the DeepSeek fast path; speech/ASR/readers keep the
   // StepFun deps and credential above. A saved main provider overrides both.
-  let mainModel = savedMain && savedMainKey && savedMainModel
-    ? { baseUrl: savedMain.baseUrl, fetchImpl: deps.fetchImpl, timeoutMs: config.requestTimeoutMs,
-        ...(savedMain.presetId === "deepseek" ? { provider: "deepseek" as const } : {}) }
-    : mainProvider === "deepseek"
+  let mainModel: StepfunDeps = mainProvider === "deepseek"
     ? { baseUrl: config.deepseekBaseUrl ?? DEEPSEEK_BASE_URL, provider: "deepseek" as const,
       fetchImpl: deps.fetchImpl, timeoutMs: config.requestTimeoutMs }
     : stepfun;
-  const isDeepseek = (value: ReturnType<ProviderStore["list"]>[number]) => value.presetId === "deepseek"
-    || /^https:\/\/api\.deepseek\.com(?:\/v1)?\/?$/.test(value.baseUrl);
+  const isDeepseek = (value: ReturnType<ProviderStore["list"]>[number]) => /^https:\/\/api\.deepseek\.com(?:\/v1)?\/?$/.test(value.baseUrl);
   const registryRevision = () => JSON.stringify(providerStore.list().filter(value => value.roles.includes("main")));
   let loadedRegistry: string | undefined;
   const syncRegistry = () => {
@@ -315,15 +299,23 @@ export const createApp = (deps: AppDeps) => {
     const previous = loadedRegistry; loadedRegistry = next;
     const entries = providerStore.list().filter(value => value.enabled && value.roles.includes("main"))
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-    const primary = entries.find(value => value.protocol.startsWith("stepfun")) ?? entries.find(value => !isDeepseek(value));
+    const selected = resolveSavedMain(providerStore, { fetchImpl: deps.fetchImpl, timeoutMs: config.requestTimeoutMs });
     const secondary = entries.find(isDeepseek);
-    if (primary?.apiKey && primary.model) {
-      const current = mainCredentials.getSecret();
-      if (current?.apiKey !== primary.apiKey || current.defaultModel !== primary.model)
-        mainCredentials.set({ apiKey: primary.apiKey, models: [primary.model], defaultModel: primary.model, checkedAt: primary.updatedAt });
-      mainModel = { baseUrl: primary.baseUrl, fetchImpl: deps.fetchImpl, timeoutMs: config.requestTimeoutMs };
-    } else if (previous !== undefined && mainProvider !== "deepseek") { mainCredentials.clear(); mainModel = stepfun; }
-    else if (secondary && mainProvider !== "deepseek") mainCredentials.clear();
+    if (selected) {
+      mainCredentials = settingsCredentials;
+      mainModel = selected.transport;
+      mainDirectDeepseek = selected.provider === "deepseek" && !isDeepseek(selected.saved!);
+      const primary = selected.provider !== "deepseek" || mainDirectDeepseek ? selected.credential : undefined;
+      const current = settingsCredentials.getSecret();
+      if (!primary) settingsCredentials.clear();
+      else if (current?.apiKey !== primary.apiKey || current.defaultModel !== primary.defaultModel)
+        settingsCredentials.set(primary);
+    } else if (providerStore.list().some(value => value.roles.includes("main"))) {
+      mainCredentials = settingsCredentials; settingsCredentials.clear(); mainDirectDeepseek = false; mainModel = stepfun;
+    } else {
+      mainCredentials = envMainCredentials; mainDirectDeepseek = mainProvider === "deepseek";
+      mainModel = mainDirectDeepseek ? { ...stepfun, baseUrl: config.deepseekBaseUrl ?? DEEPSEEK_BASE_URL, provider: "deepseek" as const } : stepfun;
+    }
     const model = secondary && normalizeDeepseekModel(secondary.model);
     if (secondary?.apiKey && model) {
       const current = deepseek.getSecret();
@@ -352,7 +344,7 @@ export const createApp = (deps: AppDeps) => {
     if (activeProvider === "gpt") return { provider: "gpt" as const, connected: gpt.status().connected,
       generate: (messages, signal, _maxTokens, onTextDelta) => gpt.generate(messages, signal, onTextDelta),
       isCurrent: () => current() && gpt.isCurrent(generation) };
-    if (mainProvider === "deepseek") {
+    if (mainDirectDeepseek) {
       const credential = mainCredentials.getSecret();
       return { provider: "deepseek", connected: Boolean(credential), isCurrent: () => current() && credential === mainCredentials.getSecret(),
         generate: (messages, signal, maxTokens, onTextDelta) => credential
@@ -573,14 +565,12 @@ export const createApp = (deps: AppDeps) => {
     const status = mainCredentials.status();
     // Legacy clients still read the "stepfun" main slot, but when the provider
     // store selects DeepSeek the displayed provider must say DeepSeek.
-    const mainSlotName = savedMain
-      ? (/deepseek/i.test(savedMain.name) ? "deepseek" : "stepfun")
-      : (mainProvider === "deepseek" ? "deepseek" : "stepfun");
-    const displayStatus = { ...status, name: mainSlotName };
+    const mainSlotName = mainDirectDeepseek || !status.connected && deepseek.status().connected ? "deepseek" : "stepfun";
+    const displayStatus = mainSlotName === "deepseek" && !mainDirectDeepseek ? deepseek.status() : { ...status, name: mainSlotName };
     rememberGpt();
     if (activeProvider === "gpt") gpt.keepWarm();
     return c.json({
-      activeProvider: mainSlotName, mainProvider: mainSlotName, instance,
+      activeProvider: activeProvider === "gpt" ? "gpt" : mainSlotName, mainProvider: mainSlotName, instance,
       ...(restoringGpt ? { restoring: "gpt" } : {}),
       // Keep the established provider array shape for deployed clients. New
       // clients discover the additive DeepSeek connection through this field.

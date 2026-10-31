@@ -6,7 +6,7 @@ export const DEEPSEEK_MODELS = ["deepseek-flash", "deepseek-v4-pro"] as const;
 export type DeepseekModel = typeof DEEPSEEK_MODELS[number];
 export interface DeepseekCredential { apiKey: string; defaultModel: DeepseekModel; checkedAt: string }
 export const deepseekModel = (value?: string): DeepseekModel | undefined =>
-  !value || value === "deepseek-v4-flash" || value === "deepseek-flash" ? "deepseek-flash"
+  !value || value === "deepseek-chat" || value === "deepseek-v4-flash" || value === "deepseek-flash" ? "deepseek-flash"
     : value === "deepseek-v4-pro" ? value : undefined;
 
 /** Keys stay in the account's short-lived server session, never in status JSON. */

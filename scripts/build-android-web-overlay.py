@@ -95,5 +95,8 @@ text = text.replace(anchor, anchor + '''
   window.addEventListener('pagehide',function(){clearInterval(fallbackTimer);},{once:true});
 ''')
 inject.write_text(text, encoding='utf8', newline='\n')
-(output / 'baseline.json').write_text(json.dumps({'release': release, 'active': active, 'files': baseline}, indent=2), encoding='utf8')
+(output / 'baseline.json').write_text(json.dumps({'release': release, 'active': active, 'files': baseline,
+    'outputIndexSha256': hashlib.sha256((output / 'index.html').read_bytes()).hexdigest(),
+    'outputFiles': {p.relative_to(output).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
+                    for p in output.rglob('*') if p.is_file() and p.name != 'baseline.json'}}, indent=2), encoding='utf8')
 print(json.dumps({'release': release, 'baselineFiles': len(baseline), 'output': str(output)}))
