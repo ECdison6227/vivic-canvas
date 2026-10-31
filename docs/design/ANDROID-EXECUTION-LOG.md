@@ -55,3 +55,11 @@
 - SSE 浏览器联调：大屏实际显示测试便笺；sleep/wake/focus 分别获得实际网页状态回执（约170/475/56ms）。补充原生读取接口，恢复 owner 的 user/display 投影，避免将用户页私有布局当展示布局。
 - 网页发布以最新活跃资源为基线，138 个 JS 文件静态语法检查通过；保留扫码、登录、卡片上下文、波浪、时钟和息屏实现。发现最新登录注入缺失函数结束括号，候选中已做精确修复。待部署前再次核对哈希并使用部署锁与后端镜像 CAS。
 - 所有候选文件精确私钥扫描无命中；`.cache`、服务器配置和 keystore 不进入 Git。当前仍有生产 E2E、扫码/持久化、更新安装与最终发布验证待完成，继续执行。
+
+## 2026-10-31 final release
+
+- Published Android 0.3.0/code20: https://vivic.edsionc.top/downloads/android/Vivic-Remote-0.3.0.apk; 12,545,424 bytes; SHA256 99bdaff2d56ffbe5ab2b954d4c5cab93ef1f5f09458b9377818298c659c9dc63. Public download, original certificate, legacy alias and latest.json were verified.
+- Backend revision dcaab5177f5ac4dfdc2ee29a207e082feeb61e1f passed staging and production SQLite checks; final integrated API suite: 2030 passed / 3 skipped. Latest concurrent parser, model resolver, QR and onboarding changes were retained.
+- Native release upgrade retained the old 0.2.0 session. Live instrumentation verified native TLS, migrated auth, real note creation, todo writes, acknowledged display sleep/wake, update check, APK signature verification and rejection of a wrong hash. UI helpers were corrected for terminal status names and pointer clicks; no production assertions were removed.
+- Debug/JVM/lint and signed ARM/x86 release builds passed. The public phone package contains ARM64+ARMv7 only. Original signing key and all API credentials remain outside Git; the exact secret scan returned zero matches.
+- Final scope and remaining physical-device/legacy-web limits: docs/android/Android-0.3.0-release.md.

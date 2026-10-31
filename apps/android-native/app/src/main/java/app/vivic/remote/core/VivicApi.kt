@@ -99,7 +99,7 @@ class VivicApi(private val vault: SecureVault, val origin: String = "https://viv
             continuation.invokeOnCancellation { call.cancel() }
             call.enqueue(object : Callback {
                 override fun onFailure(call: Call, e: IOException) {
-                    if (continuation.isActive) continuation.resumeWithException(ApiFailure(0, "network", "网络连接暂不可用，请稍后重试", auth.generation))
+                    if (continuation.isActive) continuation.resumeWithException(ApiFailure(0, if (BuildConfig.DEBUG) "network-${e.javaClass.simpleName}" else "network", "网络连接暂不可用，请稍后重试", auth.generation))
                 }
                 override fun onResponse(call: Call, response: Response) {
                     response.use {
@@ -194,8 +194,20 @@ interface WorkspaceBackend {
     suspend fun definitions(): List<JsonObject>
 }
 class NetworkBackend(private val api: VivicApi) : WorkspaceBackend {
+    private var nativeProjection = true
     override suspend fun spaces() = api.json("/api/space/spaces").arrayAt("spaces").map { SpaceSummary.from(it.obj()) }
-    override suspend fun snapshot(id: String) = Snapshot.from(api.json("/api/space/native/spaces/$id"))
+    override suspend fun snapshot(id: String): Snapshot {
+        if (nativeProjection) try { return Snapshot.from(api.json("/api/space/native/spaces/$id")) }
+        catch (error: ApiFailure) { if (error.status != 404) throw error; nativeProjection = false }
+        // Older servers already expose the same authorized owner projection.
+        // Use its version with its cards, so a rolling server upgrade cannot mix writes.
+        val canonical = Snapshot.from(api.json("/api/space/spaces/$id"))
+        val owner = api.json("/api/space/owner/canvases/$id"); val record = owner.objectAt("record")
+        val cards = record.objectAt("cardsById")
+        return canonical.copy(space = canonical.space.copy(title = record.text("title", canonical.space.title),
+            version = owner.number("serverVersion").toLong()), version = owner.number("serverVersion").toLong(),
+            cards = record.arrayAt("cardOrder").mapIndexed { index, value -> CardRecord.from(cards[(value as? JsonPrimitive)?.contentOrNull ?: ""] ?: JsonNull, index) })
+    }
     private suspend fun projected(id: String, result: JsonObject): TaskResult {
         val task = TaskResult.from(result)
         return task.copy(snapshot = snapshot(id))

@@ -40,6 +40,8 @@ android {
             storeType = "PKCS12"
         }
         buildTypes.getByName("release").signingConfig = signingConfigs.getByName("vivic")
+        if (providers.gradleProperty("vivicQaSigning").orNull == "true")
+            buildTypes.getByName("debug").signingConfig = signingConfigs.getByName("vivic")
     }
     dependencyLocking { lockAllConfigurations() }
 }

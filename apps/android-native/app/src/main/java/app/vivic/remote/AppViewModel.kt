@@ -44,6 +44,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private var selectedId: String? = null
     private var lastUpdateCheck = 0L
     private var sessionEpoch = 0L
+    private var resumeJob: Job? = null
     init {
         viewModelScope.launch {
             withContext(Dispatchers.IO) { vault.load(); api = VivicApi(vault); network = NetworkBackend(api) }
@@ -60,8 +61,22 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 if (!cached.isNullOrBlank() && !vault.peek("cookies").isNullOrBlank())
                     authenticated(Session(true, cached, vault.peek("account_name") ?: "", "", ""))
                 notify("暂时无法连接 Vivic，请检查网络")
+                resumeSession()
             } finally { mutable.update { it.copy(initializing = false) } }
             delay(8000); checkUpdate(silent = true)
+        }
+    }
+    private fun resumeSession() {
+        if (resumeJob?.isActive == true || state.value.session != null || state.value.demo || vault.peek("cookies").isNullOrBlank()) return
+        resumeJob = viewModelScope.launch {
+            delay(1500)
+            if (state.value.authBusy || state.value.session != null) return@launch
+            val epoch = sessionEpoch; val generation = api.cookieJar.generation
+            try {
+                val session = api.session()
+                if (epoch != sessionEpoch || generation != api.cookieJar.generation || state.value.session != null) return@launch
+                if (session.authenticated) authenticated(session) else api.cookieJar.clear()
+            } catch (_: Exception) { /* Keep the valid stored binding for the next network/foreground event. */ }
         }
     }
     fun notify(text: String, undo: Boolean = false) {
@@ -175,7 +190,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun foreground(value: Boolean) {
         foreground = value
         if (!::api.isInitialized) return
-        if (value) { startSync(); viewModelScope.launch { ensureModels() }; if (System.currentTimeMillis() - lastUpdateCheck > 30 * 60_000) checkUpdate(silent = true) }
+        if (value) { if (!state.value.initializing) resumeSession(); startSync(); viewModelScope.launch { ensureModels() }; if (System.currentTimeMillis() - lastUpdateCheck > 30 * 60_000) checkUpdate(silent = true) }
         else { stopSync(); tts.stop(); if (state.value.recording) stopRecording(cancel = true) }
     }
     private suspend fun refreshProviders() { val epoch = sessionEpoch; try { val providers = api.providers(); if (epoch == sessionEpoch) mutable.update { it.copy(providers = providers) } } catch (_: Exception) {} }

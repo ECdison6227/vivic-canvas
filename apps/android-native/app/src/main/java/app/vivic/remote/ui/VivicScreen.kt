@@ -140,7 +140,7 @@ import kotlin.math.abs
 
 @Composable private fun MainControls(vm: AppViewModel, state: AppState, keyboardVisible: Boolean, pager: PagerState, height: (Int) -> Unit) {
     val colors = LocalVivicColors.current; val scope = rememberCoroutineScope()
-    Box(Modifier.fillMaxSize().testTag("chat_page")) {
+    Box(Modifier.fillMaxSize()) {
         AnimatedVisibility(!keyboardVisible, enter = fadeIn(tween(160)) + slideInVertically(tween(160)) { -8 }, exit = fadeOut(tween(160)) + slideOutVertically(tween(160)) { -8 }) {
             Row(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                 PressIconButton(if (state.page == 0) "add" else "apps", if (state.page == 0) "新对话" else "切换工作空间",
@@ -177,6 +177,7 @@ import kotlin.math.abs
 
 @Composable private fun ChatPage(vm: AppViewModel, state: AppState, bottomGap: Dp) {
     val list = rememberLazyListState(); val colors = LocalVivicColors.current; val scope = rememberCoroutineScope()
+    val topPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 72.dp
     LaunchedEffect(state.messages.size, state.messages.lastOrNull()?.state, bottomGap) {
         if (state.messages.isNotEmpty() && (list.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0) >= state.messages.size - 3)
             list.animateScrollToItem(state.messages.lastIndex)
@@ -185,7 +186,7 @@ import kotlin.math.abs
         if (state.messages.isEmpty()) Column(Modifier.align(Alignment.Center).offset(y = (-24).dp).padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(18.dp)) {
             VivicOrb(Modifier.size(92.dp)); Text("想做点什么？", style = MaterialTheme.typography.titleLarge)
         }
-        LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 96.dp, bottom = bottomGap), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        LazyColumn(state = list, modifier = Modifier.fillMaxSize().testTag("chat_page"), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = topPadding, bottom = bottomGap), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             items(state.messages, key = { it.id }) { message ->
                 Column(Modifier.fillMaxWidth(), horizontalAlignment = if (message.user) Alignment.End else Alignment.Start, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Box(Modifier.widthIn(max = 360.dp).fillMaxWidth(.85f).clip(ContinuousCornerShape(20.dp))
@@ -247,7 +248,7 @@ import kotlin.math.abs
         if (cards.isEmpty()) Column(Modifier.align(Alignment.Center).padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(24.dp)) {
             VivicOrb(Modifier.size(224.dp)); Text("对 Vivic 说“帮我建一个待办”", color = LocalVivicColors.current.secondary)
         }
-        LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 96.dp, bottom = bottomPadding), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 72.dp, bottom = bottomPadding), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             items(cards, key = { it.id }) { card -> CardTile(card, vm, state.definitions,
                 Modifier.animateItem(fadeInSpec = tween(240), fadeOutSpec = tween(168), placementSpec = tween(240, easing = Motion.EaseInOut)),
                 focused = card.id == state.focusedCard, fresh = card.id in state.newCardIds, focusNonce = state.focusNonce) }
