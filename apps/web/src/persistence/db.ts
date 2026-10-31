@@ -1,6 +1,7 @@
 import { clearMedia } from "@/cards/scene/mediaStore";
 import { clearAllFileAssets, removeCanvasFileAssets } from "@/files/assetStore";
 import { CanvasRecordSchema, preserveCanvasRecovery, recoverCanvasRecord, type CanvasRecord } from "./canvasRecord";
+import { OWNER_ONLINE_BUILD } from "@/online/mode";
 
 /**
  * Thin Promise wrapper over IndexedDB. DB `vivic`, schema v2:
@@ -89,7 +90,7 @@ export const createMemoryDB = (initialRecords: unknown[] = []): VivicDB => {
 };
 
 export const openVivicDB = (): Promise<VivicDB> =>
-  new Promise((resolve, reject) => {
+  OWNER_ONLINE_BUILD ? import("@/hosted/ownerDB").then(module => module.createOwnerDB()) : new Promise((resolve, reject) => {
     const open = indexedDB.open(DB_NAME, DB_VERSION);
     open.onupgradeneeded = () => {
       const db = open.result;

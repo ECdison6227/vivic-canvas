@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import QRCode from "qrcode";
 import { Button } from "@/components/ui/button";
 import { canvasStore } from "@/state/canvasStore";
@@ -13,6 +13,7 @@ import { loadBuiltinOfficeDefinitions, officePlannerKind } from "@/cards/office/
 import { AndroidDownload } from "./AndroidDownload";
 import { projectMobileSubcards } from "./projectSubcards";
 import { createRemoteFileReader } from "@/files/remoteFiles";
+import { createMobileImageProjection } from "./imageProjection";
 
 const stopped: ConnectorState = { status: "stopped", pairCode: null, pairExpiresAt: null, expiresAt: null, controllers: [], error: null };
 const subscribeNothing = () => () => {};
@@ -26,9 +27,25 @@ export function MobileControlSettings({ host, disabled, desktopBusy }: { host: C
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [now, setNow] = useState(Date.now);
+  const [ownerSlot] = useState(() => {
+    const key = "vivic.mobile.owner-slot.v1";
+    // This is a public tab identifier. No relay token/code or model credential is stored.
+    try { const saved = sessionStorage.getItem(key); if (saved && /^[a-f0-9-]{36}$/i.test(saved)) return saved;
+      const id = crypto.randomUUID(); sessionStorage.setItem(key, id); return id; } catch { return crypto.randomUUID(); }
+  });
+  const current = useRef<ReturnType<typeof createComputerConnector> | null>(null);
+  const attempt = useRef(0), starting = useRef(false);
   const running = connector && !["stopped", "expired", "error"].includes(state.status);
   const pairCode = state.pairCode && (state.pairExpiresAt ?? 0) > now ? state.pairCode : null;
-  useEffect(() => () => connector?.stop(), [connector]);
+  useEffect(() => {
+    if (disabled) return;
+    void start(true);
+    const recover = () => { if (document.visibilityState === "visible" && !current.current) void start(true); };
+    window.addEventListener("online", recover); window.addEventListener("pageshow", recover); document.addEventListener("visibilitychange", recover);
+    const detach = () => { ++attempt.current; current.current?.detach(); current.current = null; };
+    window.addEventListener("pagehide", detach);
+    return () => { detach(); starting.current = false; window.removeEventListener("pagehide", detach); window.removeEventListener("pageshow", recover); window.removeEventListener("online", recover); document.removeEventListener("visibilitychange", recover); };
+  }, [host, disabled]);
   useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, []);
   useEffect(() => {
     let active = true; setQr("");
@@ -38,15 +55,27 @@ export function MobileControlSettings({ host, disabled, desktopBusy }: { host: C
     }
     return () => { active = false; };
   }, [pairCode, mobileUrl]);
-  const start = async () => {
-    setBusy(true); setError(null); connector?.stop(); setConnector(null);
+  const start = async (resumeOnly = false) => {
+    if (starting.current || resumeOnly && current.current) return;
+    starting.current = true; const revision = ++attempt.current;
+    setBusy(true); setError(null);
+    if (!resumeOnly) { current.current?.stop(); current.current = null; setConnector(null); }
     try {
       // A custom extension sharing an Office ID must never select its preview.
       await Promise.all([loadBuiltinOfficeDefinitions(), extensionDefinitions.ready()]).catch(() => {});
-      const response = await fetch("/api/mobile/session", { method: "POST", cache: "no-store" });
+      const response = await fetch(`/api/mobile/session${resumeOnly ? "/resume" : ""}`, { method: "POST", cache: "no-store",
+        headers: { "content-type": "application/json" }, body: JSON.stringify({ ownerSlot }), signal: AbortSignal.timeout(8000) });
       if (!response.ok) throw new Error("relay_unavailable");
-      const session = await response.json() as { relayUrl: string; mobileUrl: string; deviceId: string; token: string };
-      const adapter = createVivicHostAdapter({ computerName: "Vivic 电脑", shareCardPreviews: true, host: { ...host,
+      const body = await response.json();
+      if (revision !== attempt.current) return;
+      const session = (resumeOnly ? body.session : body) as { relayUrl: string; mobileUrl: string; deviceId: string; token: string } | null;
+      if (!session) {
+        try { if (sessionStorage.getItem("vivic.mobile.was-active") === "1") setError("本机服务已重启或会话已结束，请重新扫码连接手机。"); } catch {}
+        return;
+      }
+      const images = createMobileImageProjection(host);
+      const adapter = createVivicHostAdapter({ projectImages: images.projectImages, readImageChunk: images.readImageChunk,
+        connectionEpoch: crypto.randomUUID(), computerName: "Vivic 电脑", shareCardPreviews: true, host: { ...host,
         getSnapshot: () => { const snapshot = host.getSnapshot(); return { ...snapshot, ready: snapshot.ready && !desktopBusy() }; },
         switchCanvas: id => { if (!desktopBusy()) host.switchCanvas(id); },
         setCardSurface: (cardId, surface, position, canvasId) => desktopBusy() ? { ok: false } : host.setCardSurface(cardId, surface, position, canvasId),
@@ -59,14 +88,25 @@ export function MobileControlSettings({ host, disabled, desktopBusy }: { host: C
         readFileChunk: createRemoteFileReader(),
         readCards: () => canvasStore.getState().cards,
         subscribeCards: listener => {
-          const cards = canvasStore.subscribe(listener), definitions = extensionDefinitions.subscribe(listener);
-          return () => { cards(); definitions(); };
+          const cards = canvasStore.subscribe(listener), definitions = extensionDefinitions.subscribe(listener), pictures = images.subscribe(listener);
+          return () => { cards(); definitions(); pictures(); };
         },
         submitText: (text, context) => executeRemoteText(host, text, context, desktopBusy) });
       const next = createComputerConnector({ transport: createWebSocketTransport(session.relayUrl), host: adapter,
         deviceId: session.deviceId, deviceName: "Vivic 电脑", token: session.token });
-      setMobileUrl(session.mobileUrl); setConnector(next); next.start();
-    } catch { setError("手机中继暂不可用，请检查本机中继配置后重试。"); }
+      current.current = next; setMobileUrl(session.mobileUrl); setConnector(next); next.start();
+      try { sessionStorage.setItem("vivic.mobile.was-active", "1"); } catch {}
+    } catch { if (revision === attempt.current) setError("手机连接未恢复，请检查本机服务和中继后重试。必要时重新扫码。"); }
+    finally { if (revision === attempt.current) { starting.current = false; setBusy(false); } }
+  };
+  const stop = async () => {
+    ++attempt.current; current.current?.stop(); current.current = null; setConnector(null); setBusy(true);
+    try {
+      sessionStorage.removeItem("vivic.mobile.was-active");
+      const response = await fetch("/api/mobile/session/end", { method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ownerSlot }), signal: AbortSignal.timeout(8000) });
+      if (!response.ok) setError("手机控制已停止；中继撤权未确认，请检查连接。");
+    } catch { setError("手机控制已停止；中继撤权未确认，请检查连接。"); }
     finally { setBusy(false); }
   };
   return <section className="rounded-xl border border-neutral-200 bg-white p-4" data-vivic-mobile-control>
@@ -76,7 +116,7 @@ export function MobileControlSettings({ host, disabled, desktopBusy }: { host: C
     <div className="mt-3 flex flex-wrap gap-2">
       <AndroidDownload />
       {!running ? <Button size="sm" disabled={disabled || busy} onClick={() => void start()} data-vivic-mobile-start>生成连接二维码</Button>
-        : <><Button size="sm" variant="outline" onClick={() => { connector?.stop(); setConnector(null); }} data-vivic-mobile-stop>停止手机控制</Button>
+        : <><Button size="sm" variant="outline" disabled={busy} onClick={() => void stop()} data-vivic-mobile-stop>停止手机控制</Button>
           <Button size="sm" variant="secondary" disabled={state.status !== "connected"} onClick={() => connector?.rotatePairing()}>生成新配对码</Button></>}
     </div>
     {pairCode && <div className="mt-4"><p className="text-xs">扫码连接，仅可使用一次 · {Math.max(0, Math.ceil(((state.pairExpiresAt ?? 0) - now) / 1000))} 秒后过期</p>

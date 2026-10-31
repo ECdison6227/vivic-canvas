@@ -7,8 +7,9 @@ import { newId } from "@/lib/id";
 import { remainingSeconds, resumeReminderSource, scheduleLabel, type ReminderSummary } from "@/reminders/reminders";
 import type { ControlHost } from "@/sync/controlHost";
 
-export const RemindersSection = ({ host, readonly, hidePreferences = false }: { host: ControlHost; readonly: boolean; hidePreferences?: boolean }) => {
+export const RemindersSection = ({ host, readonly, hidePreferences = false, external = false }: { host: ControlHost; readonly: boolean; hidePreferences?: boolean; external?: boolean }) => {
   const snapshot = useSyncExternalStore(host.subscribe, host.getSnapshot);
+  const reminders = snapshot.reminders.filter(item => !item.card.sourceData.notifiedAt);
   const [now, setNow] = useState(Date.now);
   const [editing, setEditing] = useState<string | null>(null);
   const [text, setText] = useState("");
@@ -35,15 +36,14 @@ export const RemindersSection = ({ host, readonly, hidePreferences = false }: { 
   };
 
   return (
-    <section className="rounded-xl border border-neutral-200 bg-white p-4" data-vivic-reminders>
+    <section className={external ? "vivic-reminders-panel" : "rounded-xl border border-neutral-200 bg-white p-4"} data-vivic-reminders data-vivic-reminders-external={external || undefined}>
       <div className="flex items-center gap-2 text-sm font-semibold"><Bell className="h-4 w-4" />提醒</div>
-      <p className="mt-2 text-xs text-neutral-500">临近的提醒显示在 Space，到时后保留记录。使用提醒时请保持控制页打开。</p>
+      <p className="mt-2 text-xs text-neutral-500">临近的提醒显示在 Space；到时提醒后会自动消失。使用提醒时请保持控制页打开。</p>
       {!hidePreferences && <NotificationSettings disabled={readonly} />}
-      {snapshot.reminders.length === 0 && <p className="mt-3 text-sm text-neutral-500">暂无提醒，可在聊天中创建。</p>}
+      {reminders.length === 0 && <p className="mt-3 text-sm text-neutral-500">暂无提醒，可在聊天中创建。</p>}
       <ul className="mt-3 space-y-2">
-        {snapshot.reminders.map(item => {
+        {reminders.map(item => {
           const card = item.card;
-          const done = Boolean(card.sourceData.notifiedAt);
           const paused = Boolean(card.sourceData.pausedAt);
           const seconds = remainingSeconds(card, now);
           const label = scheduleLabel(card);
@@ -54,12 +54,12 @@ export const RemindersSection = ({ host, readonly, hidePreferences = false }: { 
                 <div className="min-w-0">
                   <p className="break-words text-sm font-medium" data-vivic-reminder-text>{card.sourceData.reminderText ?? "倒计时"}</p>
                   <p className="mt-1 text-xs text-neutral-500" data-vivic-reminder-status>
-                    {item.canvasTitle} · {done ? "已到时" : paused ? "已暂停" : card.sourceData.condition && !card.sourceData.conditionMetAt ? "等待条件" : seconds === 0 ? "即将提示" : `剩余 ${Math.floor(seconds / 60)}分${seconds % 60}秒`}
+                    {item.canvasTitle} · {paused ? "已暂停" : card.sourceData.condition && !card.sourceData.conditionMetAt ? "等待条件" : seconds === 0 ? "即将提示" : `剩余 ${Math.floor(seconds / 60)}分${seconds % 60}秒`}
                   </p>
                   {label && <p className="mt-1 text-xs text-neutral-500" data-vivic-reminder-schedule>{label}</p>}
                 </div>
                 <div className="flex gap-1">
-                  <Button variant="ghost" size="sm" disabled={readonly || done} onClick={() => pauseOrResume(item)} aria-label={`${paused ? "继续" : "暂停"}${card.sourceData.reminderText ?? "倒计时"}`}>
+                  <Button variant="ghost" size="sm" disabled={readonly} onClick={() => pauseOrResume(item)} aria-label={`${paused ? "继续" : "暂停"}${card.sourceData.reminderText ?? "倒计时"}`}>
                     {paused ? <Play className="mr-1 h-3 w-3" /> : <Pause className="mr-1 h-3 w-3" />}{paused ? "继续" : "暂停"}
                   </Button>
                   <Button variant="ghost" size="sm" disabled={readonly} onClick={() => {
@@ -89,12 +89,6 @@ export const RemindersSection = ({ host, readonly, hidePreferences = false }: { 
           );
         })}
       </ul>
-      {snapshot.reminderNotices.length > 0 && <div className="mt-4 border-t border-neutral-100 pt-3" data-vivic-reminder-inbox>
-        <p className="text-xs font-medium text-neutral-600">最近到时</p>
-        {snapshot.reminderNotices.slice(-5).reverse().map(notice => <p key={notice.id} className="mt-1 break-words text-sm text-neutral-700" data-vivic-reminder-notice>
-          {notice.text} <span className="text-xs text-neutral-400">· {notice.canvasTitle} · {new Date(notice.firedAt).toLocaleTimeString()}</span>
-        </p>)}
-      </div>}
       {(error || snapshot.reminderError) && <p className="mt-2 text-xs text-red-700" role="alert">{error ?? snapshot.reminderError}</p>}
     </section>
   );

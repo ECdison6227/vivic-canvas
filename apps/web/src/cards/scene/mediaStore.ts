@@ -62,6 +62,10 @@ export async function getMediaBlob(ref: string): Promise<Blob | undefined> {
   const row = await run<MediaRow | undefined>("readonly", store => store.get(ref.slice(MEDIA_PREFIX.length)) as IDBRequest<MediaRow | undefined>).catch(() => undefined);
   return row?.blob;
 }
+export async function getMediaAsset(ref: string): Promise<Pick<MediaRow, "blob" | "width" | "height"> | undefined> {
+  if (!/^media:[A-Za-z0-9_-]{1,80}$/.test(ref)) return undefined;
+  return run<MediaRow | undefined>("readonly", store => store.get(ref.slice(MEDIA_PREFIX.length)) as IDBRequest<MediaRow | undefined>).catch(() => undefined);
+}
 
 export async function listMediaRefs(): Promise<string[]> {
   const keys = await run<IDBValidKey[]>("readonly", store => store.getAllKeys()).catch(() => undefined);

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import {
   absoluteReminderTime, CardRecordSchema, SCENE_BY_ID, SCENE_CARD_SIZES, type CardRecord, type EvidenceRef, type SceneId,
 } from "@vivic/contracts";
-import { dayOfWeek, isoOf, mondayOf, monthOf, parseIso, daysBetween } from "./calendar.js";
+import { addDays, dayOfWeek, isoOf, mondayOf, monthOf, parseIso, daysBetween, type Ymd } from "./calendar.js";
 import {
   groundedDate, groundedDoi, groundedNumber, groundedPartialDate, groundedPhrase, groundedTime, groundedUrl, groundedWeekday, overlapRatio, type Corpus,
 } from "./grounding.js";
@@ -15,6 +15,8 @@ export interface SceneBuildContext {
   corpus: Corpus;
   /** User-supplied text beyond the bare command (pasted article, notes…). */
   sourceTextLength: number;
+  /** Weekdays the *user's own turn* named; canvas/page text is not user intent. */
+  ownWeekdays: ReadonlySet<number>;
   page?: ScenePage;
   timeZone: string;
   now: number;
@@ -41,7 +43,7 @@ function groundingIssue(scene: ParsedScene, context: SceneBuildContext): SceneIs
   const day = (value: string | undefined, field: string) => value === undefined || groundedDate(corpus, value) ? null
     : { issue: `${scene.scene}.${field} 日期不在用户的话里，不能推测；缺日期时请 clarify`, ask: "请告诉我具体日期，我再生成卡片。" };
   const clock = (value: string | undefined, field: string) => value === undefined || groundedTime(corpus, value) ? null
-    : { issue: `${scene.scene}.${field} 时间不在用户的话里，不能推测；没有时间就省略` };
+    : { issue: `${scene.scene}.${field} 时间不在用户的话里，不能推测；把用户说的时段原样写进该事项标题，不要编造钟点、不要追问` };
   const first = (...checks: Array<SceneIssue | null>) => checks.find(Boolean) ?? null;
   switch (scene.scene) {
     case "travel_offers": return { issue: "旅游卡必须由服务适配器构建，禁止模型直接创建结果" };
@@ -55,11 +57,19 @@ function groundingIssue(scene: ParsedScene, context: SceneBuildContext): SceneIs
         d.doi === undefined || groundedDoi(corpus, d.doi) ? null : { issue: "academic_paper.doi 必须来自用户提供的信息" }, url(d.url, "url"));
     }
     case "photo_gallery": return first(...(scene.data.images ?? []).map(image => url(image.url, "images.url")));
-    case "weekly_schedule": return first(...scene.data.events.flatMap(event => [
-      event.date ? day(event.date, "events.date") : event.day !== undefined && !groundedWeekday(corpus, event.day)
-        ? { issue: "weekly_schedule.events.day 的星期不在用户的话里，不能推测" } : null,
-      clock(event.start, "events.start"), clock(event.end, "events.end"),
-    ]));
+    case "weekly_schedule": {
+      // A plan the user asked for ("下周的健身计划") has no weekdays in the
+      // request: which days to train is the plan's own content, so only clock
+      // times stay grounded. If the user did name days/dates, they still bind.
+      // Only the user's own turn counts here: a canvas card mentioning 周三 is
+      // not a request to schedule that day.
+      const plannedWeek = context.ownWeekdays.size === 0;
+      return first(...scene.data.events.flatMap(event => [
+        event.date ? plannedWeek ? null : day(event.date, "events.date") : event.day !== undefined && !plannedWeek && !groundedWeekday(context.corpus, event.day)
+          ? { issue: "weekly_schedule.events.day 的星期不在用户的话里，不能推测" } : null,
+        clock(event.start, "events.start"), clock(event.end, "events.end"),
+      ]));
+    }
     case "data_visualization": return first(...scene.data.points.flatMap((point, index) => [
       number(point.y, `points[${index}].y`), typeof point.x === "number" ? number(point.x, `points[${index}].x`) : null,
     ]));
@@ -110,6 +120,14 @@ function groundingIssue(scene: ParsedScene, context: SceneBuildContext): SceneIs
 
 // ----------------------------------------------------------------- builders
 
+/** The Monday a request's own week phrase names ("下周/本周"), if any. */
+function statedWeekStart(text: string, today: Ymd): Ymd | undefined {
+  const match = text.match(/(下下|下|这|本|上)(?:个)?(?:周|星期|礼拜)/u);
+  if (!match) return undefined;
+  const shift = match[1] === "下下" ? 2 : match[1] === "下" ? 1 : match[1] === "上" ? -1 : 0;
+  return addDays(mondayOf(today), shift * 7);
+}
+
 const sceneTitle = (scene: ParsedScene): string => {
   switch (scene.scene) {
     case "travel_offers": return `${scene.data.destination}旅游结果`;
@@ -150,7 +168,12 @@ function displayFor(scene: ParsedScene, context: SceneBuildContext): { type: Car
     case "weekly_schedule": {
       const d = scene.data;
       const dated = d.events.map(event => event.date ? parseIso(event.date) : null);
-      const anchor = d.weekStart ? parseIso(d.weekStart) : dated.find(Boolean) ?? today;
+      // "下周" in the request owns the week; a model weekStart that disagrees
+      // with an explicit "下周/这周" must not move the plan to another week.
+      const stated = statedWeekStart(context.corpus.text, today);
+      let anchor = d.weekStart ? parseIso(d.weekStart) : dated.find(Boolean) ?? undefined;
+      if (!dated.some(Boolean) && stated && (!anchor || daysBetween(stated, mondayOf(anchor)) !== 0)) anchor = stated;
+      anchor ??= today;
       if (!anchor) return { issue: "weekly_schedule.weekStart 不是有效日期" };
       const weekStart = mondayOf(anchor);
       const events = [];

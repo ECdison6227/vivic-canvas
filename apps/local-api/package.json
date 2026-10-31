@@ -3,7 +3,9 @@
   "private": true,
   "version": "0.6.0",
   "type": "module",
-  "files": ["src"],
+  "files": [
+    "src"
+  ],
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
@@ -39,5 +41,6 @@
   },
   "engines": {
     "node": ">=22"
-  }
+  },
+  "optionalDependencies": {}
 }

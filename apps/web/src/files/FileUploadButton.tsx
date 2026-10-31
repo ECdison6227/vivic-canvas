@@ -16,7 +16,7 @@ export function FileUploadButton({ host, disabled = false, compact = false, onPi
       if (!files.length || disabled || busyRef.current) return;
       onPick?.(); onStatus?.("正在读取文件…");
       busyRef.current = true; setBusy(true); setMessage(""); abort.current = new AbortController();
-      try { const cards = await uploadFileCards(host, files, abort.current.signal); const value = `已保存 ${cards.length} 张文件卡片到 Space`; setMessage(value); onStatus?.(value); }
+      try { const cards = await uploadFileCards(host, files, abort.current.signal); const value = cards.length ? `已保存 ${cards.length} 张文件卡片到 Space${cards.length < files.length ? "，重复文件已跳过" : ""}` : "文件已在此 Space 中，未重复新增卡片"; setMessage(value); onStatus?.(value); }
       catch (error) { const value = error instanceof Error ? error.message : "文件上传失败，请重试"; setMessage(value); onStatus?.(value); }
       finally { busyRef.current = false; setBusy(false); abort.current = null; }
     }} />

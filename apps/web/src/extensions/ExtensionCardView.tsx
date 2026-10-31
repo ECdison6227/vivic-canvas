@@ -1,4 +1,4 @@
-import { useEffect, useSyncExternalStore } from "react";
+import { useContext, useEffect, useSyncExternalStore } from "react";
 import { resolvePointer, validateInstance, type CardDefinition, type UiBlock } from "@vivic/card-runtime";
 import { Puzzle } from "lucide-react";
 import { SceneCardShell, SceneEmpty } from "@/cards/scene/SceneCardShell";
@@ -9,6 +9,7 @@ import { SchemaForm } from "./SchemaForm";
 import { OfficePlannerCardView } from "@/cards/office/OfficePlannerCardView";
 import { useOfficePlannerKind } from "@/cards/office/useOfficePlannerKind";
 import { MediaImage } from "@/cards/scene/MediaImage";
+import { HostedDefinitionContext } from "./HostedDefinitionScope";
 import "./extensions.css";
 
 const display = (value: unknown): string => value === undefined || value === null ? "—" : typeof value === "object" ? JSON.stringify(value) : String(value);
@@ -40,16 +41,17 @@ function Block({ block, root, allowNetwork }: { block: UiBlock; root: unknown; a
 }
 /** Explicit definition is used only by the isolated Test Space. */
 export function ExtensionCardView({ card, height, definition: previewDefinition }: CardViewProps<"ExtensionCard"> & { definition?: CardDefinition }) {
+  const hosted = useContext(HostedDefinitionContext);
   useSyncExternalStore(extensionDefinitions.subscribe, extensionDefinitions.snapshot, extensionDefinitions.snapshot);
-  useEffect(() => { if (!previewDefinition) void extensionDefinitions.ready(); }, [previewDefinition]);
-  const editor = useCardEditor(card), definition = previewDefinition ?? extensionDefinitions.get(card.displayProps.def);
+  useEffect(() => { if (!previewDefinition && !hosted) void extensionDefinitions.ready(); }, [previewDefinition, hosted]);
+  const editor = useCardEditor(card), definition = previewDefinition ?? (hosted ? hosted.get(card.displayProps.def) : extensionDefinitions.get(card.displayProps.def));
   const officeKind = useOfficePlannerKind(definition);
-  let problem: string | null = definition ? null : "卡片定义缺失或已禁用。在设置重新导入原包或启用即可恢复；原始卡片数据已保留。";
+  let problem: string | null = definition ? null : hosted?.loading ? "正在读取空间卡片定义…" : hosted?.error ?? "卡片定义缺失或已禁用。在设置重新导入原包或启用即可恢复；原始卡片数据已保留。";
   if (definition) { try { validateInstance(definition, card.displayProps); } catch (cause) { problem = cause instanceof Error ? cause.message : String(cause); } }
   if (!problem && definition && officeKind) return <OfficePlannerCardView card={card} height={height} definition={definition} kind={officeKind} preview={Boolean(previewDefinition)} />;
   return <SceneCardShell card={card} height={height} icon={Puzzle} harkIcon="apps" kicker="扩展卡片" title={definition?.manifest.name ?? card.displayProps.def.id}
     badge={problem ? "暂不可用" : previewDefinition ? "DEMO" : `v${definition?.manifest.version}`} badgeTone={problem ? "caution" : "accent"}
-    footer={problem ? undefined : <span>{previewDefinition ? "预览" : "本地卡片包"}</span>}>
+    footer={problem ? undefined : <span>{previewDefinition ? "预览" : hosted ? "空间卡片包" : "本地卡片包"}</span>}>
     {problem ? <SceneEmpty>{problem}</SceneEmpty> : <div className={`vivic-extension-content space-y-4${height !== undefined ? " vivic-scene-scroll nowheel" : ""}`} data-extension-rendered={card.displayProps.def.id}>
       {definition!.ui.components.map((block, i) => <Block key={i} block={block} root={card.displayProps} allowNetwork={!previewDefinition} />)}
       {editor.editable && <details><summary className="vivic-scene-action cursor-pointer">编辑参数和个人状态</summary><div className="space-y-4 mt-3">

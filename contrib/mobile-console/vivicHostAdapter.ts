@@ -1,4 +1,4 @@
-import { CardPreviewSchema, FilePreviewSchema, SubcardPreviewSchema, type CanvasSnapshot, type CardPreview, type CardSnapshot, type FileChunkData } from "./protocol";
+import { CardPreviewSchema, FilePreviewSchema, SubcardPreviewSchema, ImagePreviewSchema, type CanvasSnapshot, type CardPreview, type CardSnapshot, type FileChunkData } from "./protocol";
 import type { ComputerHostAdapter } from "./connector";
 import { z } from "zod";
 
@@ -29,6 +29,8 @@ export interface TextExecutionContext {
   isCurrent(): boolean;
 }
 export interface VivicHostAdapterOptions {
+  /** A fresh attachment lease prevents commands from an old page being replayed after reload. */
+  connectionEpoch?: string;
   host: ExistingHost;
   computerName: string;
   /** Explicitly opt into sharing the current Space's visible text with paired devices. */
@@ -38,6 +40,8 @@ export interface VivicHostAdapterOptions {
   /** Host validates current anchors against cardTargets; only visible label/text may leave it. */
   projectSubcards?(record: ExistingCard["record"]): unknown;
   readFileChunk?(canvasId: string, cardId: string, offset: number): Promise<FileChunkData>;
+  projectImages?(record: ExistingCard["record"]): { images?: unknown; imageNotice?: string };
+  readImageChunk?(canvasId: string, cardId: string, imageId: string, offset: number): Promise<FileChunkData>;
   readCards(): ExistingCard[];
   subscribeCards(listener: () => void): () => void;
   /** Must resolve on actual execution, never on request enqueue/HTTP acceptance. */
@@ -70,13 +74,7 @@ function visibleCard(record: ExistingCard["record"], isOfficeDefinition?: (ref: 
   switch (record.type) {
     case "FileCard": {
       title = headline(p.name) || "文件";
-      const format: Record<string, string> = { "text/plain": "TXT", "text/markdown": "Markdown", "text/csv": "CSV", "application/pdf": "PDF", "application/json": "JSON", "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "Word" };
-      const readable = p.mediaType === "text/markdown" || p.mediaType === "application/pdf";
-      preview = { kind: "text", body: readable ? text(p.previewText) : "此格式仅保留原文件下载", items: [item(join([format[rawText(p.mediaType)] ?? "文件",
-        finite(p.sizeBytes) && p.sizeBytes >= 0 ? `${Math.ceil(p.sizeBytes / 1024)} KB` : "",
-        finite(p.pageCount) && p.pageCount > 0 ? `${p.pageCount} 页` : "",
-        p.parseStatus === "error" ? "文字解析失败" : p.parseStatus === "empty" ? "没有可提取的文字" : p.parseStatus === "unsupported" ? "暂不支持文字提取" : "",
-      ], 600))].filter(row => row.text) }; break;
+      break;
     }
     case "NoteCard": {
       const bullets = list(p.bullets).map(value => item(value)).filter(row => row.text);
@@ -194,7 +192,7 @@ export function createVivicHostAdapter(options: VivicHostAdapterOptions): Comput
     return {
       computerName: options.computerName.slice(0, 80),
       ownerAvailable: snapshot.ready && snapshot.ownerMode === "owner" && Boolean(active),
-      ownerEpoch: snapshot.ownerId ?? "unavailable",
+      ownerEpoch: `${snapshot.ownerId ?? "unavailable"}${options.connectionEpoch ? `_${options.connectionEpoch}` : ""}`,
       activeCanvasId: snapshot.activeCanvasId,
       version: active?.version ?? 0,
       // Content requires an explicit opt-in; no source records, credentials, images or preferences.
@@ -207,6 +205,11 @@ export function createVivicHostAdapter(options: VivicHostAdapterOptions): Comput
               const parsed = z.array(SubcardPreviewSchema).max(24).safeParse(options.projectSubcards?.(record));
               return parsed.success && parsed.data.length ? { subcards: parsed.data } : {};
             } catch { return {}; }
+          })(),
+          ...(() => {
+            if (!options.readImageChunk || !["GalleryCard", "BookCard"].includes(record.type)) return {};
+            const projected = options.projectImages?.(record), parsed = z.array(ImagePreviewSchema).max(8).safeParse(projected?.images);
+            return { ...(parsed.success ? { images: parsed.data } : {}), ...(projected?.imageNotice ? { imageNotice: projected.imageNotice.slice(0, 160) } : {}) };
           })(),
           ...(() => {
             if (record.type !== "FileCard" || !options.readFileChunk) return {};
@@ -227,6 +230,13 @@ export function createVivicHostAdapter(options: VivicHostAdapterOptions): Comput
   };
   return {
     getSnapshot,
+    readImageChunk: options.readImageChunk ? async (cardId, imageId, offset, context) => {
+      const snapshot = getSnapshot();
+      if (!snapshot.ownerAvailable || !snapshot.activeCanvasId || !snapshot.cards.some(card => card.id === cardId && card.images?.some(image => image.id === imageId)) || !context.isCurrent()) throw new Error("image_scope_changed");
+      const chunk = await options.readImageChunk!(snapshot.activeCanvasId, cardId, imageId, offset);
+      if (!context.isCurrent()) throw new Error("image_scope_changed");
+      return chunk;
+    } : undefined,
     readFileChunk: options.readFileChunk ? async (cardId, offset, context) => {
       const snapshot = getSnapshot();
       if (!snapshot.ownerAvailable || !snapshot.activeCanvasId || !snapshot.cards.some(card => card.id === cardId && card.file) || !context.isCurrent()) throw new Error("file_scope_changed");

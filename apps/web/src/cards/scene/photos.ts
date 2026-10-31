@@ -1,5 +1,6 @@
 import type { SceneImage } from "@/contracts";
 import { putMedia } from "./media";
+import { OWNER_ONLINE_BUILD } from "@/online/mode";
 
 /** Photos the user explicitly adds on their own page; decoded and re-encoded locally. */
 export const PHOTO_MAX_BYTES = 25 * 1024 * 1024;
@@ -53,6 +54,13 @@ export async function storePhoto(file: File): Promise<SceneImage> {
 }
 
 export async function storePhotos(files: File[], limit: number): Promise<{ images: SceneImage[]; errors: string[] }> {
+  if (OWNER_ONLINE_BUILD) {
+    const [{ getControlHost }, { uploadPhotos }] = await Promise.all([import("@/sync/browserRuntime"), import("@/hostedAssets/client")]);
+    const host = await getControlHost(), id = host.getSnapshot().activeCanvasId;
+    if (!id) return { images: [], errors: ["请先选择空间。"] };
+    try { return { images: await uploadPhotos(id, files.slice(0, Math.max(0, limit))), errors: [] }; }
+    catch { return { images: [], errors: ["照片上传未完成，请重试。"] }; }
+  }
   const images: SceneImage[] = [], errors: string[] = [];
   for (const file of files.slice(0, Math.max(0, limit))) {
     try { images.push(await storePhoto(file)); }

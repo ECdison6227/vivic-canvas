@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, type CSSProperties, type HTMLAttributes, type ReactNode, type SVGProps, type Ref } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type HTMLAttributes, type ReactNode, type SVGProps, type Ref } from "react";
 import { continuousPath } from "./corner-path.mjs";
 import glyphs from "./glyphs.json";
 import "./hark.css";
@@ -77,8 +77,29 @@ export function HarkSurface({ children, as: Tag = "article", className = "", ref
 export function HarkTabs<T extends string>({ label, value, tabs, onChange }: {
   label: string; value: T; tabs: readonly { id: T; label: string }[]; onChange(value: T): void;
 }) {
-  return <nav className="hark-tabs" aria-label={label}>{tabs.map(tab => <button key={tab.id} type="button"
-    aria-current={value === tab.id ? "page" : undefined} onClick={() => onChange(tab.id)}>{tab.label}</button>)}</nav>;
+  const nav = useRef<HTMLElement>(null);
+  const [thumb, setThumb] = useState({ x: 0, y: 0, w: 0, h: 0 });
+  const [ready, setReady] = useState(false);
+  const measure = useCallback(() => {
+    const root = nav.current;
+    const current = root?.querySelector<HTMLButtonElement>("[aria-current=page]");
+    if (!root || !current) return;
+    setThumb({ x: current.offsetLeft, y: current.offsetTop, w: current.offsetWidth, h: current.offsetHeight });
+  }, []);
+  useLayoutEffect(() => {
+    measure();
+    const root = nav.current;
+    if (!root || typeof ResizeObserver !== "function") return;
+    const observer = new ResizeObserver(() => measure());
+    observer.observe(root);
+    for (const button of root.querySelectorAll("button")) observer.observe(button);
+    return () => observer.disconnect();
+  }, [measure, value, tabs]);
+  useEffect(() => { const frame = requestAnimationFrame(() => setReady(true)); return () => cancelAnimationFrame(frame); }, []);
+  return <nav ref={nav} className="hark-tabs" data-ready={ready ? "" : undefined} aria-label={label}>
+    <span className="hark-tabs-thumb" aria-hidden="true" style={{ transform: `translate(${thumb.x}px, ${thumb.y}px)`, width: thumb.w, height: thumb.h }} />
+    {tabs.map(tab => <button key={tab.id} type="button" aria-current={value === tab.id ? "page" : undefined} onClick={() => onChange(tab.id)}>{tab.label}</button>)}
+  </nav>;
 }
 
 export function HarkTaskCard({ template, onSelect, actionLabel, disabled = false }: {

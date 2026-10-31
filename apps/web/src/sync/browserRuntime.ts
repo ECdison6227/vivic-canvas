@@ -5,6 +5,9 @@ import { createControlHost, type ControlHost } from "./controlHost";
 import { resetLocalPreferences } from "@/ai/resetLocalPreferences";
 import { localSpeechModels } from "@/ai/localSpeech/modelManager";
 import { MODEL_IDS } from "@/ai/localSpeech/models";
+import { setDisplayStatusReader } from "./displayStatus";
+import { OWNER_ONLINE_BUILD } from "@/online/mode";
+export { getDisplayStatus } from "./displayStatus";
 import {
   createDisplayClient,
   type DisplayClient,
@@ -22,6 +25,7 @@ export const getControlHost = (): Promise<ControlHost> => {
       try {
         db = await openVivicDB();
       } catch {
+        if (OWNER_ONLINE_BUILD) throw new Error("云端画布暂不可用，请重新载入后重试。");
         db = createMemoryDB();
       }
       const channel = createBroadcastSyncChannel();
@@ -56,7 +60,7 @@ export interface DisplayRuntime {
 
 let displayStarted: Promise<DisplayRuntime> | null = null;
 let displayRuntime: DisplayRuntime | null = null;
-export const getDisplayStatus = () => displayRuntime?.getStatus() ?? null;
+setDisplayStatusReader(() => displayRuntime?.getStatus() ?? null);
 const displayStatusListeners = new Set<() => void>();
 const emitDisplayStatus = () => displayStatusListeners.forEach(listener => listener());
 /** Includes runtime assignment/replacement, so subscribing before startup is safe. */
