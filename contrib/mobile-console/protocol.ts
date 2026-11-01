@@ -4,9 +4,9 @@ export const PROTOCOL_VERSION = 1 as const;
 export const MAX_FRAME_BYTES = 32 * 1024;
 /** Bound queued network data as well as each individual frame. */
 export const MAX_BUFFERED_BYTES = 4 * MAX_FRAME_BYTES;
-export const PermissionSchema = z.enum(["text.submit", "canvas.switch", "card.pin", "card.surface", "file.read"]);
+export const PermissionSchema = z.enum(["text.submit", "canvas.switch", "card.pin", "card.surface", "file.read", "image.read"]);
 export type Permission = z.infer<typeof PermissionSchema>;
-export const PERMISSIONS: Permission[] = ["text.submit", "canvas.switch", "card.pin", "card.surface", "file.read"];
+export const PERMISSIONS: Permission[] = ["text.submit", "canvas.switch", "card.pin", "card.surface", "file.read", "image.read"];
 const Id = z.string().min(1).max(100).regex(/^[a-zA-Z0-9_-]+$/);
 const Token = z.string().min(16).max(256);
 const Version = z.number().int().nonnegative();
@@ -45,6 +45,10 @@ export const FileChunkDataSchema = z.object({ data: z.string().max(21848).regex(
   sha256: z.string().regex(/^[a-f0-9]{64}$/), name: z.string().min(1).max(240), mediaType: z.string().min(1).max(100),
 }).strict();
 export type FileChunkData = z.infer<typeof FileChunkDataSchema>;
+export const ImagePreviewSchema = FilePreviewSchema.extend({ id: Id, alt: z.string().max(120),
+  mediaType: z.enum(["image/jpeg", "image/png", "image/webp"]), sizeBytes: z.number().int().min(1).max(262144),
+  width: z.number().int().min(1).max(1024), height: z.number().int().min(1).max(1024) }).strict();
+export type ImagePreview = z.infer<typeof ImagePreviewSchema>;
 export const CanvasSnapshotSchema = z.object({
   computerName: z.string().min(1).max(80), ownerAvailable: z.boolean(), ownerEpoch: Id,
   activeCanvasId: Id.nullable(), version: Version,
@@ -53,6 +57,7 @@ export const CanvasSnapshotSchema = z.object({
     preview: CardPreviewSchema.optional(), surface: z.enum(["display", "user"]).optional(),
     subcards: z.array(SubcardPreviewSchema).max(24).optional(),
     file: FilePreviewSchema.optional(),
+    images: z.array(ImagePreviewSchema).max(8).optional(), imageNotice: z.string().max(160).optional(),
     section: z.string().min(1).max(60).optional(), priority: z.enum(["high", "normal", "low"]).optional(), dueDate: z.iso.date().optional(),
   }).strict()).max(200),
   cardCount: z.number().int().nonnegative().optional(),
@@ -71,10 +76,10 @@ export const HelloSchema = z.object({
   if (v.role === "mobile" && ((!v.token && !v.pairCode) || v.accessKey || (v.token && v.pairCode))) ctx.addIssue({ code: "custom", message: "Mobile authentication required" });
 });
 export type Hello = z.infer<typeof HelloSchema>;
-const ControllerSchema = z.object({ deviceId: Id, permissions: z.array(PermissionSchema).max(5) }).strict();
+const ControllerSchema = z.object({ deviceId: Id, permissions: z.array(PermissionSchema).max(6) }).strict();
 export const WelcomeSchema = z.object({
   v: z.literal(1), type: z.literal("welcome"), sessionId: Id, deviceId: Id, computerId: Id, epoch: Id,
-  expiresAt: z.number().int().positive(), permissions: z.array(PermissionSchema).max(5), token: Token,
+  expiresAt: z.number().int().positive(), permissions: z.array(PermissionSchema).max(6), token: Token,
   pairCode: z.string().regex(/^[A-Z0-9-]{6,32}$/).optional(), pairExpiresAt: z.number().int().positive().optional(),
   controllers: z.array(ControllerSchema).max(20).optional(),
 }).strict();
@@ -95,7 +100,7 @@ export const FrameSchema = z.discriminatedUnion("type", [
   z.object({ ...scope, type: z.literal("snapshot"), sequence: Version, state: CanvasSnapshotSchema }).strict(),
   z.object({ ...scope, type: z.literal("snapshot.request") }).strict(),
   z.object({ ...scope, type: z.literal("file.request"), requestId: Id, canvasId: Id, ownerEpoch: Id, expectedVersion: Version, cardId: Id,
-    offset: z.number().int().min(0).max(10_000_000) }).strict(),
+    imageId: Id.optional(), offset: z.number().int().min(0).max(10_000_000) }).strict(),
   z.object({ ...scope, type: z.literal("file.chunk"), forDeviceId: Id, requestId: Id, cardId: Id, offset: z.number().int().min(0).max(10_000_000), chunk: FileChunkDataSchema }).strict(),
   z.object({ ...scope, type: z.literal("file.error"), forDeviceId: Id, requestId: Id, message: z.string().max(200) }).strict(),
   z.object({ ...scope, type: z.literal("accepted"), requestId: Id }).strict(),
@@ -106,7 +111,7 @@ export const FrameSchema = z.discriminatedUnion("type", [
   z.object({ ...scope, type: z.literal("pong"), at: z.number().int().nonnegative() }).strict(),
   z.object({ ...scope, type: z.literal("owner.status"), available: z.boolean() }).strict(),
   z.object({ ...scope, type: z.literal("status"), ownerAvailable: z.boolean(), reason: z.string().max(200).optional() }).strict(),
-  z.object({ ...scope, type: z.literal("controller"), state: z.enum(["joined", "left"]), permissions: z.array(PermissionSchema).max(5) }).strict(),
+  z.object({ ...scope, type: z.literal("controller"), state: z.enum(["joined", "left"]), permissions: z.array(PermissionSchema).max(6) }).strict(),
   z.object({ ...scope, type: z.literal("revoke"), targetDeviceId: Id.optional() }).strict(),
   z.object({ ...scope, type: z.literal("revoked"), reason: z.string().max(200) }).strict(),
   z.object({ ...scope, type: z.literal("pair.rotate") }).strict(),

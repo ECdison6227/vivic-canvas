@@ -17,11 +17,21 @@ export interface StepfunDeps {
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
   signal?: AbortSignal;
+  /** An account with a second provider uses failover instead of repeating this inference. */
+  retry?: boolean;
+  /**
+   * `deepseek` uses the official OpenAI-compatible transport (same JSON mode,
+   * streaming, timeout and retry rules) with thinking explicitly disabled.
+   * Unset keeps the StepFun Plan request body byte-for-byte unchanged.
+   */
+  provider?: "stepfun" | "deepseek";
 }
 
 export type StepfunErrorCode = "cancelled" | "timeout" | "network" | "provider" | "invalid-response";
 export type StepfunResult<T> = { ok: true; value: T } |
-  { ok: false; error: string; status?: number; code?: StepfunErrorCode };
+  // `truncated` marks a length-limited answer that was not usable JSON, so the
+  // pipeline can skip a repair attempt that would truncate the same way again.
+  { ok: false; error: string; status?: number; code?: StepfunErrorCode; truncated?: true };
 
 const providerRequest = async <T>(
   context: string,
@@ -155,6 +165,118 @@ const retryAfterMs = (value: string | null): number => {
   return Number.isFinite(seconds) && seconds >= 0 ? Math.min(seconds * 1000, MAX_RETRY_AFTER_MS) : RETRY_DELAY_MS;
 };
 
+export interface ChatJsonOptions {
+  maxTokens?: number;
+  /** Raw content deltas only; callers must extract safe feedback before displaying them. */
+  onTextDelta?: ((delta: string) => void) & { reset?: () => void };
+}
+
+interface ChatStreamContent {
+  content: string;
+  truncated: boolean;
+}
+
+class InvalidChatStream extends Error {
+  readonly issue: "framing" | "content_filter" | "tool_calls";
+  constructor(issue: "framing" | "content_filter" | "tool_calls" = "framing") { super(issue); this.issue = issue; }
+}
+
+/** Decode SSE framing before interpreting content; reasoning fields are never forwarded. */
+const readChatStream = async (response: Response, signal: AbortSignal, onTextDelta: (delta: string) => void): Promise<ChatStreamContent> => {
+  if (!response.body) throw new InvalidChatStream();
+  const reader = response.body.getReader(), decoder = new TextDecoder("utf-8", { fatal: true });
+  let pending = "", data: string[] = [], content = "", finished = false, done = false, truncated = false;
+  const abort = () => { void reader.cancel().catch(() => undefined); };
+  signal.addEventListener("abort", abort, { once: true });
+  const dispatch = () => {
+    if (!data.length) return;
+    const value = data.join("\n");
+    data = [];
+    if (!value.trim()) return;
+    signal.throwIfAborted();
+    if (value.trim() === "[DONE]") {
+      // [DONE] is itself a completion marker; tolerant gateways often omit
+      // finish_reason on every chunk and still send this sentinel.
+      done = true;
+      return;
+    }
+    let payload: { choices?: Array<{ index?: number; finish_reason?: string | null; delta?: { content?: string | null } }>; error?: unknown; usage?: unknown };
+    try { payload = JSON.parse(value); } catch { throw new InvalidChatStream(); }
+    if (payload && typeof payload === "object" && !Array.isArray(payload) && "error" in payload && payload.error != null) {
+      // An in-stream error frame is an upstream failure, never a model answer.
+      throw new TypeError("Upstream stream error frame");
+    }
+    if (!payload || !Array.isArray(payload.choices)) {
+      // A usage-only frame is tolerated; a frame without choices is upstream
+      // transport noise and keeps the existing retryable classification.
+      if (payload && typeof payload === "object" && "usage" in payload) return;
+      throw new TypeError("Upstream stream frame without choices");
+    }
+    if (payload.choices.length > 1) throw new InvalidChatStream();
+    // An optional usage-only frame has no choices.
+    const choice = payload.choices[0];
+    if (!choice) return;
+    if (choice.index !== undefined && choice.index !== 0) throw new InvalidChatStream();
+    const text = choice.delta?.content;
+    if (text != null && typeof text !== "string") throw new InvalidChatStream();
+    if (text) {
+      if (finished || truncated) throw new InvalidChatStream();
+      content += text;
+      signal.throwIfAborted();
+      try { onTextDelta(text); } catch { /* Progress consumers cannot break inference. */ }
+      signal.throwIfAborted();
+    }
+    if (choice.finish_reason != null) {
+      if (finished || truncated) throw new InvalidChatStream();
+      if (choice.finish_reason === "stop") finished = true;
+      else if (choice.finish_reason === "length") truncated = true;
+      else if (choice.finish_reason === "content_filter") throw new InvalidChatStream("content_filter");
+      else if (choice.finish_reason === "tool_calls") throw new InvalidChatStream("tool_calls");
+      else throw new InvalidChatStream();
+    }
+  };
+  const line = (value: string) => {
+    if (!value) { dispatch(); return; }
+    if (value.startsWith(":")) return;
+    const colon = value.indexOf(":"), field = colon < 0 ? value : value.slice(0, colon);
+    if (field === "data") data.push(colon < 0 ? "" : value.slice(colon + 1).replace(/^ /, ""));
+  };
+  try {
+    signal.throwIfAborted();
+    while (!done) {
+      const next = await reader.read();
+      signal.throwIfAborted();
+      try { pending += decoder.decode(next.value, { stream: !next.done }); }
+      catch { throw new InvalidChatStream(); }
+      for (;;) {
+        const match = /[\r\n]/.exec(pending);
+        if (!match) break;
+        const index = match.index;
+        // A CR at a transport boundary may be the first half of CRLF.
+        if (pending[index] === "\r" && index === pending.length - 1 && !next.done) break;
+        const width = pending[index] === "\r" && pending[index + 1] === "\n" ? 2 : 1;
+        const value = pending.slice(0, index);
+        pending = pending.slice(index + width);
+        line(value);
+        if (done) break;
+      }
+      // An explicit [DONE] or finish_reason proves the model finished. Only a
+      // stream with neither marker is a dropped connection; a complete answer
+      // with a nonstandard tail must not be regenerated.
+      if (next.done && !done) {
+        if (!finished && !truncated) throw new TypeError("Incomplete model stream");
+        break;
+      }
+    }
+    signal.throwIfAborted();
+    return { content, truncated };
+  } finally {
+    signal.removeEventListener("abort", abort);
+    void reader.cancel().catch(() => undefined);
+    reader.releaseLock();
+  }
+};
+
 /**
  * One JSON-mode chat completion; the caller parses/validates the payload.
  * A dropped connection or a 429/5xx produced no answer, so it is attempted
@@ -165,22 +287,32 @@ export const chatJson = async (
   credential: StepfunCredential,
   messages: ChatMessage[],
   deps: StepfunDeps,
-  options?: { maxTokens?: number },
+  options?: ChatJsonOptions,
 ): Promise<StepfunResult<unknown>> => {
   const first = await chatJsonOnce(credential, messages, deps, options);
-  if (first.ok || deps.signal?.aborted) return first;
+  if (first.ok || deps.signal?.aborted || deps.retry === false) return first;
   const wait = first.code === "network" ? RETRY_DELAY_MS
     : first.code === "provider" && first.status && RETRYABLE_STATUS.has(first.status) ? first.retryAfterMs ?? RETRY_DELAY_MS : undefined;
-  if (wait === undefined) return first;
-  try { await delay(wait, undefined, deps.signal ? { signal: deps.signal } : undefined); } catch { return first; }
-  return chatJsonOnce(credential, messages, deps, options);
+  if (!options?.onTextDelta) {
+    if (wait === undefined) return first;
+    try { await delay(wait, undefined, deps.signal ? { signal: deps.signal } : undefined); } catch { return first; }
+    return chatJsonOnce(credential, messages, deps, options);
+  }
+  // A failed streaming read cannot be trusted as the only answer channel, so
+  // the single retry (same two-request budget) uses the proven non-streaming
+  // transport. Non-retryable stream failures (400/422, framing, bad JSON) also
+  // get that one fallback instead of failing the whole turn.
+  if (wait !== undefined) {
+    try { await delay(wait, undefined, deps.signal ? { signal: deps.signal } : undefined); } catch { return first; }
+  }
+  return chatJsonOnce(credential, messages, deps, { ...options, onTextDelta: undefined });
 };
 
 const chatJsonOnce = async (
   credential: StepfunCredential,
   messages: ChatMessage[],
   deps: StepfunDeps,
-  options?: { maxTokens?: number },
+  options?: ChatJsonOptions,
 ): Promise<StepfunResult<unknown> & { retryAfterMs?: number }> => providerRequest("模型请求失败", deps, INFERENCE_TIMEOUT_MS, async (signal) => {
   const res = await (deps.fetchImpl ?? fetch)(`${deps.baseUrl.replace(/\/+$/, "")}/chat/completions`, {
     method: "POST",
@@ -192,12 +324,17 @@ const chatJsonOnce = async (
       } : { role: message.role, content: message.content }),
       temperature: 0.2,
       response_format: { type: "json_object" },
-      // Official docs (2026-10-15) confirm these exact models only:
-      // /docs/zh/guides/models/step-3.5-flash (2603: low/high)
-      // /docs/zh/guides/models/step-3.7-flash (low/medium/high)
-      ...(["step-3.5-flash-2603", "step-3.7-flash"].includes(credential.defaultModel)
-        ? { reasoning_effort: "low" } : {}),
+      ...(deps.provider === "deepseek"
+        // Official DeepSeek accepts OpenAI extra_body semantics as a plain body
+        // field; disabling thinking keeps the fast non-reasoning path.
+        ? { thinking: { type: "disabled" } }
+        // Official docs (2026-10-15) confirm these exact models only:
+        // /docs/zh/guides/models/step-3.5-flash (2603: low/high)
+        // /docs/zh/guides/models/step-3.7-flash (low/medium/high)
+        : ["step-3.5-flash-2603", "step-3.7-flash"].includes(credential.defaultModel)
+          ? { reasoning_effort: "low" } : {}),
       ...(options?.maxTokens ? { max_tokens: options.maxTokens } : {}),
+      ...(options?.onTextDelta ? { stream: true } : {}),
     }),
     signal,
     redirect: "error",
@@ -206,6 +343,32 @@ const chatJsonOnce = async (
     const retryAfter = res.headers.get("retry-after");
     return { ok: false, code: "provider", status: res.status, error: await describeProviderError(res, credential.apiKey),
       ...(retryAfter ? { retryAfterMs: retryAfterMs(retryAfter) } : {}) };
+  }
+  if (options?.onTextDelta && res.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() === "text/event-stream") {
+    let stream: ChatStreamContent;
+    try {
+      signal.throwIfAborted();
+      try { options.onTextDelta.reset?.(); } catch { /* Progress consumers cannot break inference. */ }
+      stream = await readChatStream(res, signal, options.onTextDelta);
+    }
+    catch (error) {
+      signal.throwIfAborted();
+      if (!(error instanceof InvalidChatStream)) throw error;
+      if (error.issue === "content_filter") return { ok: false, code: "invalid-response", error: "模型因内容安全策略没有给出结果" };
+      if (error.issue === "tool_calls") return { ok: false, code: "invalid-response", error: "模型返回了工具调用，而不是可直接使用的 JSON 结果" };
+      return { ok: false, code: "invalid-response", error: "模型服务返回了不完整或无效的流式响应" };
+    }
+    // Parse first: a complete JSON answer is accepted even if the upstream
+    // marked it length-limited, because the payload is already usable.
+    if (!stream.content.trim()) {
+      return { ok: false, code: "invalid-response", ...(stream.truncated ? { truncated: true as const } : {}),
+        error: stream.truncated ? "模型思考用尽了输出长度，没有给出结果" : "模型没有返回内容" };
+    }
+    try { return { ok: true, value: parseModelJson(stream.content) }; }
+    catch {
+      return { ok: false, code: "invalid-response", ...(stream.truncated ? { truncated: true as const } : {}),
+        error: stream.truncated ? "模型思考用尽了输出长度，没有给出结果" : "模型返回了非 JSON 内容" };
+    }
   }
   // A body cut off mid-read is a network failure, not a malformed answer.
   const raw = await res.text();
@@ -217,14 +380,24 @@ const chatJsonOnce = async (
   }
   const choice = body?.choices?.[0];
   const content = choice?.message?.content;
+  // These two finish reasons are refusals, not answers: never accept their
+  // content even when it happens to be parseable JSON.
+  if (choice?.finish_reason === "content_filter") {
+    return { ok: false, code: "invalid-response", error: "模型因内容安全策略没有给出结果" };
+  }
+  if (choice?.finish_reason === "tool_calls") {
+    return { ok: false, code: "invalid-response", error: "模型返回了工具调用，而不是可直接使用的 JSON 结果" };
+  }
   if (typeof content !== "string" || !content.trim()) {
-    return { ok: false, code: "invalid-response", error: choice?.finish_reason === "length"
-      ? "模型思考用尽了输出长度，没有给出结果" : "模型没有返回内容" };
+    return { ok: false, code: "invalid-response", ...(choice?.finish_reason === "length" ? { truncated: true as const } : {}),
+      error: choice?.finish_reason === "length"
+        ? "模型思考用尽了输出长度，没有给出结果" : "模型没有返回内容" };
   }
   try {
     return { ok: true, value: parseModelJson(content) };
   } catch {
-    return { ok: false, code: "invalid-response", error: "模型返回了非 JSON 内容" };
+    return { ok: false, code: "invalid-response", ...(choice?.finish_reason === "length" ? { truncated: true as const } : {}),
+      error: choice?.finish_reason === "length" ? "模型思考用尽了输出长度，没有给出结果" : "模型返回了非 JSON 内容" };
   }
 });
 

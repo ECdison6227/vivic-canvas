@@ -257,7 +257,7 @@ export function createRelayServer(options: RelayOptions) {
       }
       if (frame.type === "command" || frame.type === "cancel" || frame.type === "query" || frame.type === "snapshot.request" || frame.type === "file.request") {
         if (!open(s.computer.socket) || !s.ownerAvailable) { rejected(ws, "owner-offline", "电脑 owner 不可用；本次消息未转交。", "requestId" in frame ? frame.requestId : undefined); return; }
-        if (frame.type === "file.request" && !p.permissions.includes("file.read")) { rejected(ws, "forbidden", "???????????", frame.requestId); return; }
+        if (frame.type === "file.request" && !p.permissions.includes(frame.imageId ? "image.read" : "file.read")) { rejected(ws, "forbidden", "本会话未授权读取此内容。", frame.requestId); return; }
         if (frame.type === "command" && !p.permissions.includes(frame.operation.kind)) { rejected(ws, "forbidden", "本会话未授权此操作。", frame.requestId); return; }
         if (!emit(s.computer.socket, frame)) {
           rejected(ws, "owner-offline", "电脑连接无法接收；本次消息未转交。", "requestId" in frame ? frame.requestId : undefined); return;

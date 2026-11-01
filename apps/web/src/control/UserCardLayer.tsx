@@ -146,6 +146,7 @@ export function UserCardLayer({ host, theme, layerRef, receiving, notice, onNoti
             const left = Math.round(Math.min(Math.max(EDGE, wanted.x), Math.max(EDGE, size.width - width - EDGE)));
             const top = Math.round(Math.max(EDGE, Math.min(wanted.y, Math.max(EDGE, size.height - 96))));
             return <HarkSurface as="article" key={card.id} className="vivic-user-card" style={{ left, top, width }} data-vivic-user-card={card.id} data-scene-type={card.type}>
+              <span className="vivic-card-mark" aria-hidden="true">卡片</span>
               <span className="vivic-move-handle" draggable role="button" tabIndex={-1} title="拖动位置，或拖回副屏"
                 aria-label={`拖动「${cardTitle(card).slice(0, 40)}」：在本页换位置，或拖回副屏`} data-vivic-user-handle={card.id}
                 onDragStart={event => {
@@ -154,7 +155,7 @@ export function UserCardLayer({ host, theme, layerRef, receiving, notice, onNoti
                   const box = event.currentTarget.closest(".vivic-user-card");
                   const rect = box?.getBoundingClientRect();
                   startCardDrag(event, { v: 1, canvasId, cardId: card.id, from: "user",
-                    grabX: rect ? event.clientX - rect.left : undefined, grabY: rect ? event.clientY - rect.top : undefined }, cardTitle(card), box);
+                    grabX: rect ? Math.max(0, event.clientX - rect.left) : undefined, grabY: rect ? Math.max(0, event.clientY - rect.top) : undefined }, cardTitle(card), box);
                 }}><GripHorizontal size={14} aria-hidden /></span>
               <div className="vivic-user-card-tools">
                 <button type="button" className="vivic-scene-icon-button" disabled={!editable} onClick={() => sendToDisplay(card)}

@@ -82,7 +82,7 @@ export const actionExecutionIssue = (actions: Action[], ctx: CanvasContext, preb
         }
         targets.set(action.targetId, { ...target, displayProps: display, sourceDataSummary: source });
       }
-    } else if (!["stage.awaken", "canvas.fit", "canvas.restore"].includes(action.type)) {
+    } else if (!["stage.awaken", "stage.sleep", "canvas.fit", "canvas.restore"].includes(action.type)) {
       // canvas.switch/create cannot validate a target canvas with this request
       // context. Other effects are not in this planner's executable subset.
       return "动作不在当前规划器可执行范围";

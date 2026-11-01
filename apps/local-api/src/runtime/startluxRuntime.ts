@@ -12,6 +12,7 @@ import { STARTLUX_PROFILES, recommendStartluxProfile, type StartluxProfileId } f
 import { parseStartluxPrediction, startluxRequest, type DecisionProvider, type DecisionProviderResult } from "../decision/provider.js";
 import type { DecisionRuntimeControls, LocalRuntimeStatus } from "./decisionRuntime.js";
 import { parseNativeAnswers, type NativeQuestion, type NativeResult } from "../decision/nativeV2.js";
+import { resourceBudget, sampleResources, type ResourceSnapshot } from "./resources.js";
 
 const busy = new Set(["downloading", "installing", "loading", "stopping"]);
 async function freePort() { const s=createServer(); await new Promise<void>((r,j)=>{s.once("error",j);s.listen(0,"127.0.0.1",r);});const port=(s.address() as {port:number}).port;await new Promise<void>(r=>s.close(()=>r()));return port; }
@@ -34,9 +35,12 @@ export class ManagedStartluxRuntime implements DecisionProvider {
   private python:LocalPythonRuntime;
   private engine=pinnedEngine();
   private state:LocalRuntimeStatus;
-  constructor(root:string, profileId?:StartluxProfileId, options: { contextLength?: 2048 | 8192 } = {}) {
+  private resources: ResourceSnapshot = { totalMemoryBytes: totalmem(), freeMemoryBytes: freemem(), basis: "os-available", sampledAt: Date.now() };
+  private readonly memoryProbe: typeof sampleResources;
+  constructor(root:string, profileId?:StartluxProfileId, options: { contextLength?: 2048 | 8192; memoryProbe?: typeof sampleResources } = {}) {
     this.root=root;
     this.contextLength=options.contextLength??2048;
+    this.memoryProbe=options.memoryProbe??sampleResources;
     this.profileId=profileId ?? recommendStartluxProfile({totalMemoryBytes:totalmem(),freeMemoryBytes:freemem()}).profileId ?? "startlux-0.8b";
     this.python=new LocalPythonRuntime(path.join(root,"environment"));
     this.state={mode:"managed",phase:"absent",enabled:false,model:this.profile.label,bytes:this.profile.gguf.bytes,gpuBytes:0,error:null,downloadedBytes:0,totalBytes:this.totalBytes,scoreSource:"official-startlux-instant-bidirectional-letter-readout"};
@@ -47,7 +51,8 @@ export class ManagedStartluxRuntime implements DecisionProvider {
   private get modelRoot(){return path.join(this.root,this.profileId);}
   private get modelMetadata(){return metadata[this.profile.label.match(/v1\.1-(.*)-Instant/)![1] as keyof typeof metadata] as Artifact[];}
   private get totalBytes(){return this.profile.gguf.bytes+this.modelMetadata.reduce((s,a)=>s+a.bytes,0)+(this.engine?.bytes??0)+STARTLUX_SOURCE.bytes;}
-  status(){return {...this.state,profileId:this.profileId,engine:"llama.cpp b11550 · CPU",license:"CC-BY-NC-4.0",training:"base-upstream"};}
+  async refreshResources() { this.resources = await this.memoryProbe(); return resourceBudget(this.profile, this.resources); }
+  status(){return {...this.state,resources:resourceBudget(this.profile,this.resources),profileId:this.profileId,engine:"llama.cpp b11550 · CPU",license:"CC-BY-NC-4.0",training:"base-upstream"};}
   selectProfile(id:string){
     if(!STARTLUX_PROFILES.some(p=>p.id===id))throw new Error("invalid_profile");
     if(this.operation||this.guardian||busy.has(this.state.phase))throw new Error("runtime_busy");
@@ -93,7 +98,12 @@ export class ManagedStartluxRuntime implements DecisionProvider {
     const controller=new AbortController(),generation=++this.generation,previous=this.task;this.operation=controller;
     this.state={...this.state,phase:"loading",enabled:true,error:null};
     this.task=(async()=>{try{
-      await previous;await this.closing;controller.signal.throwIfAborted();if(!await this.checkFiles())throw new Error("not_prepared");
+      await previous;await this.closing;controller.signal.throwIfAborted();
+      if (!(await this.refreshResources()).allowed) throw new Error("insufficient_resources");
+      if(!await this.checkFiles())throw new Error("not_prepared");
+      // File integrity checks may take seconds. Re-sample immediately before spawning.
+      if (!(await this.refreshResources()).allowed) throw new Error("insufficient_resources");
+      controller.signal.throwIfAborted();
       const budget=AbortSignal.any([controller.signal,AbortSignal.timeout(180_000)]),port=await freePort(),key=randomBytes(32).toString("base64url");budget.throwIfAborted();
       const env=localRuntimeEnv();
       const child=spawn(process.execPath,[fileURLToPath(new URL("./startluxSupervisor.mjs",import.meta.url))],{env,windowsHide:true,stdio:["ignore","ignore","ignore","ipc"]});this.guardian=child;
@@ -106,7 +116,7 @@ export class ManagedStartluxRuntime implements DecisionProvider {
       const warmup=await this.infer("显示所有卡片",budget);
       if(["error","timeout","cancelled"].includes(warmup.state))throw new Error("warmup_failed");
       budget.throwIfAborted();if(generation===this.generation){this.cached=true;this.state.phase="ready";}
-    }catch{if(generation===this.generation){this.terminate();this.state={...this.state,phase:"error",enabled:false,error:"启动或双向推理检查未通过，请先准备模型再重试。"};}}
+    }catch(error){if(generation===this.generation){this.terminate();this.state={...this.state,phase:"error",enabled:false,error:error instanceof Error&&error.message==="insufficient_resources"?`可用资源不足或无法确认：此规格需要总内存 ${this.profile.estimate.totalMemoryGiB} GiB、可用内存 ${this.profile.estimate.freeMemoryGiB} GiB。释放内存后重试，或选择较小规格。`:"启动或双向推理检查未通过，请先准备模型再重试。"};}}
     finally{this.workerReady=undefined;if(this.operation===controller)this.operation=undefined;}})();return this.status();
   }
   private activeText="";

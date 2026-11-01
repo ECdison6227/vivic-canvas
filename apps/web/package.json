@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "build:online": "tsc -b && vite build --mode online --outDir dist-online",
+    "build:online": "tsc -b && vite build --mode owner --outDir dist-online",
+    "build:owner": "tsc -b && vite build --mode owner --outDir dist-owner",
     "build:mobile": "vite build --config src/control/mobile/vite.mobile.config.ts",
     "dev:mobile": "vite --config src/control/mobile/vite.mobile.config.ts",
     "test:mobile:e2e": "playwright test --config src/control/mobile/playwright.mobile.config.ts",
@@ -14,7 +15,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "typecheck": "tsc -b"
+    "typecheck": "tsc -b",
+    "build:hosted": "tsc -b && vite build --mode online --outDir dist-hosted"
   },
   "dependencies": {
     "@assistant-ui/generative-ui": "^0.0.4",

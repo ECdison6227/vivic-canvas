@@ -12,6 +12,8 @@ interface RuntimeStatus {
   error: string | null; downloadedBytes?: number; totalBytes?: number;
   lastMs?: number | null; lastState?: string; configurationError?: string;
   profileId?: string;engine?: string;
+  resources?: { allowed: boolean; freeMemoryBytes: number | null; requiredFreeBytes: number; basis: string };
+  v2?: { configured: boolean; executionEnabled: boolean; available?: boolean };
 }
 type Action = "prepare" | "enable" | "stop" | "clear" | "profile";
 const phases: Record<string, string> = {
@@ -86,6 +88,7 @@ export default function LauncherApp() {
     </header>
         <HarkSurface className="launcher-runtime" aria-labelledby="runtime-title"><div className="launcher-card-heading"><h2 id="runtime-title"><HarkIcon name="cpu" size={20} />{managed ? "决策模型" : "决策服务"}</h2>{connected && <span className="launcher-tag">{managed ? "本地 · CPU" : "服务连接"}</span>}</div>
           {status && <p className="launcher-model-name">{status.model}</p>}
+          {status?.v2?.configured && <p className="launcher-footer" data-vivic-native-status>Jev v2 原生接口{status.v2.available ? "已就绪" : "已接线"}。{!status.v2.executionEnabled && "质量尚未确认，执行保持关闭。"}</p>}
           {managed&&status?.profileId&&<LocalModelPicker profileId={status.profileId} disabled={unavailable||pending||status.enabled} onChange={id=>void action("profile",id)}/>}
           <div className={`launcher-runtime-status ${ready && managed ? "is-ready" : ""}`} role="status" aria-live="polite">{pending && connected ? <HarkIcon name="refresh" className="launcher-spinner" size={17} aria-hidden="true" /> : ready && managed ? <HarkIcon name="check" size={17} aria-hidden="true" /> : <span className="launcher-dot" />}<strong>{phase}</strong></div>
           {managed && connected && status?.phase === "downloading" && <div className="launcher-download"><progress aria-label="模型下载进度" max={100} value={total > 0 ? progress : undefined} /><div><span>{Math.round(downloaded / 1e6)}{total > 0 ? ` / ${Math.round(total / 1e6)}` : ""} MB</span>{total > 0 && <span>{progress}%</span>}</div></div>}
@@ -93,9 +96,10 @@ export default function LauncherApp() {
           {(error || status?.error || status?.configurationError) && <div className="launcher-alert" role="alert"><HarkIcon name="alert" size={16} aria-hidden="true" /><span>{error || status?.configurationError || status?.error}</span></div>}
           {status && <div className="launcher-actions">
             {managed && <Button className="launcher-secondary" disabled={unavailable || pending || status.enabled} onClick={() => void action("prepare")}><HarkIcon name="download" size={16} aria-hidden="true" />{status.phase === "error" ? "重新准备" : status.phase === "cached" ? "检查文件" : "准备模型"}</Button>}
-            <Button className="launcher-secondary" disabled={unavailable || pending || Boolean(status?.configurationError) || Boolean(status?.enabled) || managed && status?.phase === "absent"} onClick={() => void action("enable")}><HarkIcon name="cpu" size={16} aria-hidden="true" />{managed ? "启动模型" : "启用服务"}</Button>
+            <Button className="launcher-secondary" disabled={unavailable || pending || Boolean(status?.configurationError) || Boolean(status?.enabled) || managed && (status?.phase === "absent" || status.resources?.allowed !== true)} onClick={() => void action("enable")}><HarkIcon name="cpu" size={16} aria-hidden="true" />{managed ? "启动模型" : "启用服务"}</Button>
             <Button className="launcher-secondary" disabled={unavailable || status?.phase === "stopping" || !status?.enabled && !pending} onClick={() => void action("stop")}><HarkIcon name="stop" size={14} aria-hidden="true" />{pending && status?.phase !== "loading" && status?.phase !== "stopping" ? "取消准备" : managed ? "停止模型" : "停用服务"}</Button>
           </div>}
+          {managed && status?.resources && !status.enabled && <p className="launcher-footer" role="status">{status.resources.freeMemoryBytes === null ? "可用内存暂无法确认，已阻止启动。" : `当前可用 ${(status.resources.freeMemoryBytes / 2 ** 30).toFixed(1)} GiB，此规格需 ${(status.resources.requiredFreeBytes / 2 ** 30).toFixed(0)} GiB。`}{!status.resources.allowed && "请释放内存或选择较小规格。"}启动前会重新检查。</p>}
           {status && <div className="launcher-runtime-footer">{managed ? <><span>{total > 0 ? `模型文件约 ${Math.round(total / 1e6)} MB` : "文件大小待确认"}</span><ConfirmDialog title="清理本地模型文件？" description="本地模型会停止并删除其下载缓存，下次使用需要重新准备。" confirmLabel="清理模型" disabled={unavailable || pending} onConfirm={() => void action("clear")} trigger={<Button className="launcher-text-button" variant="ghost" disabled={unavailable || pending}>清理缓存</Button>} /></> : <a href="/control">管理连接<HarkIcon name="arrow-up-right" size={14} /></a>}</div>}
         </HarkSurface>
         {managed&&<HarkSurface className="launcher-runtime"><details className="launcher-local-voice"><summary>本地语音<HarkIcon name="chevron-down" size={16}/></summary><LocalTtsSettings /></details></HarkSurface>}

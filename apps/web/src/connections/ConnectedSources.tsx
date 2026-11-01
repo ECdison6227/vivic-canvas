@@ -22,7 +22,7 @@ export function ConnectedSources({ host, disabled, onConfigure }: { host: Contro
     await host.flush(current.activeCanvasId!, version);
   };
   return <div className="vc-connected-sources">
-    {blocked ? <button className="vc-query-toggle" type="button" disabled>查询资料</button>
+    {blocked ? <button className="vc-query-toggle" type="button" disabled>选择已连接</button>
       : <ConnectionQueryPanel key={`${snapshot.activeCanvasId}:${snapshot.ownerId}`} onConfigure={onConfigure} onSave={save} />}
   </div>;
 }

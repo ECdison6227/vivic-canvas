@@ -8,6 +8,14 @@
 .vo-key-form>label{display:block;margin:0 0 10px;font-weight:500}
 .vo-example-toggle{padding-inline:0;color:var(--hark-secondary)}
 .vo-example-toggle[aria-expanded=true] svg{rotate:180deg}
+.vo-guide-card{display:grid;gap:14px;padding:20px;margin:0 0 20px;--surface-stroke:transparent;--surface-blur:blur(50px)}
+.vo-guide-row{display:flex;align-items:flex-start;gap:12px;min-width:0}
+.vo-guide-row>svg{flex:none;margin-top:2px;color:var(--hark-secondary)}
+.vo-guide-row>div{min-width:0}
+.vo-guide-row strong{display:block;font:500 14px/20px var(--hark-font)}
+.vo-guide-row p{margin:3px 0 0;color:var(--hark-secondary);font:400 13px/19px var(--hark-font)}
+.vo-guide-row a{display:inline-block;margin-top:6px;color:var(--hark-ink);font:400 13px/19px var(--hark-font);text-decoration:underline;text-underline-offset:3px}
+.vo-key-guide{margin-bottom:24px}
 .vo-example-card{padding:20px;margin-top:16px;--surface-stroke:transparent;--surface-blur:blur(50px)}
 .vo-card-caption{font:400 12px/17px var(--hark-font);color:var(--hark-secondary);margin:0 0 12px}
 .vo-example-card h2{display:flex;align-items:center;gap:10px;margin:0;font:500 20px/26px var(--hark-serif)}

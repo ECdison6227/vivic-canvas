@@ -4,6 +4,12 @@ const instruction = /删除|清空|取消|撤销|恢复|聚焦|放大|缩小|切
 export const isMixedInstruction = (text: string) => instruction.test(text);
 const example = "表格需要你提供数据。请回复一组「名称 数值」，如「周一3，周二5，周三4」；也可完整输入「用表格记录：周一3，周二5，周三4」。";
 
+/** The grammar could not extract user-provided data; a model may fill grounded slots. */
+export function needsNumericSlotExtraction(text: string): boolean {
+  const parsed = parseNumericIntent(text);
+  return parsed?.kind === "clarify" && parsed.message === example && /\d/.test(text) && !isMixedInstruction(text);
+}
+
 /** One explicit, bounded data series only; never infer, aggregate or fabricate values. */
 export function parseNumericIntent(text: string): NumericIntent | null {
   if (!/表格|柱状图|条形图|折线图|饼图|图表/.test(text)) return null;

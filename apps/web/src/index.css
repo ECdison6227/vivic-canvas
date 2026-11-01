@@ -1366,7 +1366,7 @@
  * Vivic Phase 0 display layers — built on the same shadcn/aui tokens above.
  * ------------------------------------------------------------------------ */
 
-/* React Flow canvas: transparent so the Grainient layer shows through, and
+/* React Flow canvas: transparent so the Liquid Ether layer shows through, and
  * node position changes resolve as a smooth relayout. */
 [data-vivic-canvas] .react-flow {
   background: transparent;
@@ -1639,14 +1639,19 @@
 .vivic-round-button:focus-visible, .vivic-composer-icon:focus-visible, .vivic-composer-send:focus-visible,
 .vivic-chip:focus-visible, .vivic-settings-back:focus-visible { outline: 2px solid var(--vc-focus); outline-offset: 2px; }
 .vivic-composer-meta { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 14px; font-size: 11px; color: var(--vc-ink-muted); }
-.vivic-mode-pill { display: inline-flex; align-items: center; gap: 6px; }
-.vivic-mode-pill::before { content: ""; width: 6px; height: 6px; border-radius: 999px; background: #9aa0b4; }
+.vivic-mode-pill { display: inline-flex; align-items: center; gap: 6px; border: 0; background: transparent; color: inherit; font: inherit; padding: 0; }
+.vivic-mode-pill::before { content: ""; width: 6px; height: 6px; border-radius: 999px; background: #9aa0b4; flex: none; }
 .vivic-mode-pill[data-tone="connected"]::before { background: #5ad19a; box-shadow: 0 0 0 3px rgb(90 209 154 / .2); }
 .vivic-mode-pill[data-tone="warning"]::before { background: #f5b14c; }
+.vivic-mode-pill-action { cursor: pointer; text-decoration: underline; text-decoration-color: color-mix(in oklab, currentColor 35%, transparent); text-underline-offset: 3px; border-radius: 8px; }
+.vivic-mode-pill-action:hover { color: var(--foreground, var(--hark-ink)); text-decoration-color: currentColor; }
+.vivic-mode-pill-action:focus-visible { outline: 2px solid var(--ring, var(--hark-primary)); outline-offset: 3px; }
 .vivic-toggle { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
 .vivic-toggle input { width: 14px; height: 14px; accent-color: #8c81dd; }
 .vivic-wake { display: inline-flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; }
-.vivic-wake .vivic-chip { min-height: 24px; padding: 2px 10px; font-size: 11px; }
+.vivic-wake-mic { width: 32px; height: 32px; display: grid; place-items: center; border: 0; border-radius: 999px; background: transparent; color: #c4453c; cursor: pointer; }
+.vivic-wake-mic[data-on="true"] { color: #1f8a5b; }
+.vivic-wake-mic svg { width: 18px; height: 18px; }
 .vivic-wake .vivic-composer-note { flex-basis: 100%; }
 
 .vivic-readonly-notice {
@@ -1680,3 +1685,9 @@
   .vivic-typing span { animation: none; }
   .vivic-round-button, .vivic-composer-send { transition: none; }
 }
+
+/* A Display window must not expose the user-page, Space-management, or portal buttons. */
+html[data-vivic-display-window="true"] .vivic-user-canvas-controls > button[data-vivic-space-tools],
+html[data-vivic-display-window="true"] .vivic-user-canvas-controls > button[aria-label="用户页"],
+html[data-vivic-display-window="true"] .vivic-user-canvas-controls > button[title="返回用户页"],
+html[data-vivic-display-window="true"] .vivic-user-canvas-controls .vivic-card-portal > button[aria-label="卡片传送门"] { display: none !important; }

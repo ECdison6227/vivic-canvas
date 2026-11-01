@@ -1,5 +1,7 @@
 import type { SyncChannel } from "./channel";
 import type { SyncMessage } from "./protocol";
+import { OWNER_ONLINE_BUILD } from "@/online/mode";
+import { ownerScope } from "@/hosted/ownerScope";
 
 /**
  * Single CONTROL_OWNER election. Primary: Web Locks API (exclusive lock
@@ -195,7 +197,7 @@ export const createOwnerManager = (
 
   const acquire = async (steal: boolean): Promise<boolean> => {
     if (!provider) return false;
-    const got = await provider.request(LOCK_NAME, {
+    const got = await provider.request(LOCK_NAME + (OWNER_ONLINE_BUILD ? ownerScope() : ""), {
       ifAvailable: !steal,
       steal,
     });
