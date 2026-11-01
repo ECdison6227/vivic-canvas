@@ -1,6 +1,8 @@
 .mobile-card-preview { min-width:0; color:var(--hark-ink); font:400 15px/21px var(--hark-font); }
 .mobile-card-preview-header { display:flex; align-items:flex-start; gap:12px; margin-bottom:16px; }
 .mobile-card-preview-mark { display:flex; align-items:center; justify-content:center; width:36px; height:36px; flex:none; border-radius:12px; background:var(--hark-wash); }
+.mobile-file-preview-mark { flex-direction:column; gap:1px; width:42px; height:42px; }
+.mobile-file-preview-mark small { color:var(--hark-secondary); font:600 8px/10px var(--hark-font); letter-spacing:.04em; }
 .mobile-card-preview h2 { flex:1; min-width:0; margin:4px 0 0; font:500 20px/26px var(--hark-serif); overflow-wrap:anywhere; }
 .mobile-card-preview-body { margin:0; white-space:pre-wrap; overflow-wrap:anywhere; }
 .mobile-card-preview-muted { margin:0; font-size:13px; line-height:19px; color:var(--hark-secondary); }

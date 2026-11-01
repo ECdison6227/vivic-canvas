@@ -112,7 +112,7 @@ export interface ControlHost {
   redo: () => boolean;
   createCanvas: (title?: string) => string;
   renameCanvas: (id: string, title: string) => void;
-  deleteCanvas: (id: string) => void;
+  deleteCanvas: (id: string) => Promise<boolean>;
   switchCanvas: (id: string) => void;
   clearActiveCanvas: () => void;
   clearLocalData: (beforeClear?: () => Promise<void>) => Promise<DispatchResult>;
@@ -122,6 +122,7 @@ export interface ControlHost {
   getSnapshot: () => ControlSnapshot;
   subscribe: (listener: () => void) => () => void;
   checkReminders: () => Promise<void>;
+  refreshFromStorage: () => Promise<void>;
 }
 
 const SUBTITLE_MAX = 120;
@@ -821,15 +822,16 @@ export const createControlHost = (deps: ControlHostDeps): ControlHost => {
     postSnapshot(id);
   };
 
-  const deleteCanvas = (id: string) => {
-    if (!writable()) return;
-    if (!records.has(id)) return;
+  const deleteCanvas = async (id: string): Promise<boolean> => {
+    if (!writable() || !records.has(id)) return false;
+    const acceptedEpoch = sessionEpoch;
     records.delete(id);
     histories.delete(id);
     inactiveViews.delete(id);
-    void queueWrite(async () => {
+    let persistedDeletion = false;
+    const deletion = queueWrite(async () => {
       if (!canPersist()) return;
-      await deps.db.deleteCanvas(id); persistedVersions.delete(id);
+      await deps.db.deleteCanvas(id); persistedVersions.delete(id); persistedDeletion = true;
     });
     if (id === activeCanvasId) {
       const next = [...records.keys()][0];
@@ -859,6 +861,9 @@ export const createControlHost = (deps: ControlHostDeps): ControlHost => {
       }
     }
     emit();
+    await deletion;
+    await persistence;
+    return persistedDeletion && sessionEpoch === acceptedEpoch && !records.has(id);
   };
 
   const clearActiveCanvas = () => {
@@ -1186,6 +1191,7 @@ export const createControlHost = (deps: ControlHostDeps): ControlHost => {
     createCanvas,
     renameCanvas,
     deleteCanvas,
+    refreshFromStorage: () => refreshOwnerState(true),
     switchCanvas,
     clearActiveCanvas,
     clearLocalData,

@@ -4,6 +4,7 @@ import { SPEECH_VOICE_IDS } from "./voices.js";
 import { ImageAttachmentsSchema } from "./images.js";
 import { TimeZoneSchema } from "@vivic/contracts";
 import { DevicePositionSchema } from "./data/deviceRegion.js";
+import { DecisionTraceSchema } from "./decision/trace.js";
 
 /** Compact canvas context the control page sends with each intent request. */
 export const CanvasContextSchema = z.strictObject({
@@ -70,6 +71,7 @@ export const SpeechRequestSchema = z.strictObject({
 });
 
 export const IntentResponseSchema = z.strictObject({
+  trace: DecisionTraceSchema.optional(),
   kind: z.enum(["envelope", "host-operation", "clarify", "unknown", "error", "locale", "task"]),
   envelope: ActionEnvelopeSchema.optional(),
   hostOperation: HostOperationSchema.optional(),
@@ -78,10 +80,19 @@ export const IntentResponseSchema = z.strictObject({
   suggestions: z.array(z.string().min(1).max(100)).max(5).optional(),
   locale: z.strictObject({ name: z.string().min(1).max(80), admin1: z.string().max(80).optional(),
     country: z.string().max(80).optional(), basis: z.enum(["device", "network"]), answer: z.string().min(1).max(200) }).optional(),
-  usedProvider: z.enum(["rules", "stepfun", "gpt", "rules-offline", "search", "decision"]).optional(),
+  usedProvider: z.enum(["rules", "stepfun", "gpt", "deepseek", "rules-offline", "search", "decision"]).optional(),
+  /** Diagnostic only: this turn was produced by the conversational tool-calling path. */
+  toolCalls: z.boolean().optional(),
 }).superRefine((response, ctx) => {
-  if (response.hostOperation && response.envelope || response.kind === "host-operation" && !response.hostOperation
-    || response.hostOperation && response.kind !== "host-operation") ctx.addIssue({ code: "custom", message: "宿主操作与 ActionEnvelope 必须二选一。" });
+  // A composite turn may carry both: actions/focus first, then one host
+  // operation (e.g. focus + pin). kind "host-operation" still means host-only,
+  // and an envelope still needs its actions.
+  if (response.kind === "envelope" && !response.envelope)
+    ctx.addIssue({ code: "custom", message: "envelope 缺少 ActionEnvelope。" });
+  if (response.kind === "host-operation" && (!response.hostOperation || response.envelope))
+    ctx.addIssue({ code: "custom", message: "host-operation 只能携带宿主操作。" });
+  if (response.hostOperation && response.kind !== "envelope" && response.kind !== "host-operation")
+    ctx.addIssue({ code: "custom", message: "宿主操作只能随 envelope 或 host-operation 返回。" });
 });
 
 export type IntentResponse = z.infer<typeof IntentResponseSchema>;

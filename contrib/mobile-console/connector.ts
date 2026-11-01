@@ -11,6 +11,7 @@ export interface ComputerHostAdapter {
   setCardPinned(cardId: string, pinned: boolean): { ok: boolean; message: string } | Promise<{ ok: boolean; message: string }>;
   setCardSurface?(cardId: string, surface: "display" | "user", context?: HostMutationContext): { ok: boolean; message: string } | Promise<{ ok: boolean; message: string }>;
   readFileChunk?(cardId: string, offset: number, context: { isCurrent(): boolean }): Promise<FileChunkData>;
+  readImageChunk?(cardId: string, imageId: string, offset: number, context: { isCurrent(): boolean }): Promise<FileChunkData>;
 }
 export interface ConnectorState {
   status: "stopped" | "connecting" | "connected" | "offline" | "expired" | "error";
@@ -63,10 +64,11 @@ export function createComputerConnector(options: ComputerConnectorOptions) {
       const cards = snapshot.cards.map(card => {
         // Older deployed relays have strict v1 schemas: omit additive content
         // unless this session explicitly advertises the corresponding new grant.
-        const { subcards, file, section, priority, dueDate, ...legacy } = card;
+        const { subcards, file, images, imageNotice, section, priority, dueDate, ...legacy } = card;
         return { ...legacy, ...(welcome?.permissions.includes("card.surface") && subcards ? { subcards } : {}),
           ...(welcome?.permissions.includes("card.surface") ? { ...(section ? { section } : {}), ...(priority ? { priority } : {}), ...(dueDate ? { dueDate } : {}) } : {}),
-          ...(welcome?.permissions.includes("file.read") && file ? { file } : {}) };
+          ...(welcome?.permissions.includes("file.read") && file ? { file } : {}),
+          ...(welcome?.permissions.includes("image.read") ? { ...(images ? { images } : {}), ...(imageNotice ? { imageNotice } : {}) } : {}) };
       });
       const frame: Extract<Frame, { type: "snapshot" }> = { ...s, type: "snapshot", sequence: ++sequence, state: { ...snapshot, cards } };
       // Schema row/character limits alone do not bound UTF-8 bytes. Retain navigation and
@@ -84,7 +86,7 @@ export function createComputerConnector(options: ComputerConnectorOptions) {
       if (!serializeFrame(frame)) {
         frame.state.cardCount = snapshot.cardCount ?? snapshot.cards.length;
         frame.state.cardsTruncated = true;
-        const summaries = cards.map(({ preview: _preview, subcards: _subcards, file: _file, ...summary }) => summary);
+        const summaries = cards.map(({ preview: _preview, subcards: _subcards, file: _file, images: _images, imageNotice: _notice, ...summary }) => summary);
         // A prefix of full previews is equivalent to stripping from the end.
         // Binary fitting avoids repeatedly serializing every large table/card.
         fit(cards, prefix => { frame.state.cards = cards.map((card, index) => index < prefix.length ? card : summaries[index]!); });
@@ -232,16 +234,17 @@ export function createComputerConnector(options: ComputerConnectorOptions) {
       if (frame.state === "joined" && !locallyRevoked.has(frame.deviceId)) permissions.set(frame.deviceId, frame.permissions.filter(permission => PERMISSIONS.includes(permission)));
       else { permissions.delete(frame.deviceId); ledger.forEach(entry => { if (entry.command.deviceId === frame.deviceId && !entry.result) entry.abort.abort(); }); }
       emit({ controllers: [...permissions.keys()] }); publishSnapshot();
-    } else if (frame.type === "file.request" && authorized(frame.deviceId, "file.read")) {
+    } else if (frame.type === "file.request" && authorized(frame.deviceId, frame.imageId ? "image.read" : "file.read")) {
       const isCurrent = () => {
-        try { const current = hostSnapshot(); return active && connected && scoped(frame) && authorized(frame.deviceId, "file.read") && current.ownerAvailable
+        try { const current = hostSnapshot(); return active && connected && scoped(frame) && authorized(frame.deviceId, frame.imageId ? "image.read" : "file.read") && current.ownerAvailable
           && current.activeCanvasId === frame.canvasId && current.ownerEpoch === frame.ownerEpoch && current.version === frame.expectedVersion
-          && current.cards.some(card => card.id === frame.cardId && card.file); } catch { return false; }
+          && current.cards.some(card => card.id === frame.cardId && (frame.imageId ? card.images?.some(image => image.id === frame.imageId) : card.file)); } catch { return false; }
       };
       const reject = () => { const s = scope(); if (s && scoped(frame) && authorized(frame.deviceId)) send({ ...s, type: "file.error", forDeviceId: frame.deviceId, requestId: frame.requestId, message: "文件或电脑状态已变化，请同步后重试下载。" }); };
-      if (!isCurrent() || !host.readFileChunk || fileReads.has(frame.deviceId)) { reject(); return; }
+      if (!isCurrent() || !(frame.imageId ? host.readImageChunk : host.readFileChunk) || fileReads.has(frame.deviceId)) { reject(); return; }
       fileReads.add(frame.deviceId);
-      void host.readFileChunk(frame.cardId, frame.offset, { isCurrent }).then(raw => {
+      const read = frame.imageId ? host.readImageChunk!(frame.cardId, frame.imageId, frame.offset, { isCurrent }) : host.readFileChunk!(frame.cardId, frame.offset, { isCurrent });
+      void read.then(raw => {
         const chunk = FileChunkDataSchema.parse(raw);
         if (!isCurrent()) { reject(); return; }
         send({ ...scope()!, type: "file.chunk", forDeviceId: frame.deviceId, requestId: frame.requestId, cardId: frame.cardId, offset: frame.offset, chunk });
@@ -284,6 +287,14 @@ export function createComputerConnector(options: ComputerConnectorOptions) {
     stop() {
       const s = scope(); if (s && connected) send({ ...s, type: "revoke" });
       active = false; finished = true; connected = false; clearLoops(); if (expiry) clearTimeout(expiry); expiry = null;
+      abortPending(); unsubTransport?.(); unsubHost?.(); transport.close();
+      token = undefined; welcome = null; permissions.clear();
+      emit({ status: "stopped", pairCode: null, pairExpiresAt: null, expiresAt: null, controllers: [], error: null });
+    },
+    /** Page teardown is a disconnect, not a user's revocation. Secrets still die in this object. */
+    detach() {
+      active = false; finished = true; connected = false; clearLoops();
+      if (expiry) clearTimeout(expiry); expiry = null;
       abortPending(); unsubTransport?.(); unsubHost?.(); transport.close();
       token = undefined; welcome = null; permissions.clear();
       emit({ status: "stopped", pairCode: null, pairExpiresAt: null, expiresAt: null, controllers: [], error: null });

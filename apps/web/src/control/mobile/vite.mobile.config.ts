@@ -16,6 +16,6 @@ export default defineConfig({
   server: { host: "127.0.0.1", port: 5174, strictPort: true, fs: { allow: [repository] } },
   build: {
     outDir: path.join(repository, "contrib/mobile-console/dist-ui"), emptyOutDir: true,
-    rolldownOptions: { input: { mobile: path.join(directory, "index.html"), computer: path.join(directory, "computer.html") } },
+    rolldownOptions: { input: path.join(directory, "index.html") },
   },
 });

@@ -65,8 +65,8 @@ export function ConnectionQueryPanel({ onSave, onConfigure }: { onSave?: (result
   };
 return <section className="vc-query" aria-label="查询已连接的服务">
     <Dialog.Root open={open} onOpenChange={value => { setOpen(value); if (!value) pending.current?.abort(); }}>
-      <Dialog.Trigger asChild><button type="button" className="vc-query-toggle"><HarkIcon name="search" size={16} />查询资料</button></Dialog.Trigger>
-      {open && <ControlDialogContent title="查询资料" description="从连接的服务中查找，留在你的 Space。" className="vc-query-dialog">
+      <Dialog.Trigger asChild><button type="button" className="vc-query-toggle"><HarkIcon name="search" size={16} />选择已连接</button></Dialog.Trigger>
+      {open && <ControlDialogContent title="选择已连接" description="从连接的服务中查找，留在你的 Space。" className="vc-query-dialog">
         <div className="vc-query-body">
           {!connections.length ? <div className="vc-query-empty"><HarkIcon name="link" size={28} /><h3>连接你的资料来源</h3><p>飞书、企业微信、钉钉或麦当劳，按需连接。</p>{onConfigure && <Button size="sm" onClick={() => { setOpen(false); onConfigure(); }}>连接服务</Button>}</div> : <>
             <div className="vc-query-source"><HarkIcon name="apps" size={16} /><label htmlFor="vc-query-provider">来源</label><select id="vc-query-provider" aria-label="查询来源" value={connection?.provider ?? ""} disabled={busy}

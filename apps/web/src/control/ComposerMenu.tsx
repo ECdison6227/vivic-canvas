@@ -11,11 +11,11 @@ export function ComposerMenu({ children }: { children(close: () => void): ReactN
     <Popover.Trigger asChild><button ref={trigger} type="button" className="vivic-composer-icon" aria-label="添加内容" title="添加内容" data-vivic-add>
       <HarkIcon name="add" size={18} />
     </button></Popover.Trigger>
-    <Popover.Content forceMount hidden={!open} asChild side="top" align="end" sideOffset={12}
+    <Popover.Content forceMount asChild side="top" align="end" sideOffset={12}
       onFocusOutside={event => event.preventDefault()}
       onPointerDownOutside={event => { if ((event.target as Element | null)?.closest?.('[role="dialog"],dialog')) event.preventDefault(); }}
       onEscapeKeyDown={event => { event.preventDefault(); close(); }}>
-      <HarkSurface as="div" className="vivic-composer-menu" aria-label="添加内容">
+      <HarkSurface as="div" className="vivic-composer-menu" aria-label="添加内容" inert={open ? undefined : true}>
         {children(close)}
       </HarkSurface>
     </Popover.Content>

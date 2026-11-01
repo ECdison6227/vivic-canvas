@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { LoaderCircle, Mic, Square } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { LoaderCircle, Mic } from "lucide-react";
 import { createLocalSpeechSession, DEFAULT_WAKE_KEYWORDS, DEFAULT_WAKE_PHRASE, MicCapture, localSpeechModels } from "@/ai/localSpeech";
 import type { LocalSpeechEvent, LocalSpeechSession } from "@/ai/localSpeech";
 import { beginWakeActivity } from "@/ai/wakeActivity";
+import { OWNER_ONLINE_BUILD } from "@/online/mode";
+import { OnlineWakeInput } from "./OnlineWakeInput";
 
 type Segment = Extract<LocalSpeechEvent, { type: "segment" }>;
 export interface LocalWakeInputProps {
@@ -26,13 +27,17 @@ type Phase = "idle" | "loading" | "listening" | "recording" | "transcribing" | "
 interface Active { controller: AbortController; session: LocalSpeechSession; mic: MicCapture; accepting: boolean }
 
 /** Explicit foreground one-utterance opt-in; never a background/always-on listener. */
-export const LocalWakeInput = (props: LocalWakeInputProps) => {
+export const LocalWakeInput = (props: LocalWakeInputProps) => OWNER_ONLINE_BUILD ? <OnlineWakeInput {...props} /> : <BrowserWakeInput {...props} />;
+const BrowserWakeInput = (props: LocalWakeInputProps) => {
   const currentProps = useRef(props); currentProps.current = props;
   const active = useRef<Active | null>(null);
   const activity = useRef<ReturnType<typeof beginWakeActivity> | null>(null);
   const mounted = useRef(true);
   const [phase, setPhase] = useState<Phase>("idle");
   const [message, setMessage] = useState<string | null>(null);
+  const [armed, setArmed] = useState(true);
+  const [kick, setKick] = useState(0);
+  const hold = useRef(false);
   const stop = useCallback((next: Phase = "idle", note: string | null = null) => {
     const old = active.current; active.current = null;
     old?.controller.abort(); old?.mic.dispose(); old?.session.dispose();
@@ -44,12 +49,12 @@ export const LocalWakeInput = (props: LocalWakeInputProps) => {
     return () => { mounted.current = false; stop(); };
   }, [stop]);
   useEffect(() => { stop(); }, [props.ownerKey, props.recognition, props.mode, props.cancelKey, stop]);
-  useEffect(() => { if (props.disabled || props.speaking) stop(); }, [props.disabled, props.speaking, stop]);
   useEffect(() => {
-    const cancel = () => stop();
-    const hidden = () => { if (document.hidden) cancel(); };
-    window.addEventListener("blur", cancel); window.addEventListener("pagehide", cancel); document.addEventListener("visibilitychange", hidden);
-    return () => { window.removeEventListener("blur", cancel); window.removeEventListener("pagehide", cancel); document.removeEventListener("visibilitychange", hidden); };
+    const pause = () => { hold.current = true; stop(); };
+    const resume = () => { if (document.hidden) return; hold.current = false; setKick(value => value + 1); };
+    const hidden = () => { if (document.hidden) pause(); else resume(); };
+    window.addEventListener("blur", pause); window.addEventListener("focus", resume); window.addEventListener("pagehide", pause); document.addEventListener("visibilitychange", hidden);
+    return () => { window.removeEventListener("blur", pause); window.removeEventListener("focus", resume); window.removeEventListener("pagehide", pause); document.removeEventListener("visibilitychange", hidden); };
   }, [stop]);
   const begin = () => {
     if (props.disabled || props.speaking) return;
@@ -111,7 +116,21 @@ export const LocalWakeInput = (props: LocalWakeInputProps) => {
       void Promise.all([ready, capture]).catch(fail);
     } catch (error) { fail(error); }
   };
-  const busy = ["loading", "listening", "recording", "transcribing", "delivering"].includes(phase);
+  const beginRef = useRef(begin);
+  beginRef.current = begin;
+  useEffect(() => {
+    if (!armed || hold.current || props.disabled || props.speaking) {
+      if (phase !== "idle" && phase !== "error") stop();
+      return;
+    }
+    if (phase === "idle" || phase === "done") beginRef.current();
+  }, [armed, kick, phase, props.disabled, props.speaking, stop]);
+  const toggle = () => {
+    if (armed) { setArmed(false); return; }
+    setArmed(true);
+    setPhase("idle");
+    setKick(value => value + 1);
+  };
   const caption = message ?? (phase === "loading" ? "正在准备本地模型与麦克风权限…"
     : phase === "listening" ? (props.mode === "vad" ? "正在前台等待一句话…" : `正在前台等待「${DEFAULT_WAKE_PHRASE}」…`)
     : phase === "recording" ? "正在收取一条指令，静音后结束。"
@@ -120,23 +139,17 @@ export const LocalWakeInput = (props: LocalWakeInputProps) => {
     : phase === "done" ? "本次识别已结束；继续使用需重新开启。"
     : "默认不监听。一次开启最多前台等待 5 分钟，只收一段后停止；失焦即取消。");
   const title = props.mode === "vad" ? "本地语音分段（单次）" : `本地唤醒（单次）· 固定短语：${DEFAULT_WAKE_PHRASE}`;
-  if (props.compact) return <div className="vivic-wake" data-vivic-local-wake data-local-wake-phase={phase}>
-    <button type="button" className="vivic-chip" disabled={props.disabled || props.speaking || busy} onClick={begin} title={`${title}。${caption}`}>
-      {phase === "loading" || phase === "transcribing" ? <LoaderCircle className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Mic className="h-3.5 w-3.5" aria-hidden="true" />}
-      {busy ? "监听中…" : phase === "done" ? "重新开启单次监听" : "开启单次监听"}
-    </button>
-    {busy && <button type="button" className="vivic-chip" onClick={() => stop()}><Square className="h-3.5 w-3.5" aria-hidden="true" />取消监听</button>}
-    <p className={`vivic-composer-note ${phase === "error" ? "vivic-composer-note-error" : ""}`} role="status" aria-live="polite" hidden={phase === "idle"}>{caption}</p>
+  const mic = <button type="button" className="vivic-wake-mic" data-on={armed} aria-pressed={armed} data-vivic-local-wake-toggle
+    aria-label={armed ? "关闭监听" : "开启监听"} title={armed ? "监听已开启" : "监听已关闭"} onClick={toggle}>
+    {phase === "loading" ? <LoaderCircle className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Mic aria-hidden="true" />}
+  </button>;
+  if (props.compact) return <div className="vivic-wake" data-vivic-local-wake data-local-wake-phase={phase} data-listening={armed || undefined}>
+    {mic}
+    {phase === "error" && <p className="vivic-composer-note vivic-composer-note-error" role="status" aria-live="polite">{message ?? caption}</p>}
   </div>;
   return <div className="mt-3" data-vivic-local-wake data-local-wake-phase={phase}>
     <p className="mb-2 text-xs text-neutral-600">{title}</p>
-    <div className="flex gap-2">
-      <Button type="button" variant="outline" disabled={props.disabled || props.speaking || busy} onClick={begin}>
-        {phase === "loading" || phase === "transcribing" ? <LoaderCircle className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <Mic className="h-4 w-4" />}
-        {phase === "done" ? "重新开启单次监听" : "开启单次监听"}
-      </Button>
-      {busy && <Button type="button" variant="ghost" onClick={() => stop()}><Square className="h-4 w-4" />取消监听</Button>}
-    </div>
-    <p className={`mt-2 text-xs ${phase === "error" ? "text-red-700" : "text-neutral-500"}`} role="status" aria-live="polite">{caption}</p>
+    {mic}
+    <p className={`mt-2 text-xs ${phase === "error" ? "text-red-700" : "text-neutral-500"}`} role="status" aria-live="polite">{armed ? caption : "监听已关闭。"}</p>
   </div>;
 };

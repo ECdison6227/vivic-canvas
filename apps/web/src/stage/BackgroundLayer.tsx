@@ -4,7 +4,7 @@ import { useDisplayPreferences, useVivicState } from "@/state/canvasStore";
 import type { SpacePhase } from "@/motion/spaceMotion";
 import { useSystemReducedMotion } from "@/motion/useMotionVisibility";
 
-/** Source sky and composited light stay outside React Flow, without a GPU context. */
+/** React Bits fluid backdrop stays outside React Flow and follows display preferences. */
 export const BackgroundLayer = ({ theme }: { theme: "light" | "dark" }) => {
   const preferences = useDisplayPreferences();
   const stage = useVivicState(state => state.stage);

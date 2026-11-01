@@ -1,11 +1,9 @@
 import { useState, useSyncExternalStore } from "react";
 import { Switch, ToggleGroup } from "radix-ui";
-import { Pin, PinOff } from "lucide-react";
-import { CARD_TYPE_LABELS } from "@/contracts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DEFAULT_DAY_START, DEFAULT_DAY_END } from "@/motion/motionDirector";
-import { useVivicState, type DispatchResult } from "@/state/canvasStore";
+import { type DispatchResult } from "@/state/canvasStore";
 import type { ControlHost } from "@/sync/controlHost";
 import type { DisplayPreferences } from "@/sync/protocol";
 
@@ -18,14 +16,12 @@ export interface CanvasSettingsProps {
 }
 
 /** Control-only: the parent owns placement; never mount this in Display. */
-export const CanvasSettings = ({ host, disabled = false, selectedCardId, compact = false, toolsOnly = false }: CanvasSettingsProps) => {
+export const CanvasSettings = ({ host, disabled = false, compact = false, toolsOnly = false }: CanvasSettingsProps) => {
   const snapshot = useSyncExternalStore(host.subscribe, host.getSnapshot);
-  const cards = useVivicState(s => s.cards);
   const [error, setError] = useState<string | null>(null);
   const readonly = disabled || !snapshot.ready || snapshot.ownerMode !== "owner";
   const report = (result: DispatchResult) => setError(result.ok ? null : "设置尚未保存，请重试。");
   const update = (patch: Partial<DisplayPreferences>) => report(host.setPreferences(patch));
-  const visible = cards.filter(c => !c.exitingRequestId && (!selectedCardId || c.record.id === selectedCardId));
   if (compact) return <section className="se-appearance" data-vivic-canvas-settings>
     <div className="se-row"><span id="compact-theme-label">主题</span>
       <ToggleGroup.Root type="single" value={snapshot.preferences.theme} disabled={readonly} aria-labelledby="compact-theme-label" className="se-theme"
@@ -60,7 +56,7 @@ export const CanvasSettings = ({ host, disabled = false, selectedCardId, compact
       </p>}
       <fieldset disabled={readonly} className="mt-3 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-xs text-neutral-500">按卡片尺寸整理位置，固定卡片保留原位。</p>
+          <p className="text-xs text-neutral-500">按卡片尺寸整理位置。</p>
           <Button type="button" variant="outline" size="sm" disabled={readonly} onClick={() => report(host.arrangeCanvas())} data-vivic-arrange>重新排布</Button>
         </div>
         {!toolsOnly && <><div className="flex flex-wrap items-center justify-between gap-2 text-sm">
@@ -100,25 +96,6 @@ export const CanvasSettings = ({ host, disabled = false, selectedCardId, compact
           </div>
         ))}
         </>}
-        <div className="border-t border-neutral-100 pt-3">
-          <p className="text-xs font-medium text-neutral-600">固定卡片</p>
-          {visible.length === 0 && <p className="mt-2 text-xs text-neutral-500">暂无卡片</p>}
-          <ul className="mt-2 space-y-1">
-            {visible.map(({ record }) => (
-              <li key={`${snapshot.activeCanvasId}:${record.id}`} className="flex items-center justify-between gap-2 text-sm">
-                <span className="min-w-0 break-words">{record.metadata.aliases?.[0]
-                  || (record.type === "CountdownCard" ? record.sourceData.event?.title ?? record.sourceData.reminderText : undefined)
-                  || CARD_TYPE_LABELS[record.type]}</span>
-                <Button type="button" variant="ghost" size="sm" disabled={readonly} aria-pressed={record.layout.pinned}
-                  aria-label={`${record.layout.pinned ? "取消固定" : "固定"} ${record.id}`} data-vivic-pin={record.id}
-                  onClick={() => report(host.setCardPinned(record.id, !record.layout.pinned, snapshot.activeCanvasId ?? undefined))}>
-                  {record.layout.pinned ? <PinOff className="mr-1 h-3 w-3" /> : <Pin className="mr-1 h-3 w-3" />}
-                  {record.layout.pinned ? "取消固定" : "固定"}
-                </Button>
-              </li>
-            ))}
-          </ul>
-        </div>
       </fieldset>
       {error && <p role="status" className="mt-2 text-xs text-red-700">{error}</p>}
     </section>

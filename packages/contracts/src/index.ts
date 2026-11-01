@@ -12,3 +12,7 @@ export * from "./providers";
 export * from "./cardFieldPolicy";
 export * from "./extensionCard";
 export * from "./files";
+export * from "./hostedSpace";
+export * from "./reminderRuntime";
+export * from "./routes";
+export * from "./cardContract";

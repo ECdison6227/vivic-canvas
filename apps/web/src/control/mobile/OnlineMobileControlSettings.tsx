@@ -14,6 +14,7 @@ import { executeRemoteText } from "./executeRemoteText";
 import { AndroidDownload } from "./AndroidDownload";
 import { projectMobileSubcards } from "./projectSubcards";
 import { createRemoteFileReader } from "@/files/remoteFiles";
+import { createMobileImageProjection } from "./imageProjection";
 
 const stopped: ConnectorState = { status: "stopped", pairCode: null, pairExpiresAt: null, expiresAt: null, controllers: [], error: null };
 const subscribeNothing = () => () => {};
@@ -43,7 +44,9 @@ export function OnlineMobileControlSettings({ host, disabled, desktopBusy }: { h
     setBusy(true); setError(null); connector?.stop(); setConnector(null);
     try {
       await Promise.all([loadBuiltinOfficeDefinitions(), extensionDefinitions.ready()]).catch(() => {});
-      const adapter = createVivicHostAdapter({ computerName: "Vivic 电脑", shareCardPreviews: true,
+      const images = createMobileImageProjection(host);
+      const adapter = createVivicHostAdapter({ projectImages: images.projectImages, readImageChunk: images.readImageChunk,
+        connectionEpoch: crypto.randomUUID(), computerName: "Vivic 电脑", shareCardPreviews: true,
         host: { ...host, getSnapshot: () => { const snapshot = host.getSnapshot(); return { ...snapshot, ready: snapshot.ready && !desktopBusy() }; },
           switchCanvas: id => { if (!desktopBusy()) host.switchCanvas(id); },
           setCardSurface: (cardId, surface, position, canvasId) => desktopBusy() ? { ok: false } : host.setCardSurface(cardId, surface, position, canvasId),
@@ -52,7 +55,7 @@ export function OnlineMobileControlSettings({ host, disabled, desktopBusy }: { h
         projectSubcards: projectMobileSubcards,
         readFileChunk: createRemoteFileReader(),
         readCards: () => canvasStore.getState().cards,
-        subscribeCards: listener => { const cards = canvasStore.subscribe(listener), definitions = extensionDefinitions.subscribe(listener); return () => { cards(); definitions(); }; },
+        subscribeCards: listener => { const cards = canvasStore.subscribe(listener), definitions = extensionDefinitions.subscribe(listener), pictures = images.subscribe(listener); return () => { cards(); definitions(); pictures(); }; },
         submitText: (text, context) => executeRemoteText(host, text, context, desktopBusy),
       });
       const next = createComputerConnector({ transport: createOnlineHttpTransport(`${window.location.origin}/api/online/mobile/owner`, "owner"),
